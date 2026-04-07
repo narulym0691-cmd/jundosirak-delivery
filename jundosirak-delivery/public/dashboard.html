@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>준도시락 - 기사 대시보드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+      padding-bottom: 70px;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+
+    .header-left { display: flex; flex-direction: column; }
+    .header-title { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+    .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-user {
+      text-align: right;
+    }
+
+    .header-user-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .header-user-team {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+
+    .btn-logout {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메인 컨텐츠 */
+    .main { padding: 14px; }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 16px;
+      background: #38a169;
+      border-radius: 2px;
+    }
+
+    /* 인센티브 게이지 */
+    .gauge-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .gauge-team {
+      font-size: 15px;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .grade-badge {
+      color: white;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .gauge-numbers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .gauge-num-item {
+      background: #f7fafc;
+      border-radius: 8px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .gauge-num-label {
+      font-size: 11px;
+      color: #718096;
+      margin-bottom: 4px;
+    }
+
+    .gauge-num-val {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .positive { color: #38a169 !important; }
+    .negative { color: #e53e3e !important; }
+
+    .gauge-bar-wrap { margin-bottom: 10px; }
+
+    .gauge-bar-bg {
+      background: #e2e8f0;
+      border-radius: 6px;
+      height: 14px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .gauge-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.8s ease;
+      min-width: 4px;
+    }
+
+    .gauge-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #a0aec0;
+      margin-top: 4px;
+      padding: 0 2px;
+    }
+
+    .gauge-remain {
+      font-size: 13px;
+      color: #4a5568;
+      text-align: center;
+      background: #f0fff4;
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid #c6f6d5;
+    }
+
+    /* 팀 순위 */
+    .rank-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .rank-table th {
+      background: #f0f4f1;
+      color: #4a5568;
+      padding: 8px 6px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .rank-table td {
+      padding: 9px 6px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f1;
+    }
+
+    .my-team-row td {
+      background: #f0fff4;
+      font-weight: 700;
+    }
+
+    .rank-cell { color: #718096; font-weight: 700; }
+    .name-cell { text-align: left; font-weight: 600; }
+    .num-cell { font-weight: 600; }
+
+    .me-tag {
+      background: #38a169;
+      color: white;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .grade-badge-sm {
+      color: white;
+      padding: 2px 7px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* 거래처 경보 */
+    .alert-item {
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 4px solid;
+    }
+
+    .alert-urgent { background: #fff5f5; border-color: #fc8181; }
+    .alert-watch { background: #fffff0; border-color: #f6e05e; }
+    .alert-check { background: #fff5f5; border-color: #fc8181; }
+
+    .alert-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .alert-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+    .alert-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .alert-urgent .alert-badge { background: #fed7d7; color: #c53030; }
+    .alert-watch .alert-badge { background: #fefcbf; color: #975a16; }
+    .alert-check .alert-badge { background: #fed7d7; color: #c53030; }
+
+    .alert-name { font-size: 14px; font-weight: 600; color: #2d3748; }
+    .priority-tag {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .alert-days { font-size: 12px; color: #718096; }
+    .alert-date { font-size: 11px; color: #a0aec0; }
+
+    /* 지시사항 */
+    .directive-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      transition: opacity 0.4s;
+    }
+
+    .directive-check-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .directive-cb {
+      width: 18px;
+      height: 18px;
+      accent-color: #38a169;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .directive-content {
+      font-size: 14px;
+      color: #2d3748;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .directive-meta {
+      margin-top: 6px;
+      padding-left: 28px;
+    }
+
+    .directive-deadline {
+      font-size: 11px;
+      color: #718096;
+    }
+
+    .directive-deadline.overdue {
+      color: #e53e3e;
+      font-weight: 600;
+    }
+
+    /* 공통 빈 상태 */
+    .empty-msg {
+      text-align: center;
+      color: #a0aec0;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    .card-error {
+      text-align: center;
+      color: #e53e3e;
+      font-size: 13px;
+      padding: 16px;
+    }
+
+    /* 바텀 탭 */
+    .bottom-tab {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      display: flex;
+      border-top: 1px solid #e2e8f0;
+      box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+      z-index: 100;
+    }
+
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 4px;
+      border: none;
+      background: none;
+      color: #a0aec0;
+      font-family: inherit;
+      font-size: 10px;
+      cursor: pointer;
+      transition: color 0.2s;
+      gap: 3px;
+    }
+
+    .tab-btn.active { color: #38a169; }
+    .tab-btn svg { width: 22px; height: 22px; }
+
+    /* 탭 섹션 */
+    .tab-section { display: none; }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">준도시락 배송관리</div>
+    <div class="header-sub" id="currentMonth"></div>
+  </div>
+  <div class="header-right">
+    <div class="header-user">
+      <div class="header-user-name" id="userName">-</div>
+      <div class="header-user-team" id="teamName">-</div>
+    </div>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<!-- 홈 탭 섹션 -->
+<div class="main">
+
+  <!-- 홈 섹션 -->
+  <div class="tab-section" data-tab="home">
+    <!-- 카드 1: 인센티브 게이지 -->
+    <div class="card">
+      <div class="card-title">인센티브 게이지</div>
+      <div id="gaugeCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 카드 3: 거래처 경보 -->
+    <div class="card">
+      <div class="card-title">거래처 경보</div>
+      <div id="alertsCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 카드 4: 지시사항 -->
+    <div class="card">
+      <div class="card-title">미완료 지시사항</div>
+      <div id="directivesCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 순위 탭 섹션 -->
+  <div class="tab-section" data-tab="rank">
+    <div class="card">
+      <div class="card-title">팀 순위</div>
+      <div id="rankingCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 지시 탭 섹션 -->
+  <div class="tab-section" data-tab="directive">
+    <div class="card">
+      <div class="card-title">지시사항 목록</div>
+      <div id="directivesCard2">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 피드백 탭 섹션 -->
+  <div class="tab-section" data-tab="feedback">
+    <div class="card">
+      <div class="card-title">피드백</div>
+      <div class="empty-msg">피드백 기능은 준비 중입니다.</div>
+    </div>
+  </div>
+
+  <!-- 내정보 탭 섹션 -->
+  <div class="tab-section" data-tab="myinfo">
+    <div class="card">
+      <div class="card-title">내 정보</div>
+      <div id="myInfoCard">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+    <div class="card">
+      <button onclick="logout()" style="width:100%;padding:14px;background:#fff5f5;border:1px solid #fed7d7;color:#e53e3e;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;">로그아웃</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 바텀 탭 -->
+<nav class="bottom-tab">
+  <button class="tab-btn active" data-tab="home" onclick="showTab('home')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    홈
+  </button>
+  <button class="tab-btn" data-tab="rank" onclick="showTab('rank')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/></svg>
+    순위
+  </button>
+  <button class="tab-btn" data-tab="directive" onclick="showTab('directive')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    지시
+  </button>
+  <button class="tab-btn" data-tab="feedback" onclick="showTab('feedback')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+    피드백
+  </button>
+  <button class="tab-btn" data-tab="myinfo" onclick="showTab('myinfo')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+    내정보
+  </button>
+</nav>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/dashboard.js"></script>
+<script>
+  // 현재 월 표시
+  document.getElementById('currentMonth').textContent = getCurrentYearMonth() + ' 현황';
+
+  // 내 정보 탭 - 추가 렌더링
+  function renderMyInfo() {
+    if (!currentUser) return;
+    const roleMap = { admin: '관리자', manager: '매니저', leader: '팀장', driver: '기사' };
+    const shiftMap = { dawn: '새벽', morning: '아침' };
+    document.getElementById('myInfoCard').innerHTML = `
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">이름</span>
+          <span style="font-weight:700;color:#2d3748">${currentUser.name}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">역할</span>
+          <span style="font-weight:700;color:#2d3748">${roleMap[currentUser.role] || currentUser.role}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">근무유형</span>
+          <span style="font-weight:700;color:#2d3748">${shiftMap[currentUser.shiftType] || '-'}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // showTab 오버라이드: 내정보 탭 클릭 시 렌더
+  const origShowTab = showTab;
+  window.showTab = function(tabName) {
+    origShowTab(tabName);
+    if (tabName === 'myinfo') renderMyInfo();
+    if (tabName === 'directive') loadAllDirectives();
+  };
+
+  // 지시 탭용 전체 지시사항 로드
+  async function loadAllDirectives() {
+    const container = document.getElementById('directivesCard2');
+    try {
+      const snap = await db.collection('directives')
+        .orderBy('createdAt', 'desc')
+        .limit(30)
+        .get();
+
+      const items = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.targetTeams && d.targetTeams.length > 0) {
+          if (!currentUser.teamId || !d.targetTeams.includes(currentUser.teamId)) return;
+        }
+        items.push({ id: doc.id, ...d });
+      });
+
+      if (!items.length) {
+        container.innerHTML = '<div class="empty-msg">지시사항이 없습니다.</div>';
+        return;
+      }
+
+      const now = new Date();
+      container.innerHTML = items.map(d => {
+        const myComp = d.completions && d.completions[currentUser.uid];
+        const done = myComp && myComp.done;
+        const dl = d.deadline ? d.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
+        const isOverdue = d.deadline && d.deadline.toDate() < now && !done;
+        return `
+          <div class="directive-item" id="dir2-${d.id}" style="${done ? 'opacity:0.5' : ''}">
+            <label class="directive-check-wrap">
+              <input type="checkbox" class="directive-cb" ${done ? 'checked disabled' : ''} onchange="completeDirective('${d.id}', this)">
+              <span class="directive-content" style="${done ? 'text-decoration:line-through' : ''}">${d.content}</span>
+            </label>
+            <div class="directive-meta">
+              <span class="directive-deadline ${isOverdue ? 'overdue' : ''}">마감: ${dl}</span>
+              ${done && myComp.doneAt ? `<span style="font-size:11px;color:#38a169;margin-left:8px">완료</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+    }
+  }
+
+  // 초기화
+  initDashboard();
+</script>
+</body>
+</html>

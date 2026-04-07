@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>준도시락 - 기사 대시보드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+      padding-bottom: 70px;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+
+    .header-left { display: flex; flex-direction: column; }
+    .header-title { font-size: 16px; font-weight: 700; letter-spacing: 0.5px; }
+    .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header-user {
+      text-align: right;
+    }
+
+    .header-user-name {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .header-user-team {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+
+    .btn-logout {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메인 컨텐츠 */
+    .main { padding: 14px; }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 16px;
+      background: #38a169;
+      border-radius: 2px;
+    }
+
+    /* 인센티브 게이지 */
+    .gauge-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .gauge-team {
+      font-size: 15px;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .grade-badge {
+      color: white;
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .gauge-numbers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .gauge-num-item {
+      background: #f7fafc;
+      border-radius: 8px;
+      padding: 10px 8px;
+      text-align: center;
+    }
+
+    .gauge-num-label {
+      font-size: 11px;
+      color: #718096;
+      margin-bottom: 4px;
+    }
+
+    .gauge-num-val {
+      font-size: 16px;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .positive { color: #38a169 !important; }
+    .negative { color: #e53e3e !important; }
+
+    .gauge-bar-wrap { margin-bottom: 10px; }
+
+    .gauge-bar-bg {
+      background: #e2e8f0;
+      border-radius: 6px;
+      height: 14px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .gauge-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.8s ease;
+      min-width: 4px;
+    }
+
+    .gauge-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #a0aec0;
+      margin-top: 4px;
+      padding: 0 2px;
+    }
+
+    .gauge-remain {
+      font-size: 13px;
+      color: #4a5568;
+      text-align: center;
+      background: #f0fff4;
+      border-radius: 8px;
+      padding: 8px;
+      border: 1px solid #c6f6d5;
+    }
+
+    /* 팀 순위 */
+    .rank-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .rank-table th {
+      background: #f0f4f1;
+      color: #4a5568;
+      padding: 8px 6px;
+      text-align: center;
+      font-weight: 600;
+      font-size: 12px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .rank-table td {
+      padding: 9px 6px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f1;
+    }
+
+    .my-team-row td {
+      background: #f0fff4;
+      font-weight: 700;
+    }
+
+    .rank-cell { color: #718096; font-weight: 700; }
+    .name-cell { text-align: left; font-weight: 600; }
+    .num-cell { font-weight: 600; }
+
+    .me-tag {
+      background: #38a169;
+      color: white;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 10px;
+      margin-left: 4px;
+    }
+
+    .grade-badge-sm {
+      color: white;
+      padding: 2px 7px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* 거래처 경보 */
+    .alert-item {
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-left: 4px solid;
+    }
+
+    .alert-urgent { background: #fff5f5; border-color: #fc8181; }
+    .alert-watch { background: #fffff0; border-color: #f6e05e; }
+    .alert-check { background: #fff5f5; border-color: #fc8181; }
+
+    .alert-left { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .alert-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+
+    .alert-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .alert-urgent .alert-badge { background: #fed7d7; color: #c53030; }
+    .alert-watch .alert-badge { background: #fefcbf; color: #975a16; }
+    .alert-check .alert-badge { background: #fed7d7; color: #c53030; }
+
+    .alert-name { font-size: 14px; font-weight: 600; color: #2d3748; }
+    .priority-tag {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+
+    .alert-days { font-size: 12px; color: #718096; }
+    .alert-date { font-size: 11px; color: #a0aec0; }
+
+    /* 지시사항 */
+    .directive-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      transition: opacity 0.4s;
+    }
+
+    .directive-check-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .directive-cb {
+      width: 18px;
+      height: 18px;
+      accent-color: #38a169;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .directive-content {
+      font-size: 14px;
+      color: #2d3748;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .directive-meta {
+      margin-top: 6px;
+      padding-left: 28px;
+    }
+
+    .directive-deadline {
+      font-size: 11px;
+      color: #718096;
+    }
+
+    .directive-deadline.overdue {
+      color: #e53e3e;
+      font-weight: 600;
+    }
+
+    /* 공통 빈 상태 */
+    .empty-msg {
+      text-align: center;
+      color: #a0aec0;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    .card-error {
+      text-align: center;
+      color: #e53e3e;
+      font-size: 13px;
+      padding: 16px;
+    }
+
+    /* 바텀 탭 */
+    .bottom-tab {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      display: flex;
+      border-top: 1px solid #e2e8f0;
+      box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+      z-index: 100;
+    }
+
+    .tab-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 4px;
+      border: none;
+      background: none;
+      color: #a0aec0;
+      font-family: inherit;
+      font-size: 10px;
+      cursor: pointer;
+      transition: color 0.2s;
+      gap: 3px;
+    }
+
+    .tab-btn.active { color: #38a169; }
+    .tab-btn svg { width: 22px; height: 22px; }
+
+    /* 탭 섹션 */
+    .tab-section { display: none; }
+
+    /* 차량 사진 */
+    .vehicle-photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .vehicle-photo-item {
+      position: relative;
+      aspect-ratio: 1 / 1;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #f0f4f1;
+    }
+
+    .vehicle-photo-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      cursor: pointer;
+      display: block;
+    }
+
+    .vehicle-photo-del {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      background: rgba(0,0,0,0.6);
+      border: none;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      line-height: 1;
+    }
+
+    .vehicle-add-btn {
+      width: 100%;
+      padding: 12px;
+      background: #f0f4f1;
+      border: 2px dashed #68d391;
+      border-radius: 10px;
+      color: #2d6a4f;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .vehicle-save-btn {
+      width: 100%;
+      padding: 13px;
+      background: #1a4731;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .vehicle-save-btn:disabled {
+      background: #a0aec0;
+    }
+
+    /* 별점 */
+    .star-rating {
+      display: flex;
+      gap: 4px;
+    }
+
+    .star-rating .star {
+      font-size: 22px;
+      cursor: pointer;
+      color: #e2e8f0;
+      transition: color 0.15s;
+      line-height: 1;
+      user-select: none;
+    }
+
+    .star-rating .star.on { color: #f6c90e; }
+
+    .peer-team-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 10px;
+    }
+
+    .peer-team-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 10px;
+    }
+
+    .peer-criteria-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .peer-criteria-label {
+      font-size: 13px;
+      color: #4a5568;
+      flex: 1;
+    }
+
+    .eval-submit-btn {
+      width: 100%;
+      padding: 13px;
+      background: #1a4731;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 4px;
+    }
+
+    .eval-submit-btn:disabled { background: #a0aec0; }
+
+    .eval-done-badge {
+      background: #f0fff4;
+      border: 1px solid #c6f6d5;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      color: #276749;
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .result-score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f4f1;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">준도시락 배송관리</div>
+    <div class="header-sub" id="currentMonth"></div>
+  </div>
+  <div class="header-right">
+    <div class="header-user">
+      <div class="header-user-name" id="userName">-</div>
+      <div class="header-user-team" id="teamName">-</div>
+    </div>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<!-- 홈 탭 섹션 -->
+<div class="main">
+
+  <!-- 홈 섹션 -->
+  <div class="tab-section" data-tab="home">
+    <!-- 카드 1: 인센티브 게이지 -->
+    <div class="card">
+      <div class="card-title">인센티브 게이지</div>
+      <div id="gaugeCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 카드 3: 거래처 경보 -->
+    <div class="card">
+      <div class="card-title">거래처 경보</div>
+      <div id="alertsCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 카드 4: 지시사항 -->
+    <div class="card">
+      <div class="card-title">미완료 지시사항</div>
+      <div id="directivesCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 순위 탭 섹션 -->
+  <div class="tab-section" data-tab="rank">
+    <div class="card">
+      <div class="card-title">팀 순위</div>
+      <div id="rankingCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 지시 탭 섹션 -->
+  <div class="tab-section" data-tab="directive">
+    <div class="card">
+      <div class="card-title">지시사항 목록</div>
+      <div id="directivesCard2">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 평가 탭 섹션 -->
+  <div class="tab-section" data-tab="evaluation">
+
+    <!-- 섹션1: 차량 사진 업로드 -->
+    <div class="card">
+      <div class="card-title">🚗 차량 관리</div>
+      <div style="background:#f0fff4;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#276749;text-align:center;">
+        매월 첫째 월요일에 차량 사진을 업로드해 주세요
+      </div>
+      <div class="vehicle-photo-grid" id="vehiclePhotoGrid"></div>
+      <div id="vehicleAddBtnWrap" style="margin-bottom:16px;">
+        <input type="file" id="vehicleFileInput" accept="image/*" capture="environment" multiple style="display:none;" onchange="onVehicleFileChange(this)">
+        <button class="vehicle-add-btn" onclick="document.getElementById('vehicleFileInput').click()">📷 사진 추가 (최대 6장)</button>
+      </div>
+      <div id="vehiclePhotoMsg" style="font-size:12px;text-align:center;margin-bottom:8px;min-height:18px;color:#718096;"></div>
+      <button class="vehicle-save-btn" id="vehicleSaveBtn" onclick="saveVehiclePhotos()">저장하기</button>
+    </div>
+
+    <!-- 섹션2: 타팀 동료 평가 -->
+    <div class="card">
+      <div class="card-title">⭐ 타팀 평가</div>
+      <div style="background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#92400e;text-align:center;">
+        매주 금요일, 본인 팀을 제외한 타팀을 평가해 주세요<br>
+        <span style="font-weight:700;" id="peerFridayDate"></span>
+      </div>
+      <div id="peerReviewContent">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- 섹션3: 내 팀 평가 결과 -->
+    <div class="card">
+      <div class="card-title">📊 이번 달 내 팀 결과</div>
+      <div id="evalResultContent">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 현장기록 탭 섹션 -->
+  <div class="tab-section" data-tab="fieldvisit">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="card-title" style="margin:0;">&#128247; 영업 현장 기록</div>
+        <button onclick="openFieldVisitModal()" style="padding:7px 14px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">기록 작성</button>
+      </div>
+      <div id="fieldVisitList">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내정보 탭 섹션 -->
+  <div class="tab-section" data-tab="myinfo">
+    <div class="card">
+      <div class="card-title">내 정보</div>
+      <div id="myInfoCard">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+    <div class="card">
+      <button onclick="logout()" style="width:100%;padding:14px;background:#fff5f5;border:1px solid #fed7d7;color:#e53e3e;border-radius:10px;font-size:15px;font-weight:700;font-family:inherit;cursor:pointer;">로그아웃</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- 바텀 탭 -->
+<nav class="bottom-tab">
+  <button class="tab-btn active" data-tab="home" onclick="showTab('home')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    홈
+  </button>
+  <button class="tab-btn" data-tab="rank" onclick="showTab('rank')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z"/></svg>
+    순위
+  </button>
+  <button class="tab-btn" data-tab="directive" onclick="showTab('directive')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+    지시
+  </button>
+  <button class="tab-btn" id="tabBtn-evaluation" data-tab="evaluation" onclick="showTab('evaluation')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+    평가
+  </button>
+  <button class="tab-btn" data-tab="fieldvisit" onclick="showTab('fieldvisit')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+    현장
+  </button>
+  <button class="tab-btn" data-tab="myinfo" onclick="showTab('myinfo')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+    내정보
+  </button>
+</nav>
+
+<!-- 현장기록 작성 모달 -->
+<div id="fieldVisitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9000;display:none;align-items:flex-end;justify-content:center;">
+  <div style="background:#fff;border-radius:20px 20px 0 0;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;box-shadow:0 -4px 30px rgba(0,0,0,0.2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+      <div style="font-size:16px;font-weight:800;">📸 현장 기록 작성</div>
+      <button onclick="closeFieldVisitModal()" style="background:none;border:none;font-size:22px;color:#718096;cursor:pointer;">✕</button>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:700;color:#2d3748;display:block;margin-bottom:8px;">방문 유형 <span style="color:#e53e3e;">*</span></label>
+      <div style="display:flex;gap:8px;">
+        <button id="fv-type-new" onclick="selectFvType('new_sales')" style="flex:1;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;background:#f7fafc;color:#718096;font-family:inherit;">신규영업</button>
+        <button id="fv-type-care" onclick="selectFvType('customer_care')" style="flex:1;padding:10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;background:#f7fafc;color:#718096;font-family:inherit;">고객관리</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:700;color:#2d3748;display:block;margin-bottom:6px;">거래처명</label>
+      <input id="fv-client" type="text" placeholder="거래처명 입력" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;">
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <label style="font-size:13px;font-weight:700;color:#2d3748;display:block;margin-bottom:6px;">방문 내용</label>
+      <textarea id="fv-content" placeholder="방문 내용을 입력하세요" rows="4" style="width:100%;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;font-family:inherit;resize:none;"></textarea>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <label style="font-size:13px;font-weight:700;color:#2d3748;display:block;margin-bottom:8px;">사진 첨부 (선택)</label>
+      <div style="display:flex;gap:10px;margin-bottom:8px;">
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;padding:12px;background:#f7fafc;border:1.5px dashed #cbd5e0;border-radius:10px;cursor:pointer;font-size:12px;color:#4a5568;">
+          <span style="font-size:24px;margin-bottom:4px;">🖼️</span>갤러리
+          <input type="file" accept="image/*" multiple onchange="onFvFileChange(this)" style="display:none;">
+        </label>
+        <label style="flex:1;display:flex;flex-direction:column;align-items:center;padding:12px;background:#f7fafc;border:1.5px dashed #cbd5e0;border-radius:10px;cursor:pointer;font-size:12px;color:#4a5568;">
+          <span style="font-size:24px;margin-bottom:4px;">📷</span>카메라
+          <input type="file" accept="image/*" capture="environment" onchange="onFvFileChange(this)" style="display:none;">
+        </label>
+      </div>
+      <div id="fv-preview" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+    </div>
+
+    <div id="fv-msg" style="font-size:12px;text-align:center;color:#718096;margin-bottom:10px;min-height:16px;"></div>
+    <button onclick="saveFieldVisit()" id="fv-save-btn" style="width:100%;padding:13px;background:#1a4731;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">저장하기</button>
+  </div>
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/dashboard.js"></script>
+<script>
+  // 현재 월 표시
+  document.getElementById('currentMonth').textContent = getCurrentYearMonth() + ' 현황';
+
+  // 내 정보 탭 - 추가 렌더링
+  function renderMyInfo() {
+    if (!currentUser) return;
+    const roleMap = { admin: '관리자', manager: '매니저', leader: '팀장', driver: '기사' };
+    const shiftMap = { dawn: '새벽', morning: '아침' };
+    document.getElementById('myInfoCard').innerHTML = `
+      <div style="display:grid;gap:12px">
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">이름</span>
+          <span style="font-weight:700;color:#2d3748">${currentUser.name}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">역할</span>
+          <span style="font-weight:700;color:#2d3748">${roleMap[currentUser.role] || currentUser.role}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:10px;background:#f7fafc;border-radius:8px">
+          <span style="color:#718096;font-size:13px">근무유형</span>
+          <span style="font-weight:700;color:#2d3748">${shiftMap[currentUser.shiftType] || '-'}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  // showTab 오버라이드: 탭 클릭 시 렌더
+  const origShowTab = showTab;
+  window.showTab = function(tabName) {
+    // 권한에 따른 평가 탭 노출 제어
+    applyEvalTabVisibility();
+    // driver가 평가 탭에 직접 접근하면 홈으로 리다이렉트
+    if (tabName === 'evaluation' && currentUser && !['admin','manager','leader'].includes(currentUser.role)) {
+      origShowTab('home');
+      return;
+    }
+    origShowTab(tabName);
+    if (tabName === 'myinfo') renderMyInfo();
+    if (tabName === 'directive') loadAllDirectives();
+    if (tabName === 'evaluation') initEvaluationTab();
+  };
+
+  function applyEvalTabVisibility() {
+    if (!currentUser) return;
+    const evalBtn = document.getElementById('tabBtn-evaluation');
+    if (!evalBtn) return;
+    const canSee = ['admin', 'manager', 'leader'].includes(currentUser.role);
+    evalBtn.style.display = canSee ? '' : 'none';
+  }
+
+  // 지시 탭용 전체 지시사항 로드
+  async function loadAllDirectives() {
+    const container = document.getElementById('directivesCard2');
+    try {
+      const snap = await db.collection('directives')
+
+        .limit(30)
+        .get();
+
+      const items = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.targetTeams && d.targetTeams.length > 0) {
+          if (!currentUser.teamId || !d.targetTeams.includes(currentUser.teamId)) return;
+        }
+        items.push({ id: doc.id, ...d });
+      });
+
+      if (!items.length) {
+        container.innerHTML = '<div class="empty-msg">지시사항이 없습니다.</div>';
+        return;
+      }
+
+      const now = new Date();
+      container.innerHTML = items.map(d => {
+        const myComp = d.completions && d.completions[currentUser.uid];
+        const done = myComp && myComp.done;
+        const dl = d.deadline ? d.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
+        const isOverdue = d.deadline && d.deadline.toDate() < now && !done;
+        return `
+          <div class="directive-item" id="dir2-${d.id}" style="${done ? 'opacity:0.5' : ''}">
+            <label class="directive-check-wrap">
+              <input type="checkbox" class="directive-cb" ${done ? 'checked disabled' : ''} onchange="completeDirective('${d.id}', this)">
+              <span class="directive-content" style="${done ? 'text-decoration:line-through' : ''}">${d.content}</span>
+            </label>
+            <div class="directive-meta">
+              <span class="directive-deadline ${isOverdue ? 'overdue' : ''}">마감: ${dl}</span>
+              ${done && myComp.doneAt ? `<span style="font-size:11px;color:#38a169;margin-left:8px">완료</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+    }
+  }
+
+  // 초기화
+  initDashboard();
+</script>
+
+<script>
+// ══════════════════════════════════════════
+// ── 평가 탭 ──
+// ══════════════════════════════════════════
+
+const EVAL_TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+// 이번 달 YYYY-MM
+function getYM() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+// 이번 주 금요일 YYYY-MM-DD
+function getThisFriday() {
+  const now = new Date();
+  const day = now.getDay(); // 0=일,1=월...5=금,6=토
+  const diff = (5 - day + 7) % 7;
+  const fri = new Date(now);
+  fri.setDate(now.getDate() + diff);
+  return fri.getFullYear() + '-'
+    + String(fri.getMonth() + 1).padStart(2, '0') + '-'
+    + String(fri.getDate()).padStart(2, '0');
+}
+
+// 연도-주차 (ISO 주차)
+function getYearWeek(dateStr) {
+  const d = dateStr ? new Date(dateStr) : new Date();
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return d.getFullYear() + '-' + String(week).padStart(2, '0');
+}
+
+async function initEvaluationTab() {
+  await Promise.all([loadVehiclePhotos(), loadPeerReview(), loadEvalResult()]);
+}
+
+// ── 차량 사진 ──
+let vehiclePhotos = [];
+let vehicleSaving = false;
+
+async function loadVehiclePhotos() {
+  if (!currentUser) return;
+  vehiclePhotos = [];
+  const ym = getYM();
+  try {
+    const snap = await db.collection('evaluations').doc(ym)
+      .collection('drivers').doc(currentUser.uid).get();
+    if (snap.exists) {
+      const d = snap.data();
+      if (d.vehicle && d.vehicle.photos) {
+        d.vehicle.photos.forEach(p => {
+          vehiclePhotos.push({ type: 'existing', url: p.url, uploadedAt: p.uploadedAt || null });
+        });
+      }
+    }
+  } catch (e) {
+    console.error('차량 사진 로드 실패:', e);
+  }
+  renderVehiclePhotos();
+  setVehicleMsg('');
+}
+
+function renderVehiclePhotos() {
+  const grid = document.getElementById('vehiclePhotoGrid');
+  const addWrap = document.getElementById('vehicleAddBtnWrap');
+  if (!grid) return;
+
+  grid.innerHTML = vehiclePhotos.map((p, i) => {
+    const src = p.type === 'existing' ? p.url : p.previewUrl;
+    return `<div class="vehicle-photo-item">
+      <img src="${src}" onclick="openPhotoOverlay(this.src)" loading="lazy">
+      <button class="vehicle-photo-del" onclick="removeVehiclePhoto(${i})" title="삭제">✕</button>
+    </div>`;
+  }).join('');
+
+  addWrap.style.display = vehiclePhotos.length >= 6 ? 'none' : '';
+}
+
+function openPhotoOverlay(src) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.onclick = () => overlay.remove();
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;border-radius:8px;';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+function onVehicleFileChange(input) {
+  const files = Array.from(input.files);
+  const remaining = 6 - vehiclePhotos.length;
+  files.slice(0, remaining).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      vehiclePhotos.push({ type: 'new', file, previewUrl: e.target.result });
+      renderVehiclePhotos();
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function removeVehiclePhoto(index) {
+  vehiclePhotos.splice(index, 1);
+  renderVehiclePhotos();
+}
+
+async function saveVehiclePhotos() {
+  if (vehicleSaving) return;
+  if (!currentUser) { alert('로그인이 필요합니다.'); return; }
+  if (!vehiclePhotos.length) { alert('사진을 추가해주세요.'); return; }
+
+  vehicleSaving = true;
+  const btn = document.getElementById('vehicleSaveBtn');
+  btn.disabled = true; btn.textContent = '업로드 중...';
+  setVehicleMsg('사진을 업로드하는 중입니다...', '#276749');
+
+  try {
+    const ym = getYM();
+    const storage = firebase.storage();
+    const savedPhotos = [];
+
+    vehiclePhotos.filter(p => p.type === 'existing').forEach(p => {
+      savedPhotos.push({ url: p.url, uploadedAt: p.uploadedAt || null });
+    });
+
+    const newPhotos = vehiclePhotos.filter(p => p.type === 'new');
+    for (let i = 0; i < newPhotos.length; i++) {
+      const p = newPhotos[i];
+      const ext = p.file.name.includes('.') ? p.file.name.split('.').pop() : 'jpg';
+      const filename = `photo_${Date.now()}_${i}.${ext}`;
+      const path = `vehicle-photos/${currentUser.uid}/${ym}/${filename}`;
+      const ref = storage.ref(path);
+      btn.textContent = `업로드 중... (${savedPhotos.length + 1}/${vehiclePhotos.length})`;
+      await ref.put(p.file);
+      const url = await ref.getDownloadURL();
+      savedPhotos.push({ url, uploadedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    }
+
+    await db.collection('evaluations').doc(ym)
+      .collection('drivers').doc(currentUser.uid).set({
+        vehicle: {
+          photoUploaded: true,
+          photos: savedPhotos,
+          uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
+      }, { merge: true });
+
+    setVehicleMsg('✅ 저장 완료!', '#276749');
+    await loadVehiclePhotos();
+  } catch (e) {
+    console.error('저장 실패:', e);
+    setVehicleMsg('❌ 저장 실패: ' + e.message, '#c53030');
+  } finally {
+    vehicleSaving = false;
+    btn.disabled = false; btn.textContent = '저장하기';
+  }
+}
+
+function setVehicleMsg(msg, color) {
+  const el = document.getElementById('vehiclePhotoMsg');
+  if (el) { el.textContent = msg; el.style.color = color || '#718096'; }
+}
+
+// ── 동료 평가 ──
+let peerScores = {};         // { teamId: { 항목명: 점수 } }
+let currentPeerCriteria = []; // 현재 로드된 평가 항목 이름 목록
+const DEFAULT_PEER_CRITERIA = ['팀 화합', '동료 협력', '긍정적 태도', '배송 평판'];
+
+async function loadPeerReview() {
+  const container = document.getElementById('peerReviewContent');
+  if (!container || !currentUser) return;
+
+  // 이번 주(월~일) 기준 주차 키
+  const yw = getYearWeek();
+
+  // 금요일 날짜 안내 표시
+  const friday = getThisFriday();
+  const el = document.getElementById('peerFridayDate');
+  if (el) el.textContent = '이번 주 금요일: ' + friday;
+
+  try {
+    // 이미 제출했는지 확인
+    const snap = await db.collection('peerReviews').doc(yw)
+      .collection('reviews').doc(currentUser.uid).get();
+
+    if (snap.exists) {
+      container.innerHTML = '<div class="eval-done-badge">✅ 이번 주 평가 완료</div>';
+      return;
+    }
+
+    // 평가 항목 동적 로드 (evalConfig/peerItems)
+    currentPeerCriteria = DEFAULT_PEER_CRITERIA.slice();
+    try {
+      const configSnap = await db.collection('evalConfig').doc('peerItems').get();
+      if (configSnap.exists) {
+        const items = configSnap.data().items;
+        if (items && items.length > 0) {
+          const sorted = items.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+          currentPeerCriteria = sorted.map(item => item.name);
+        }
+      }
+    } catch (e) {
+      console.warn('평가항목 로드 실패, 기본값 사용:', e);
+    }
+
+    // 본인 팀 제외한 팀 목록
+    const myTeamId = currentUser.teamId;
+    const otherTeams = Object.keys(EVAL_TEAM_NAMES).filter(tid => tid !== myTeamId);
+
+    peerScores = {};
+    otherTeams.forEach(tid => {
+      peerScores[tid] = {};
+      currentPeerCriteria.forEach(c => { peerScores[tid][c] = 0; });
+    });
+
+    container.innerHTML = otherTeams.map(tid => `
+      <div class="peer-team-card">
+        <div class="peer-team-name">${EVAL_TEAM_NAMES[tid]}</div>
+        ${currentPeerCriteria.map(c => `
+          <div class="peer-criteria-row">
+            <span class="peer-criteria-label">${c}</span>
+            <div class="star-rating" id="stars-${tid}-${c.replace(/[\s()]/g,'_')}">
+              ${[1,2,3,4,5].map(n =>
+                `<span class="star" onclick="setPeerScore('${tid}',${JSON.stringify(c)},${n})">★</span>`
+              ).join('')}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('') + `
+      <button class="eval-submit-btn" id="peerSubmitBtn" onclick="submitPeerReview(${JSON.stringify(yw)})">제출하기</button>
+      <div id="peerSubmitMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
+    `;
+  } catch (e) {
+    container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+  }
+}
+
+function setPeerScore(teamId, criteria, score) {
+  if (!peerScores[teamId]) peerScores[teamId] = {};
+  peerScores[teamId][criteria] = score;
+  const key = criteria.replace(/[\s()]/g, '_');
+  const stars = document.querySelectorAll(`#stars-${teamId}-${key} .star`);
+  stars.forEach((s, i) => {
+    s.classList.toggle('on', i < score);
+  });
+}
+
+async function submitPeerReview(yw) {
+  if (!currentUser) return;
+
+  // 모든 점수 입력 확인
+  const myTeamId = currentUser.teamId;
+  const otherTeams = Object.keys(EVAL_TEAM_NAMES).filter(tid => tid !== myTeamId);
+  for (const tid of otherTeams) {
+    for (const c of currentPeerCriteria) {
+      if (!peerScores[tid] || !peerScores[tid][c]) {
+        alert(`${EVAL_TEAM_NAMES[tid]}의 "${c}" 점수를 입력해주세요.`);
+        return;
+      }
+    }
+  }
+
+  const btn = document.getElementById('peerSubmitBtn');
+  const msg = document.getElementById('peerSubmitMsg');
+  btn.disabled = true; btn.textContent = '제출 중...';
+
+  try {
+    await db.collection('peerReviews').doc(yw)
+      .collection('reviews').doc(currentUser.uid).set({
+        reviewerId: currentUser.uid,
+        reviewerName: currentUser.name,
+        reviewerTeamId: currentUser.teamId,
+        scores: peerScores,
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+    document.getElementById('peerReviewContent').innerHTML =
+      '<div class="eval-done-badge">✅ 평가가 제출되었습니다!</div>';
+  } catch (e) {
+    msg.style.color = '#c53030';
+    msg.textContent = '❌ 제출 실패: ' + e.message;
+    btn.disabled = false; btn.textContent = '제출하기';
+  }
+}
+
+// ── 내 팀 평가 결과 ──
+async function loadEvalResult() {
+  const container = document.getElementById('evalResultContent');
+  if (!container || !currentUser || !currentUser.teamId) return;
+
+  const ym = getYM();
+  try {
+    const snap = await db.collection('team_evaluations').doc(ym)
+      .collection('teams').doc(currentUser.teamId).get();
+
+    if (!snap.exists || !snap.data().totalScore) {
+      container.innerHTML = '<div class="empty-msg">집계 전입니다</div>';
+      return;
+    }
+
+    const d = snap.data();
+    container.innerHTML = `
+      <div class="result-score-row">
+        <span style="color:#4a5568;">정량 점수</span>
+        <span style="font-weight:700;">${d.quantScore ?? '-'}점</span>
+      </div>
+      <div class="result-score-row">
+        <span style="color:#4a5568;">동료 평가</span>
+        <span style="font-weight:700;">${d.peerScore ?? '-'}점</span>
+      </div>
+      <div class="result-score-row">
+        <span style="color:#4a5568;">차량 관리</span>
+        <span style="font-weight:700;">${d.vehicleScore ?? '-'}점</span>
+      </div>
+      <div class="result-score-row" style="border-bottom:none;">
+        <span style="font-weight:700;color:#1a4731;">합계 / 순위</span>
+        <span style="font-weight:700;font-size:15px;color:#1a4731;">${d.totalScore ?? '-'}점 / ${d.rank ?? '-'}위</span>
+      </div>
+    `;
+  } catch (e) {
+    container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+  }
+}
+</script>
+</body>
+</html>

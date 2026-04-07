@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>준도시락 - 관리자 대시보드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left .header-title { font-size: 18px; font-weight: 700; }
+    .header-left .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-badge {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .btn-nav {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-logout {
+      background: rgba(220,38,38,0.2);
+      border: 1px solid rgba(220,38,38,0.4);
+      color: #fca5a5;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메인 */
+    .main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* 월 헤더 */
+    .month-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .month-label {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a4731;
+    }
+
+    .biz-days-label {
+      font-size: 14px;
+      color: #718096;
+      background: white;
+      padding: 5px 14px;
+      border-radius: 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    }
+
+    /* 요약 카드 3개 */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .summary-card-title {
+      font-size: 12px;
+      color: #718096;
+      font-weight: 600;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .summary-val {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a4731;
+    }
+
+    .summary-sub {
+      font-size: 12px;
+      color: #718096;
+      margin-top: 4px;
+    }
+
+    .positive { color: #38a169 !important; }
+    .negative { color: #e53e3e !important; }
+
+    /* 경보 요약 */
+    .alert-summary-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .alert-count {
+      font-size: 20px;
+      font-weight: 700;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .alert-count.urgent { color: #e53e3e; }
+    .alert-count.watch { color: #d69e2e; }
+    .alert-count.check { color: #e53e3e; }
+
+    .alert-label { font-size: 12px; color: #4a5568; }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 18px;
+      background: #38a169;
+      border-radius: 2px;
+    }
+
+    /* 관리자 테이블 */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .admin-table th {
+      background: #f0f4f1;
+      color: #4a5568;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .admin-table td {
+      padding: 11px 12px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f1;
+    }
+
+    .admin-table tbody tr:hover { background: #f7fafc; }
+
+    .grade-badge-sm {
+      color: white;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* 경보 목록 */
+    .alert-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .alert-urgent { background: #fff5f5; border-left: 3px solid #fc8181; }
+    .alert-watch { background: #fffff0; border-left: 3px solid #f6e05e; }
+
+    .alert-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .alert-urgent .alert-badge { background: #fed7d7; color: #c53030; }
+    .alert-watch .alert-badge { background: #fefcbf; color: #975a16; }
+
+    .alert-client { font-size: 13px; font-weight: 600; color: #2d3748; flex: 1; }
+    .alert-days-sm { font-size: 12px; color: #718096; }
+
+    /* 이행률 */
+    .progress-item {
+      margin-bottom: 14px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .progress-team { font-size: 13px; font-weight: 600; color: #2d3748; }
+    .progress-pct { font-size: 13px; font-weight: 700; }
+
+    .progress-bar-bg {
+      background: #e2e8f0;
+      border-radius: 6px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.8s ease;
+    }
+
+    .progress-sub { font-size: 11px; color: #a0aec0; margin-top: 3px; }
+
+    /* 빈 상태 */
+    .empty-msg {
+      text-align: center;
+      color: #a0aec0;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    .card-error {
+      text-align: center;
+      color: #e53e3e;
+      font-size: 13px;
+      padding: 16px;
+    }
+
+    /* 2열 그리드 */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+      .main { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">준도시락 관리자</div>
+    <div class="header-sub">배송기사 통합 관리 시스템</div>
+  </div>
+  <div class="header-right">
+    <span class="admin-badge" id="adminName">관리자</span>
+    <a class="btn-nav" href="/directive.html">지시사항</a>
+    <button class="btn-nav" onclick="showSalesUpload()">📊 판매업로드</button>
+    <button class="btn-nav" onclick="showClientUpload()">🏢 거래처업로드</button>
+    <button class="btn-nav" onclick="showSmsModal()" id="btnSms">📱 문자발송</button>
+    <button class="btn-nav" onclick="showDriverMgmt()" id="btnDriverMgmt">👥 기사관리</button>
+    <button class="btn-nav" onclick="showEvalModal()">📋 정성평가</button>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- 월 헤더 -->
+  <div class="month-header">
+    <div class="month-label" id="monthLabel">-</div>
+    <div class="biz-days-label" id="bizDaysLabel">-</div>
+  </div>
+
+  <!-- 요약 카드 3개 -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="summary-card-title">이번달 전체 누적수량</div>
+      <div id="summaryTotal">
+        <div class="summary-val">-</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">거래처 경보 현황</div>
+      <div id="summaryAlerts">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">B등급 달성 현황</div>
+      <div id="summaryBonus">
+        <div class="summary-val">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 팀 순위 테이블 -->
+  <div class="card">
+    <div class="card-title">팀 순위</div>
+    <div id="adminRankingTable">
+      <div class="empty-msg">데이터 로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 배송완료 현황 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="card-title" style="margin:0;">🚚 오늘 배송완료 현황</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span id="deliveryDateBadge" style="font-size:11px;color:#718096;"></span>
+        <button onclick="loadDeliveryLogs()" style="padding:4px 10px;background:#edf2f7;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">🔄 새로고침</button>
+        <button onclick="toggleDeliveryDetail()" id="btnDeliveryDetail" style="padding:4px 10px;background:#edf2f7;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">📋 상세보기</button>
+      </div>
+    </div>
+    <!-- 팀별 요약 -->
+    <div id="deliverySummary"><div class="empty-msg">로딩 중...</div></div>
+    <!-- 상세 목록 (접혀있음) -->
+    <div id="deliveryDetail" style="display:none;margin-top:12px;border-top:1px solid #e2e8f0;padding-top:12px;">
+      <div id="deliveryDetailList"><div class="empty-msg">로딩 중...</div></div>
+    </div>
+  </div>
+
+  <!-- 2열: 경보 목록 + 이행률 -->
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">거래처 경보 목록</div>
+      <div id="adminAlertsCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">지시사항 이행률 (팀별)</div>
+      <div id="directiveProgressCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 피드백 미완료 -->
+  <div class="card">
+    <div class="card-title">피드백 미답변</div>
+    <div id="feedbackPendingCard">
+      <div class="empty-msg">로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 기준수량 관리 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="card-title" style="margin:0;">⚙️ 팀별 기준수량 관리</div>
+      <div style="display:flex;gap:6px;">
+        <button onclick="toggleBaselineHistory()" id="btnBaselineHistory"
+          style="padding:5px 12px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+          📋 수정이력
+        </button>
+        <button onclick="toggleBaselineDetail()" id="btnBaselineDetail"
+          style="padding:5px 12px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+          📊 실적 상세
+        </button>
+      </div>
+    </div>
+    <div id="baselineCard">
+      <div class="empty-msg">로딩 중...</div>
+    </div>
+    <!-- 수정 이력 (접혀있음) -->
+    <div id="baselineHistory" style="display:none;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
+      <div style="font-size:12px;font-weight:600;color:#4a5568;margin-bottom:8px;">📋 기준수량 수정 이력</div>
+      <div id="baselineHistoryList"><div class="empty-msg">로딩 중...</div></div>
+    </div>
+
+    <!-- 실적 상세 (접혀있음) -->
+    <div id="baselineDetail" style="display:none;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:16px;">
+      <div style="font-size:12px;font-weight:600;color:#4a5568;margin-bottom:8px;">기간 선택 후 기준수량 재계산</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+        <button onclick="calcBaseline('all')" style="padding:6px 12px;background:#2F5496;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">1월~현재 전체</button>
+        <button onclick="calcBaseline('3m')" style="padding:6px 12px;background:#375623;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">최근 3개월</button>
+        <button onclick="calcBaseline('2m')" style="padding:6px 12px;background:#C55A11;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">최근 2개월</button>
+        <button onclick="calcBaseline('1m')" style="padding:6px 12px;background:#7B3F00;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">당월만</button>
+      </div>
+      <div id="baselineDetailTable">
+        <div class="empty-msg">기간을 선택하면 계산됩니다.</div>
+      </div>
+    </div>
+  </div>
+
+
+</div>
+
+<!-- 판매 업로드 모달 -->
+<div id="salesUploadModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:600px;margin:40px auto;border-radius:12px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">📊 일일 판매수량 업로드</div>
+      <button onclick="closeSalesUpload()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+
+    <div style="background:#f0fff4;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#276749;">
+      💡 일일장부 엑셀 파일(일일장부_YYMMDD.xlsx)을 선택해주세요.<br>
+      <b>결과</b> 시트의 기사별 합계를 자동으로 읽어옵니다.
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">날짜 *</label>
+      <input type="date" id="su-date" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">엑셀 파일 *</label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button onclick="document.getElementById('su-file').click()" style="padding:9px 16px;background:#edf2f7;border:none;border-radius:6px;font-size:13px;cursor:pointer;">파일 선택</button>
+        <span id="su-filename" style="font-size:12px;color:#718096;">선택 안 됨</span>
+      </div>
+      <input type="file" id="su-file" accept=".xlsx,.xls" style="display:none;" onchange="onSalesFileChange(this)">
+    </div>
+
+    <!-- 미리보기 -->
+    <div id="su-preview" style="display:none;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:8px;">📋 파싱 결과</div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="background:#f0fff4;">
+            <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">팀</th>
+            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e2e8f0;">합계</th>
+            <th style="padding:6px 8px;text-align:right;border-bottom:1px solid #e2e8f0;">팀 매출</th>
+            <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">기사별</th>
+          </tr>
+        </thead>
+        <tbody id="su-preview-body"></tbody>
+      </table>
+    </div>
+
+    <div id="su-msg" style="font-size:12px;text-align:center;margin-bottom:8px;"></div>
+    <button id="su-save-btn" onclick="saveSalesData()" style="display:none;width:100%;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ Firestore에 저장</button>
+  </div>
+</div>
+
+<!-- 거래처 업로드 모달 -->
+<div id="clientUploadModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:600px;margin:40px auto;border-radius:12px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">🏢 거래처 주문요일 업로드</div>
+      <button onclick="closeClientUpload()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+
+    <div style="background:#f0fff4;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#276749;">
+      💡 기사들에게 배포한 <b>거래처_주문요일_[기사이름].xlsx</b> 파일을 업로드하세요.<br>
+      신규 거래처는 추가, 기존 거래처는 주문요일/1순위 정보가 업데이트됩니다.
+    </div>
+
+    <div style="margin-bottom:16px;">
+      <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">엑셀 파일 선택 *</label>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button onclick="document.getElementById('cu-file').click()" style="padding:9px 16px;background:#edf2f7;border:none;border-radius:6px;font-size:13px;cursor:pointer;">파일 선택</button>
+        <span id="cu-filename" style="font-size:12px;color:#718096;">선택 안 됨</span>
+      </div>
+      <input type="file" id="cu-file" accept=".xlsx,.xls" style="display:none;" onchange="onClientFileChange(this)">
+    </div>
+
+    <!-- 미리보기 -->
+    <div id="cu-preview" style="display:none;margin-bottom:16px;">
+      <div style="font-size:12px;font-weight:600;color:#4a5568;margin-bottom:6px;">📋 미리보기</div>
+      <div style="max-height:250px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;">
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead>
+            <tr style="background:#f0fff4;">
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">거래처명</th>
+              <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">코스</th>
+              <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">1순위</th>
+              <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">주문요일</th>
+              <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">일평균</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">비고</th>
+            </tr>
+          </thead>
+          <tbody id="cu-preview-body"></tbody>
+        </table>
+      </div>
+      <div id="cu-preview-summary" style="font-size:11px;color:#718096;margin-top:6px;"></div>
+    </div>
+
+    <div id="cu-msg" style="font-size:12px;text-align:center;margin-bottom:8px;"></div>
+    <button id="cu-save-btn" onclick="saveClientData()" style="display:none;width:100%;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ Firestore에 저장</button>
+  </div>
+</div>
+
+<!-- 기사 관리 모달 -->
+<div id="driverMgmtModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:700px;margin:40px auto;border-radius:12px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">👥 기사 관리</div>
+      <button onclick="closeDriverMgmt()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+
+    <!-- 탭 -->
+    <div style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+      <button id="dmTab1" onclick="switchDmTab('list')" style="flex:1;padding:9px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#1a4731;color:#fff;">📋 기사 목록</button>
+      <button id="dmTab2" onclick="switchDmTab('add')" style="flex:1;padding:9px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#f7fafc;color:#4a5568;">➕ 신규 등록</button>
+      <button id="dmTab3" onclick="switchDmTab('workdays')" style="flex:1;padding:9px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#f7fafc;color:#4a5568;">📅 영업일 설정</button>
+    </div>
+
+    <!-- 기사 목록 탭 -->
+    <div id="dmPanel-list">
+      <div id="driverList" style="font-size:13px;">로딩 중...</div>
+    </div>
+
+    <!-- 신규 등록 탭 -->
+    <div id="dmPanel-add" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">이름 *</label>
+          <input id="dm-name" type="text" placeholder="기사 이름" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">팀 *</label>
+          <select id="dm-team" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+            <option value="">팀 선택</option>
+            <option value="team1">1팀 준고</option>
+            <option value="team2">2팀 해운대</option>
+            <option value="team3">3팀 공오일(051)</option>
+            <option value="team4">4팀 연수남</option>
+            <option value="team5">5팀 아가리</option>
+            <option value="team6">6팀 도세마</option>
+            <option value="team7">7팀 강서영</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">역할 *</label>
+          <select id="dm-role" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+            <option value="driver">기사</option>
+            <option value="leader">팀장</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">초기 비밀번호 *</label>
+          <input id="dm-pw" type="text" value="jundo1234" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <button onclick="addDriver()" style="padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ 등록</button>
+        <div id="dm-add-msg" style="font-size:12px;text-align:center;"></div>
+      </div>
+    </div>
+
+    <!-- 영업일 설정 탭 -->
+    <div id="dmPanel-workdays" style="display:none;">
+      <div style="font-size:12px;color:#718096;margin-bottom:12px;">공휴일·근로자의날 제외한 실제 영업일을 입력하세요. 등급 계산에 사용됩니다.</div>
+      <div id="workdaysCard">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 정성평가 모달 -->
+<div id="evalModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:760px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">📋 정성평가 관리</div>
+      <button onclick="closeEvalModal()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+
+    <!-- 탭 헤더 -->
+    <div style="display:flex;gap:6px;margin-bottom:18px;border-bottom:2px solid #e2e8f0;padding-bottom:0;">
+      <button id="evalTabBtn-quant" onclick="switchEvalTab('quant')"
+        style="padding:9px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#1a4731;color:#fff;font-family:inherit;">정량기록</button>
+      <button id="evalTabBtn-vehicle" onclick="switchEvalTab('vehicle')"
+        style="padding:9px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#edf2f7;color:#4a5568;font-family:inherit;">차량현황</button>
+      <button id="evalTabBtn-tasting" onclick="switchEvalTab('tasting')"
+        style="padding:9px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#edf2f7;color:#4a5568;font-family:inherit;">시식기사</button>
+      <button id="evalTabBtn-items" onclick="switchEvalTab('items')"
+        style="padding:9px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#edf2f7;color:#4a5568;font-family:inherit;">평가항목</button>
+      <button id="evalTabBtn-score" onclick="switchEvalTab('score')"
+        style="padding:9px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:700;cursor:pointer;background:#edf2f7;color:#4a5568;font-family:inherit;">월별종합</button>
+    </div>
+
+    <!-- 탭1: 정량기록 -->
+    <div id="evalPane-quant">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">기사 선택</label>
+          <select id="eq-driver" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;">
+            <option value="">-- 기사 선택 --</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">연월</label>
+          <input type="month" id="eq-month" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">근태 지각 횟수</label>
+          <input type="number" id="eq-late" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">지시사항 미이행 건수</label>
+          <input type="number" id="eq-nodir" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">오배송 건수</label>
+          <input type="number" id="eq-wrong" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">누락 건수</label>
+          <input type="number" id="eq-miss" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">신호위반 건수</label>
+          <input type="number" id="eq-signal" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">신규영업 건수</label>
+          <input type="number" id="eq-newsales" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">신규영업 연결 성공</label>
+          <input type="number" id="eq-newsalesok" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+        <div><label style="font-size:12px;color:#4a5568;display:block;margin-bottom:3px;">끊긴업체 건수</label>
+          <input type="number" id="eq-lost" min="0" value="0" style="width:100%;padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
+        <div>
+          <label style="font-size:12px;color:#4a5568;display:block;margin-bottom:6px;">사고</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-accident" value="0" checked> 무
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-accident" value="1"> 유
+            </label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#4a5568;display:block;margin-bottom:6px;">발열통</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-heater" value="1" checked> 완료
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-heater" value="0"> 미완료
+            </label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:#4a5568;display:block;margin-bottom:6px;">끊긴업체 보고</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-lostreport" value="1" checked> 보고
+            </label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;">
+              <input type="radio" name="eq-lostreport" value="0"> 미보고
+            </label>
+          </div>
+        </div>
+      </div>
+      <button onclick="saveQuantRecord()"
+        style="width:100%;margin-top:16px;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>
+      <div id="eq-msg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
+    </div>
+
+    <!-- 탭2: 차량현황 -->
+    <div id="evalPane-vehicle" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <label style="font-size:13px;font-weight:600;color:#4a5568;">연월</label>
+        <input type="month" id="ev-month" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button onclick="loadAdminVehicleStatus()" style="padding:7px 14px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 조회</button>
+      </div>
+      <div id="ev-content">
+        <div style="text-align:center;color:#718096;padding:20px;">연월을 선택하고 조회해 주세요.</div>
+      </div>
+    </div>
+
+    <!-- 탭3: 시식기사 지정 -->
+    <div id="evalPane-tasting" style="display:none;">
+      <div style="margin-bottom:14px;font-size:13px;color:#4a5568;">이번 달 시식 참여 기사 3명을 선택해 주세요.</div>
+      <div style="display:grid;gap:10px;margin-bottom:16px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">1번 기사</label>
+          <select id="tasting-1" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;">
+            <option value="">-- 선택 --</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">2번 기사</label>
+          <select id="tasting-2" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;">
+            <option value="">-- 선택 --</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">3번 기사</label>
+          <select id="tasting-3" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;">
+            <option value="">-- 선택 --</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="saveTasting()"
+        style="width:100%;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>
+      <div id="tasting-msg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
+    </div>
+
+    <!-- 탭4: 평가항목 관리 -->
+    <div id="evalPane-items" style="display:none;">
+      <div style="font-size:14px;font-weight:700;color:#1a4731;margin-bottom:14px;">동료 평가 항목 관리</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:14px;">
+        항목을 추가/삭제 후 저장하면 이후 평가부터 반영됩니다. 기존 점수는 유지됩니다.
+      </div>
+      <div id="peerItemsList" style="margin-bottom:14px;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <input id="newPeerItemInput" type="text" placeholder="새 항목 이름 입력"
+          style="flex:1;padding:8px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;"
+          onkeydown="if(event.key==='Enter') addPeerItem()">
+        <button onclick="addPeerItem()"
+          style="padding:8px 16px;background:#38a169;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">추가</button>
+      </div>
+      <button onclick="savePeerItems()"
+        style="width:100%;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>
+      <div id="peerItems-msg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
+    </div>
+
+    <!-- 탭5: 월별 종합점수 -->
+    <div id="evalPane-score" style="display:none;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <label style="font-size:13px;font-weight:600;color:#4a5568;">연월</label>
+        <input type="month" id="es-month" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button onclick="loadMonthlyScores()" style="padding:7px 14px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 조회</button>
+      </div>
+      <div id="es-content">
+        <div style="text-align:center;color:#718096;padding:20px;">연월을 선택하고 조회해 주세요.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 영업 현장 기록 관리 카드 -->
+<div style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);">
+  <div style="font-size:15px;font-weight:800;color:#1a4731;margin-bottom:14px;">&#128247; 영업 현장 기록 관리</div>
+
+  <!-- 필터 행 -->
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+    <select id="fvm-month" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()"></select>
+    <select id="fvm-team" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()">
+      <option value="">전체 팀</option>
+    </select>
+    <button onclick="loadAdminFieldVisits()" style="padding:7px 14px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 조회</button>
+  </div>
+
+  <!-- 기록 목록 -->
+  <div id="fvm-list">
+    <div style="text-align:center;color:#718096;padding:20px;font-size:13px;">월을 선택하고 조회해 주세요.</div>
+  </div>
+
+  <!-- 통계 토글 -->
+  <div style="margin-top:16px;">
+    <button id="fvm-stat-btn" onclick="toggleFvmStat()" style="padding:7px 14px;background:#f0fff4;border:1px solid #c6f6d5;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;color:#276749;">📊 방문 통계 보기</button>
+    <div id="fvm-stat" style="display:none;margin-top:12px;">
+      <div id="fvm-stat-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+  initAdmin();
+
+  // ── 판매 업로드 모달 ──
+  const DRIVER_TEAM = {
+    '유상하':'team1','이진우':'team1','박인수':'team1',
+    '표창훈':'team2','안준수':'team2','이근일':'team2',
+    '오철석':'team3','전태영':'team3',
+    '김민기':'team4','최용혁':'team4','이창목':'team4',
+    '김종호':'team5','최준은':'team5','금정':'team5',
+    '조홍철':'team6','김창연':'team6',
+    '류대현':'team7','이호주':'team7','김동완':'team7',
+    '송정':'team1' // 박인수 별칭
+  };
+
+  let _salesData = null;
+
+  window.showSalesUpload = () => {
+    document.getElementById('salesUploadModal').style.display = 'block';
+    // 오늘 날짜 기본값
+    const today = new Date();
+    const ymd = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+    document.getElementById('su-date').value = ymd;
+    document.getElementById('su-preview').style.display = 'none';
+    document.getElementById('su-save-btn').style.display = 'none';
+    document.getElementById('su-msg').textContent = '';
+    document.getElementById('su-filename').textContent = '선택 안 됨';
+    _salesData = null;
+  };
+  window.closeSalesUpload = () => {
+    document.getElementById('salesUploadModal').style.display = 'none';
+  };
+
+  window.onSalesFileChange = async (input) => {
+    const file = input.files[0];
+    if (!file) return;
+    document.getElementById('su-filename').textContent = file.name;
+    document.getElementById('su-msg').textContent = '파싱 중...';
+
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+
+      // YYMMDD 형식 시트 찾기 (260407 등), 없으면 '결과' 또는 첫 번째 시트
+      const sheetName = wb.SheetNames.find(s => /^\d{6}$/.test(s))
+        || wb.SheetNames.find(s => s === '결과')
+        || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+
+      // 헤더행 찾기 (기사명 컬럼)
+      let nameCol = -1, totalCol = -1, headerRow = -1;
+      let 뜨Col=-1, 프Col=-1, 샐Col=-1, 품Col=-1, 덮Col=-1, 샌Col=-1, 세트Col=-1, 유부Col=-1;
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        for (let j = 0; j < row.length; j++) {
+          const cell = String(row[j]||'').trim();
+          if (cell === '기사명') { nameCol = j; headerRow = i; }
+          if (cell.includes('합') && cell.includes('계') && nameCol >= 0) { totalCol = j; }
+          if (cell === '뜨') 뜨Col = j;
+          if (cell === '프') 프Col = j;
+          if (cell === '샐') 샐Col = j;
+          if (cell === '품') 품Col = j;
+          if (cell === '덮') 덮Col = j;
+          if (cell === '샌') 샌Col = j;
+          if (cell === '세트') 세트Col = j;
+          if (cell === '유부') 유부Col = j;
+        }
+        if (nameCol >= 0 && totalCol >= 0) break;
+      }
+      if (nameCol < 0) throw new Error("'기사명' 컬럼을 찾을 수 없습니다. (시트: " + sheetName + ")");
+      if (totalCol < 0) throw new Error("'합계' 컬럼을 찾을 수 없습니다.");
+
+      // 팀별 집계
+      const teamTotals = {};
+      const teamDrivers = {};
+      const teamRevenues = {};
+      const driverRows = [];
+
+      for (let i = headerRow + 1; i < rows.length; i++) {
+        const row = rows[i];
+        const nameRaw = String(row[nameCol]||'').trim();
+        const total = Number(row[totalCol]||0);
+        if (!nameRaw || total === 0) continue;
+
+        // "N. 기사명" 형식에서 이름 추출
+        const name = nameRaw.replace(/^\d+\.\s*/, '').trim();
+        // 합계/총합계 행 제외
+        if (name.includes('합계') || name.includes('공란') || name.includes('미배정') || name.includes('조식')) continue;
+
+        const team = DRIVER_TEAM[name];
+        if (!team) continue;
+
+        const 뜨q=Number(row[뜨Col]||0), 프q=Number(row[프Col]||0), 샐q=Number(row[샐Col]||0);
+        const 품q=Number(row[품Col]||0), 덮q=Number(row[덮Col]||0), 샌q=Number(row[샌Col]||0);
+        const 세트q=Number(row[세트Col]||0), 유부q=Number(row[유부Col]||0);
+        const revenue = 뜨q*8250 + 프q*7700 + 샐q*7150 + 품q*8250 + 덮q*7150 + 샌q*6600 + 세트q*6600 + 유부q*6600;
+
+        driverRows.push({ name, team, total, revenue });
+        teamTotals[team] = (teamTotals[team]||0) + total;
+        teamRevenues[team] = (teamRevenues[team]||0) + revenue;
+        if (!teamDrivers[team]) teamDrivers[team] = [];
+        teamDrivers[team].push(name+':'+total);
+      }
+
+      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다.');
+
+      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows };
+
+      // 미리보기 렌더
+      const tbody = document.getElementById('su-preview-body');
+      tbody.innerHTML = Object.keys(TEAM_NAMES).map(tid => {
+        const total = teamTotals[tid]||0;
+        const rev = teamRevenues[tid]||0;
+        const drivers = (teamDrivers[tid]||[]).join(', ');
+        return `<tr>
+          <td style="padding:6px 8px;font-weight:600;">${TEAM_NAMES[tid]}</td>
+          <td style="padding:6px 8px;text-align:right;font-weight:700;color:#1a4731;">${total.toLocaleString()}</td>
+          <td style="padding:6px 8px;text-align:right;font-weight:700;color:#2F5496;">${rev > 0 ? rev.toLocaleString()+'원' : '-'}</td>
+          <td style="padding:6px 8px;color:#718096;font-size:11px;">${drivers}</td>
+        </tr>`;
+      }).join('');
+
+      document.getElementById('su-preview').style.display = '';
+      document.getElementById('su-save-btn').style.display = '';
+      document.getElementById('su-msg').textContent = `✅ ${driverRows.length}명 파싱 완료`;
+      document.getElementById('su-msg').style.color = '#276749';
+
+    } catch(e) {
+      document.getElementById('su-msg').textContent = '오류: ' + e.message;
+      document.getElementById('su-msg').style.color = '#c53030';
+    }
+  };
+
+  window.saveSalesData = async () => {
+    const date = document.getElementById('su-date').value;
+    if (!date) { alert('날짜를 선택해주세요.'); return; }
+    if (!_salesData) { alert('파일을 먼저 선택해주세요.'); return; }
+
+    const btn = document.getElementById('su-save-btn');
+    btn.disabled = true; btn.textContent = '저장 중...';
+
+    try {
+      const { teamTotals, teamDrivers, teamRevenues, driverRows } = _salesData;
+      const driverRevenues = {};
+      driverRows.forEach(d => { driverRevenues[d.name] = d.revenue; });
+      const ym = date.slice(0,7); // YYYY-MM
+
+      // 1. daily_sales 컬렉션에 일별 저장
+      await db.collection('daily_sales').doc(date).set({
+        date,
+        teamTotals,
+        teamDrivers,
+        teamRevenues,
+        driverRows,
+        driverRevenues,
+        savedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+
+      // 2. monthly_stats 업데이트 (해당 월 누적 재계산)
+      const allDaysSnap = await db.collection('daily_sales')
+        .where('date', '>=', ym+'-01')
+        .where('date', '<=', ym+'-31')
+        .get();
+
+      const monthTeamTotals = {};
+      const bizDays = new Set();
+      allDaysSnap.forEach(d => {
+        const data = d.data();
+        bizDays.add(data.date);
+        Object.entries(data.teamTotals||{}).forEach(([t, v]) => {
+          monthTeamTotals[t] = (monthTeamTotals[t]||0) + v;
+        });
+      });
+
+      // 팀별 등급 계산
+      const teamsSnap = await db.collection('teams').get();
+      const teamsData = {};
+      teamsSnap.forEach(d => teamsData[d.id] = d.data());
+
+      const monthlyStats = {};
+      Object.keys(teamsData).forEach(tid => {
+        const t = teamsData[tid];
+        const cumTotal = monthTeamTotals[tid]||0;
+        const biz = bizDays.size;
+        const dailyAvg = biz > 0 ? Math.round(cumTotal / biz) : 0;
+        const baseCum = t.baselineDailyAvg * biz;
+        let grade = '기준미달';
+        if (dailyAvg >= t.gradeA) grade = 'A';
+        else if (dailyAvg >= t.gradeB) grade = 'B';
+        else if (dailyAvg >= t.gradeC) grade = 'C';
+
+        monthlyStats[tid] = {
+          cumulativeTotal: cumTotal,
+          baselineCumulative: baseCum,
+          dailyAvgDiff: dailyAvg - t.baselineDailyAvg,
+          grade,
+          bizDays: biz
+        };
+      });
+
+      await db.collection('monthly_stats').doc(ym).set(monthlyStats);
+
+      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.`);
+      closeSalesUpload();
+      location.reload();
+
+    } catch(e) {
+      alert('저장 오류: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = '✅ Firestore에 저장';
+    }
+  };
+
+  // ── 기사 관리 모달 ──
+  const TEAM_NAMES = {
+    team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+    team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+  };
+
+  window.showDriverMgmt = async () => {
+    document.getElementById('driverMgmtModal').style.display = 'block';
+    await loadDriverList();
+    loadWorkdays();
+  };
+  window.closeDriverMgmt = () => {
+    document.getElementById('driverMgmtModal').style.display = 'none';
+  };
+
+  window.switchDmTab = (tab) => {
+    const tabs = ['list','add','workdays'];
+    tabs.forEach((t, i) => {
+      document.getElementById('dmPanel-'+t).style.display = t===tab ? '' : 'none';
+      document.getElementById('dmTab'+(i+1)).style.background = t===tab ? '#1a4731' : '#f7fafc';
+      document.getElementById('dmTab'+(i+1)).style.color = t===tab ? '#fff' : '#4a5568';
+    });
+  };
+
+  async function loadDriverList() {
+    const el = document.getElementById('driverList');
+    el.innerHTML = '로딩 중...';
+    try {
+      const snap = await db.collection('users').orderBy('teamId').get();
+      const users = [];
+      snap.forEach(d => users.push({ id: d.id, ...d.data() }));
+
+      // 팀별 그룹핑
+      const groups = {};
+      users.forEach(u => {
+        if (u.role === 'admin') return;
+        const key = u.teamId || 'none';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(u);
+      });
+
+      let html = '';
+      Object.keys(TEAM_NAMES).forEach(tid => {
+        const members = groups[tid] || [];
+        if (!members.length) return;
+        html += `<div style="margin-bottom:16px;">
+          <div style="font-size:12px;font-weight:700;color:#1a4731;margin-bottom:6px;">${TEAM_NAMES[tid]}</div>
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead><tr style="background:#f0fff4;">
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">이름</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">역할</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">전화번호</th>
+              <th style="padding:6px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">상태</th>
+              <th style="padding:6px 8px;text-align:center;border-bottom:1px solid #e2e8f0;">관리</th>
+            </tr></thead>
+            <tbody>`;
+        members.forEach(u => {
+          const active = u.active !== false;
+          const roleLabel = u.role === 'leader' ? '팀장' : '기사';
+          html += `<tr style="border-bottom:1px solid #f7fafc;${!active?'opacity:0.5':''}">
+            <td style="padding:7px 8px;font-weight:${u.role==='leader'?'700':'400'}">${u.name}</td>
+            <td style="padding:7px 8px;">${roleLabel}</td>
+            <td style="padding:7px 8px;">
+              <span style="font-size:11px;color:${u.phone?'#276749':'#a0aec0'};">${u.phone||'미등록'}</span>
+              <button onclick="editPhone('${u.id}','${u.name}','${u.phone||''}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
+            </td>
+            <td style="padding:7px 8px;">
+              <span style="font-size:11px;padding:2px 7px;border-radius:10px;background:${active?'#c6f6d5':'#fed7d7'};color:${active?'#276749':'#c53030'}">
+                ${active?'재직중':'퇴사'}
+              </span>
+            </td>
+            <td style="padding:7px 8px;text-align:center;">
+              ${active
+                ? `<button onclick="resetPw('${u.id}','${u.name}')" style="font-size:11px;padding:3px 8px;background:#ebf8ff;color:#2b6cb0;border:none;border-radius:4px;cursor:pointer;margin-right:4px;">🔑 비번</button>
+                   <button onclick="retireDriver('${u.id}','${u.name}')" style="font-size:11px;padding:3px 8px;background:#fff5f5;color:#c53030;border:none;border-radius:4px;cursor:pointer;">퇴사</button>`
+                : `<button onclick="reactivateDriver('${u.id}','${u.name}')" style="font-size:11px;padding:3px 8px;background:#f0fff4;color:#276749;border:none;border-radius:4px;cursor:pointer;">복직</button>`
+              }
+            </td>
+          </tr>`;
+        });
+        html += `</tbody></table></div>`;
+      });
+      el.innerHTML = html || '<div style="color:#718096;text-align:center;padding:20px;">기사 데이터가 없습니다.</div>';
+    } catch(e) {
+      el.innerHTML = '<div style="color:#c53030;">오류: ' + e.message + '</div>';
+    }
+  }
+
+  window.resetPw = async (id, name) => {
+    const newPw = prompt(`${name}의 새 비밀번호를 입력하세요:`, 'jundo1234');
+    if (!newPw) return;
+    await db.collection('users').doc(id).update({ password: newPw });
+    alert(`✅ ${name} 비밀번호가 변경됐습니다.`);
+  };
+
+  window.retireDriver = async (id, name) => {
+    if (!confirm(`${name}을(를) 퇴사 처리하시겠습니까?\n(데이터는 보존됩니다)`)) return;
+    await db.collection('users').doc(id).update({ active: false });
+    alert(`${name} 퇴사 처리 완료.`);
+    await loadDriverList();
+  };
+
+  window.reactivateDriver = async (id, name) => {
+    if (!confirm(`${name}을(를) 복직 처리하시겠습니까?`)) return;
+    await db.collection('users').doc(id).update({ active: true });
+    alert(`${name} 복직 처리 완료.`);
+    await loadDriverList();
+  };
+
+  window.editPhone = async (id, name, currentPhone) => {
+    const phone = prompt(`${name} 전화번호 입력\n현재: ${currentPhone || '미등록'}\n\n형식: 010-0000-0000`, currentPhone || '010-');
+    if (phone === null) return;
+    await db.collection('users').doc(id).update({ phone: phone.trim() });
+    alert(`✅ ${name} 전화번호 저장 완료!`);
+    await loadDriverList();
+  };
+
+  window.addDriver = async () => {
+    const name = document.getElementById('dm-name').value.trim();
+    const teamId = document.getElementById('dm-team').value;
+    const role = document.getElementById('dm-role').value;
+    const pw = document.getElementById('dm-pw').value.trim();
+    const msg = document.getElementById('dm-add-msg');
+
+    if (!name || !teamId || !pw) {
+      msg.style.color = '#c53030';
+      msg.textContent = '이름, 팀, 비밀번호를 모두 입력해주세요.';
+      return;
+    }
+
+    try {
+      const docId = 'user_' + Date.now();
+      await db.collection('users').doc(docId).set({
+        name, teamId, role, password: pw,
+        active: true,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      msg.style.color = '#276749';
+      msg.textContent = `✅ ${name} 등록 완료!`;
+      document.getElementById('dm-name').value = '';
+      document.getElementById('dm-team').value = '';
+      document.getElementById('dm-pw').value = 'jundo1234';
+      // 목록 탭으로 전환
+      setTimeout(() => { switchDmTab('list'); loadDriverList(); }, 800);
+    } catch(e) {
+      msg.style.color = '#c53030';
+      msg.textContent = '오류: ' + e.message;
+    }
+  };
+</script>
+
+<!-- SMS 발송 모달 -->
+<div id="smsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:520px;margin:40px auto;border-radius:12px;overflow:hidden;">
+    <div style="background:#1a4731;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-weight:700;font-size:16px;">📱 문자 발송</span>
+      <button onclick="closeSmsModal()" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;">✕</button>
+    </div>
+    <div style="padding:20px;">
+      <!-- 탭 -->
+      <div style="display:flex;gap:6px;margin-bottom:16px;">
+        <button onclick="switchSmsTab('individual')" id="smsTab-individual"
+          style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#1a4731;color:#fff;font-size:12px;">개별 발송</button>
+        <button onclick="switchSmsTab('team')" id="smsTab-team"
+          style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">팀 발송</button>
+        <button onclick="switchSmsTab('leader')" id="smsTab-leader"
+          style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">팀장</button>
+        <button onclick="switchSmsTab('all')" id="smsTab-all"
+          style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">전체 발송</button>
+      </div>
+
+      <!-- 개별 발송 -->
+      <div id="smsPane-individual">
+        <div style="font-size:12px;color:#718096;margin-bottom:8px;">기사 선택</div>
+        <div id="smsDriverList" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:12px;"></div>
+        <div style="font-size:12px;color:#718096;margin-bottom:4px;">선택된 기사: <span id="smsSelectedNames" style="color:#1a4731;font-weight:600;">없음</span></div>
+      </div>
+
+      <!-- 팀 발송 -->
+      <div id="smsPane-team" style="display:none;">
+        <div style="font-size:12px;color:#718096;margin-bottom:8px;">팀 선택</div>
+        <div id="smsTeamList" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;"></div>
+        <div style="font-size:12px;color:#718096;margin-bottom:4px;">발송 대상: <span id="smsTeamSelected" style="color:#1a4731;font-weight:600;">없음</span></div>
+      </div>
+
+      <!-- 팀장 발송 -->
+      <div id="smsPane-leader" style="display:none;">
+        <div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;color:#276749;">
+          전화번호가 등록된 <strong>전체 팀장</strong>에게 발송됩니다.
+        </div>
+        <div id="smsLeaderCount" style="font-size:13px;color:#4a5568;"></div>
+      </div>
+
+      <!-- 전체 발송 -->
+      <div id="smsPane-all" style="display:none;">
+        <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;color:#856404;">
+          ⚠️ 전화번호가 등록된 <strong>전체 기사</strong>에게 발송됩니다.
+        </div>
+        <div id="smsAllCount" style="font-size:13px;color:#4a5568;"></div>
+      </div>
+
+      <!-- 메시지 입력 -->
+      <div style="margin-top:12px;">
+        <div style="font-size:12px;color:#718096;margin-bottom:4px;">메시지 <span style="color:#c53030;">*</span></div>
+        <textarea id="smsText" rows="4" placeholder="발송할 메시지를 입력하세요.&#10;예) [준도시락] 4월 인센티브 등급이 업데이트되었습니다. 앱에서 확인하세요."
+          style="width:100%;border:1px solid #e2e8f0;border-radius:6px;padding:10px;font-size:13px;resize:vertical;box-sizing:border-box;"></textarea>
+        <div style="text-align:right;font-size:11px;color:#718096;margin-top:2px;"><span id="smsByteCount">0</span> / 90 byte (90초과시 LMS)</div>
+      </div>
+
+      <!-- 발송 버튼 -->
+      <button onclick="sendSms()" id="btnSmsSend"
+        style="width:100%;margin-top:14px;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+        📤 문자 발송
+      </button>
+      <div id="smsResult" style="margin-top:10px;font-size:12px;text-align:center;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// ── 정성평가 관리 ──
+// ══════════════════════════════════════════
+
+const EVAL_ADMIN_TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+
+function getAdminYM() {
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+}
+
+// 모달 열기/닫기
+window.showEvalModal = async () => {
+  document.getElementById('evalModal').style.display = 'block';
+  switchEvalTab('quant');
+  await loadEvalDriverList();
+};
+
+window.closeEvalModal = () => {
+  document.getElementById('evalModal').style.display = 'none';
+};
+
+// 탭 전환
+window.switchEvalTab = (tab) => {
+  ['quant','vehicle','tasting','items','score'].forEach(t => {
+    document.getElementById('evalPane-' + t).style.display = t === tab ? 'block' : 'none';
+    const btn = document.getElementById('evalTabBtn-' + t);
+    btn.style.background = t === tab ? '#1a4731' : '#edf2f7';
+    btn.style.color = t === tab ? '#fff' : '#4a5568';
+  });
+  if (tab === 'items') loadPeerItems();
+};
+
+// 기사 목록 로드 (정량/시식 공통)
+let evalAllDrivers = [];
+async function loadEvalDriverList() {
+  const snap = await db.collection('users').get();
+  evalAllDrivers = [];
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (d.role !== 'admin' && d.active !== false) evalAllDrivers.push({ id: doc.id, ...d });
+  });
+  evalAllDrivers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  const opts = evalAllDrivers.map(d => `<option value="${d.id}">${d.name} (${EVAL_ADMIN_TEAM_NAMES[d.teamId] || d.teamId || '-'})</option>`).join('');
+  const emptyOpt = '<option value="">-- 기사 선택 --</option>';
+  const emptyOpt2 = '<option value="">-- 선택 --</option>';
+
+  document.getElementById('eq-driver').innerHTML = emptyOpt + opts;
+  document.getElementById('eq-month').value = getAdminYM();
+  ['tasting-1','tasting-2','tasting-3'].forEach(id => {
+    document.getElementById(id).innerHTML = emptyOpt2 + opts;
+  });
+
+  // 이번 달 시식 기사 로드
+  loadTastingDrivers();
+}
+
+// ── 탭1: 정량기록 저장 ──
+window.saveQuantRecord = async () => {
+  const driverId = document.getElementById('eq-driver').value;
+  const month = document.getElementById('eq-month').value;
+  if (!driverId) { alert('기사를 선택해주세요.'); return; }
+  if (!month) { alert('연월을 선택해주세요.'); return; }
+
+  const getInt = id => parseInt(document.getElementById(id).value) || 0;
+  const getRadio = name => parseInt(document.querySelector(`input[name="${name}"]:checked`)?.value ?? 0);
+
+  const data = {
+    quant: {
+      late: getInt('eq-late'),
+      noDirective: getInt('eq-nodir'),
+      wrongDelivery: getInt('eq-wrong'),
+      missed: getInt('eq-miss'),
+      signalViolation: getInt('eq-signal'),
+      accident: getRadio('eq-accident'),
+      heaterComplete: getRadio('eq-heater'),
+      newSales: getInt('eq-newsales'),
+      newSalesSuccess: getInt('eq-newsalesok'),
+      lostClient: getInt('eq-lost'),
+      lostClientReport: getRadio('eq-lostreport'),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }
+  };
+
+  const msgEl = document.getElementById('eq-msg');
+  msgEl.style.color = '#276749'; msgEl.textContent = '저장 중...';
+  try {
+    await db.collection('evaluations').doc(month)
+      .collection('drivers').doc(driverId).set(data, { merge: true });
+    msgEl.textContent = '✅ 저장 완료!';
+  } catch (e) {
+    msgEl.style.color = '#c53030'; msgEl.textContent = '❌ 오류: ' + e.message;
+  }
+};
+
+// ── 탭2: 차량현황 조회 ──
+window.loadAdminVehicleStatus = async () => {
+  const month = document.getElementById('ev-month').value;
+  if (!month) { alert('연월을 선택해주세요.'); return; }
+  const container = document.getElementById('ev-content');
+  container.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;">로딩 중...</div>';
+
+  try {
+    const driversSnap = await db.collection('evaluations').doc(month)
+      .collection('drivers').get();
+    const photoMap = {};
+    driversSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.vehicle) photoMap[doc.id] = d.vehicle;
+    });
+
+    const groups = {};
+    evalAllDrivers.forEach(u => {
+      const key = u.teamId || 'none';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(u);
+    });
+
+    let submitted = 0, total = 0, html = '';
+    Object.keys(EVAL_ADMIN_TEAM_NAMES).forEach(tid => {
+      const members = groups[tid] || [];
+      if (!members.length) return;
+      html += `<div style="margin-bottom:18px;">
+        <div style="font-size:12px;font-weight:700;color:#1a4731;margin-bottom:8px;padding:4px 8px;background:#f0f4f1;border-radius:6px;">${EVAL_ADMIN_TEAM_NAMES[tid]}</div>`;
+      members.forEach(u => {
+        total++;
+        const vd = photoMap[u.id];
+        if (vd && vd.photos && vd.photos.length > 0) {
+          submitted++;
+          const thumbs = vd.photos.slice(0, 4).map(p =>
+            `<img src="${p.url}" onclick="openAdminPhotoOverlay('${p.url.replace(/'/g, "\\'")}')"
+              style="width:52px;height:52px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid #e2e8f0;">`
+          ).join('');
+          html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f0fff4;border-radius:8px;margin-bottom:5px;border-left:3px solid #38a169;">
+            <span style="flex:1;font-size:13px;font-weight:600;color:#276749;">${u.name}</span>
+            <span style="font-size:11px;color:#38a169;font-weight:700;white-space:nowrap;">${vd.photos.length}장</span>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;">${thumbs}</div>
+          </div>`;
+        } else {
+          html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f7fafc;border-radius:8px;margin-bottom:5px;border-left:3px solid #e2e8f0;">
+            <span style="flex:1;font-size:13px;color:#a0aec0;">${u.name}</span>
+            <span style="font-size:11px;color:#a0aec0;font-weight:600;background:#e2e8f0;padding:2px 10px;border-radius:10px;">미제출</span>
+          </div>`;
+        }
+      });
+      html += '</div>';
+    });
+
+    const pct = total > 0 ? Math.round(submitted / total * 100) : 0;
+    const summary = `<div style="background:#f7fafc;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:13px;color:#4a5568;font-weight:600;">제출 현황</span>
+      <span style="font-size:15px;font-weight:700;color:${submitted===total?'#38a169':'#e53e3e'};">${submitted} / ${total}명 (${pct}%)</span>
+    </div>`;
+    container.innerHTML = summary + (html || '<div style="text-align:center;color:#a0aec0;padding:20px;">기사 데이터가 없습니다.</div>');
+  } catch (e) {
+    container.innerHTML = `<div style="color:#c53030;text-align:center;padding:20px;">오류: ${e.message}</div>`;
+  }
+};
+
+function openAdminPhotoOverlay(src) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.onclick = () => overlay.remove();
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:95%;max-height:95%;object-fit:contain;border-radius:8px;';
+  overlay.appendChild(img);
+  document.body.appendChild(overlay);
+}
+
+// ── 탭3: 시식기사 ──
+async function loadTastingDrivers() {
+  const ym = getAdminYM();
+  try {
+    const snap = await db.collection('tasting').doc(ym).get();
+    if (snap.exists) {
+      const d = snap.data();
+      (d.drivers || []).forEach((id, i) => {
+        const sel = document.getElementById('tasting-' + (i + 1));
+        if (sel) sel.value = id;
+      });
+    }
+  } catch (e) { /* 무시 */ }
+}
+
+window.saveTasting = async () => {
+  const ym = getAdminYM();
+  const ids = [1,2,3].map(i => document.getElementById('tasting-' + i).value).filter(Boolean);
+  const msgEl = document.getElementById('tasting-msg');
+  msgEl.style.color = '#276749'; msgEl.textContent = '저장 중...';
+  try {
+    const driverNames = ids.map(id => evalAllDrivers.find(d => d.id === id)?.name || id);
+    await db.collection('tasting').doc(ym).set({
+      month: ym,
+      drivers: ids,
+      driverNames,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    msgEl.textContent = '✅ 저장 완료!';
+  } catch (e) {
+    msgEl.style.color = '#c53030'; msgEl.textContent = '❌ 오류: ' + e.message;
+  }
+};
+
+// ── 탭4: 평가항목 관리 ──
+const DEFAULT_PEER_ITEMS = [
+  { id: 'c1', name: '팀 화합',    order: 1 },
+  { id: 'c2', name: '동료 협력',  order: 2 },
+  { id: 'c3', name: '긍정적 태도', order: 3 },
+  { id: 'c4', name: '배송 평판',  order: 4 },
+];
+let peerItemsList = []; // { id, name, order }
+
+async function loadPeerItems() {
+  const listEl = document.getElementById('peerItemsList');
+  const msgEl = document.getElementById('peerItems-msg');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:10px;">로딩 중...</div>';
+  msgEl.textContent = '';
+
+  try {
+    const snap = await db.collection('evalConfig').doc('peerItems').get();
+    if (snap.exists && snap.data().items && snap.data().items.length > 0) {
+      peerItemsList = snap.data().items.slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+    } else {
+      peerItemsList = DEFAULT_PEER_ITEMS.map(i => ({ ...i }));
+    }
+  } catch (e) {
+    peerItemsList = DEFAULT_PEER_ITEMS.map(i => ({ ...i }));
+  }
+  renderPeerItems();
+}
+
+function renderPeerItems() {
+  const listEl = document.getElementById('peerItemsList');
+  if (!listEl) return;
+  if (!peerItemsList.length) {
+    listEl.innerHTML = '<div style="text-align:center;color:#a0aec0;font-size:13px;padding:10px;">항목이 없습니다.</div>';
+    return;
+  }
+  listEl.innerHTML = peerItemsList.map((item, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:#f7fafc;border-radius:8px;margin-bottom:6px;border:1px solid #e2e8f0;">
+      <span style="font-size:12px;color:#a0aec0;font-weight:700;min-width:20px;">${i + 1}</span>
+      <span style="flex:1;font-size:14px;font-weight:600;color:#2d3748;">${item.name}</span>
+      <button onclick="removePeerItem(${i})"
+        style="background:#fff5f5;border:1px solid #fed7d7;color:#c53030;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;">삭제</button>
+    </div>
+  `).join('');
+}
+
+function addPeerItem() {
+  const input = document.getElementById('newPeerItemInput');
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+  if (peerItemsList.some(i => i.name === name)) {
+    alert('이미 존재하는 항목입니다.');
+    return;
+  }
+  const maxOrder = peerItemsList.reduce((m, i) => Math.max(m, i.order || 0), 0);
+  peerItemsList.push({ id: 'c_' + Date.now(), name, order: maxOrder + 1 });
+  input.value = '';
+  renderPeerItems();
+}
+
+function removePeerItem(index) {
+  peerItemsList.splice(index, 1);
+  // order 재정렬
+  peerItemsList.forEach((item, i) => { item.order = i + 1; });
+  renderPeerItems();
+}
+
+async function savePeerItems() {
+  const msgEl = document.getElementById('peerItems-msg');
+  if (!peerItemsList.length) {
+    alert('항목이 최소 1개 이상 있어야 합니다.');
+    return;
+  }
+  msgEl.style.color = '#276749'; msgEl.textContent = '저장 중...';
+  try {
+    await db.collection('evalConfig').doc('peerItems').set({
+      items: peerItemsList,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    msgEl.textContent = '✅ 저장 완료!';
+  } catch (e) {
+    msgEl.style.color = '#c53030'; msgEl.textContent = '❌ 오류: ' + e.message;
+  }
+}
+
+// ── 탭5: 월별 종합점수 ──
+window.loadMonthlyScores = async () => {
+  const month = document.getElementById('es-month').value;
+  if (!month) { alert('연월을 선택해주세요.'); return; }
+  const container = document.getElementById('es-content');
+  container.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;">로딩 중...</div>';
+
+  try {
+    const snap = await db.collection('team_evaluations').doc(month)
+      .collection('teams').get();
+    const rows = [];
+    snap.forEach(doc => rows.push({ id: doc.id, ...doc.data() }));
+
+    if (!rows.length) {
+      container.innerHTML = '<div style="text-align:center;color:#a0aec0;padding:20px;">집계 전</div>';
+      return;
+    }
+
+    rows.sort((a, b) => (a.rank || 99) - (b.rank || 99));
+    const html = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f0f4f1;">
+            <th style="padding:8px;text-align:left;color:#4a5568;">팀명</th>
+            <th style="padding:8px;text-align:center;color:#4a5568;">정량</th>
+            <th style="padding:8px;text-align:center;color:#4a5568;">동료</th>
+            <th style="padding:8px;text-align:center;color:#4a5568;">차량</th>
+            <th style="padding:8px;text-align:center;color:#4a5568;">합계</th>
+            <th style="padding:8px;text-align:center;color:#4a5568;">순위</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr style="border-bottom:1px solid #f0f4f1;">
+              <td style="padding:9px 8px;font-weight:600;">${EVAL_ADMIN_TEAM_NAMES[r.id] || r.id}</td>
+              <td style="padding:9px 8px;text-align:center;">${r.quantScore ?? '-'}</td>
+              <td style="padding:9px 8px;text-align:center;">${r.peerScore ?? '-'}</td>
+              <td style="padding:9px 8px;text-align:center;">${r.vehicleScore ?? '-'}</td>
+              <td style="padding:9px 8px;text-align:center;font-weight:700;color:#1a4731;">${r.totalScore ?? '-'}</td>
+              <td style="padding:9px 8px;text-align:center;font-weight:700;">${r.rank ?? '-'}위</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<div style="color:#c53030;text-align:center;padding:20px;">오류: ${e.message}</div>`;
+  }
+};
+
+// ── SMS 발송 ──
+const SOLAPI_KEY = 'NCSJP3I9QX02TKZO';
+const SOLAPI_FROM = '01049066196';
+
+let smsDrivers = []; // 전체 기사 목록
+let smsLeaders = []; // 팀장 목록
+let smsSelectedIds = new Set(); // 개별 선택된 기사 ID
+let smsSelectedTeam = null; // 선택된 팀 ID
+let smsCurTab = 'individual';
+
+async function showSmsModal() {
+  document.getElementById('smsModal').style.display = 'block';
+  await loadSmsDrivers();
+  loadSmsTeams();
+  updateSmsAllCount();
+  await loadSmsLeaders();
+}
+
+function closeSmsModal() {
+  document.getElementById('smsModal').style.display = 'none';
+  document.getElementById('smsResult').textContent = '';
+  document.getElementById('smsText').value = '';
+  smsSelectedIds.clear();
+  smsSelectedTeam = null;
+}
+
+async function loadSmsDrivers() {
+  const snap = await db.collection('users').where('role','==','driver').get();
+  smsDrivers = [];
+  snap.forEach(doc => smsDrivers.push({ id: doc.id, ...doc.data() }));
+  smsDrivers = smsDrivers.filter(d => d.active !== false);
+  renderSmsDriverList();
+}
+
+function renderSmsDriverList() {
+  const el = document.getElementById('smsDriverList');
+  el.innerHTML = smsDrivers.map(d => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #f0f0f0;">
+      <input type="checkbox" value="${d.id}" onchange="toggleSmsDriver('${d.id}')"
+        ${smsSelectedIds.has(d.id) ? 'checked' : ''}>
+      <span style="flex:1;font-size:13px;">${d.name} <span style="color:#718096;font-size:11px;">(${d.teamId || '-'})</span></span>
+      <span style="font-size:11px;color:${d.phone ? '#276749' : '#c53030'};">${d.phone || '번호없음'}</span>
+    </label>
+  `).join('');
+}
+
+function toggleSmsDriver(id) {
+  if (smsSelectedIds.has(id)) smsSelectedIds.delete(id);
+  else smsSelectedIds.add(id);
+  const names = smsDrivers.filter(d => smsSelectedIds.has(d.id)).map(d => d.name).join(', ');
+  document.getElementById('smsSelectedNames').textContent = names || '없음';
+}
+
+async function loadSmsLeaders() {
+  const snap = await db.collection('users').where('role','==','leader').where('active','==',true).get();
+  smsLeaders = [];
+  snap.forEach(doc => smsLeaders.push({ id: doc.id, ...doc.data() }));
+  const cnt = smsLeaders.filter(d => d.phone).length;
+  document.getElementById('smsLeaderCount').textContent = `전화번호 등록된 팀장: ${cnt}명`;
+}
+
+async function loadSmsTeams() {
+  const snap = await db.collection('teams').get();
+  const teams = [];
+  snap.forEach(doc => teams.push({ id: doc.id, ...doc.data() }));
+  teams.sort((a,b) => a.id.localeCompare(b.id));
+  const el = document.getElementById('smsTeamList');
+  el.innerHTML = teams.map(t => `
+    <button onclick="selectSmsTeam('${t.id}','${t.name}')" id="smsTeamBtn-${t.id}"
+      style="padding:7px 14px;border:1px solid #e2e8f0;border-radius:20px;background:#f7fafc;font-size:12px;cursor:pointer;font-weight:600;">
+      ${t.name}
+    </button>
+  `).join('');
+}
+
+function selectSmsTeam(teamId, teamName) {
+  smsSelectedTeam = teamId;
+  document.querySelectorAll('[id^="smsTeamBtn-"]').forEach(b => {
+    b.style.background = '#f7fafc'; b.style.color = '#4a5568'; b.style.borderColor = '#e2e8f0';
+  });
+  const btn = document.getElementById('smsTeamBtn-' + teamId);
+  if (btn) { btn.style.background = '#1a4731'; btn.style.color = '#fff'; btn.style.borderColor = '#1a4731'; }
+  const drivers = smsDrivers.filter(d => d.teamId === teamId && d.phone);
+  document.getElementById('smsTeamSelected').textContent = `${teamName} (${drivers.length}명 발송 가능)`;
+}
+
+function updateSmsAllCount() {
+  const cnt = smsDrivers.filter(d => d.phone).length;
+  document.getElementById('smsAllCount').textContent = `전화번호 등록된 기사: ${cnt}명`;
+}
+
+function switchSmsTab(tab) {
+  smsCurTab = tab;
+  ['individual','team','leader','all'].forEach(t => {
+    document.getElementById('smsPane-' + t).style.display = t === tab ? 'block' : 'none';
+    const btn = document.getElementById('smsTab-' + t);
+    btn.style.background = t === tab ? '#1a4731' : '#edf2f7';
+    btn.style.color = t === tab ? '#fff' : '#4a5568';
+  });
+}
+
+// 바이트 카운트
+document.getElementById('smsText').addEventListener('input', function() {
+  const bytes = encodeURIComponent(this.value).replace(/%[A-F\d]{2}/g, 'U').length;
+  document.getElementById('smsByteCount').textContent = bytes;
+});
+
+async function sendSms() {
+  const text = document.getElementById('smsText').value.trim();
+  if (!text) { alert('메시지를 입력하세요.'); return; }
+
+  // 수신자 목록 구성
+  let targets = [];
+  if (smsCurTab === 'individual') {
+    targets = smsDrivers.filter(d => smsSelectedIds.has(d.id) && d.phone);
+    if (targets.length === 0) { alert('기사를 선택하거나 전화번호를 등록해주세요.'); return; }
+  } else if (smsCurTab === 'team') {
+    if (!smsSelectedTeam) { alert('팀을 선택하세요.'); return; }
+    targets = smsDrivers.filter(d => d.teamId === smsSelectedTeam && d.phone);
+    if (targets.length === 0) { alert('선택한 팀에 전화번호 등록된 기사가 없습니다.'); return; }
+  } else if (smsCurTab === 'leader') {
+    targets = smsLeaders.filter(d => d.phone);
+    if (targets.length === 0) { alert('전화번호 등록된 팀장이 없습니다.'); return; }
+  } else {
+    targets = smsDrivers.filter(d => d.phone);
+    if (targets.length === 0) { alert('전화번호 등록된 기사가 없습니다.'); return; }
+  }
+
+  if (!confirm(`${targets.map(d=>d.name).join(', ')}에게 문자를 발송하시겠습니까?\n\n[메시지]\n${text}`)) return;
+
+  const btn = document.getElementById('btnSmsSend');
+  btn.disabled = true; btn.textContent = '발송 중...';
+  const resultEl = document.getElementById('smsResult');
+  resultEl.textContent = '';
+
+  try {
+    // Cloud Function을 통해 발송
+    const res = await fetch('https://us-central1-jundosirak-delivery.cloudfunctions.net/sendSms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targets: targets.map(d => ({ name: d.name, phone: d.phone })), text, from: SOLAPI_FROM })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      resultEl.style.color = '#276749';
+      resultEl.textContent = `✅ ${data.sent}명 발송 완료! (실패: ${data.failed}명)`;
+    } else {
+      resultEl.style.color = '#c53030';
+      resultEl.textContent = '❌ 발송 실패: ' + (data.error || '알 수 없는 오류');
+    }
+  } catch(e) {
+    resultEl.style.color = '#c53030';
+    resultEl.textContent = '❌ 오류: ' + e.message;
+  }
+
+  btn.disabled = false; btn.textContent = '📤 문자 발송';
+}
+</script>
+</body>
+</html>

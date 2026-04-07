@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>준도시락 - 지시사항</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-title { font-size: 17px; font-weight: 700; }
+    .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; }
+
+    .btn-back {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-logout {
+      background: rgba(220,38,38,0.2);
+      border: 1px solid rgba(220,38,38,0.4);
+      color: #fca5a5;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메인 */
+    .main {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 18px;
+      background: #38a169;
+      border-radius: 2px;
+    }
+
+    /* 등록 폼 */
+    .form-group { margin-bottom: 14px; }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 6px;
+    }
+
+    .form-textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      transition: border-color 0.2s;
+      background: #f7fafc;
+    }
+
+    .form-textarea:focus {
+      border-color: #38a169;
+      box-shadow: 0 0 0 3px rgba(56,161,105,0.15);
+      background: white;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+      background: #f7fafc;
+    }
+
+    .form-input:focus {
+      border-color: #38a169;
+      box-shadow: 0 0 0 3px rgba(56,161,105,0.15);
+      background: white;
+    }
+
+    /* 팀 체크박스 영역 */
+    .team-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .team-check-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      background: #f7fafc;
+      transition: all 0.2s;
+    }
+
+    .team-check-label:has(input:checked) {
+      border-color: #38a169;
+      background: #f0fff4;
+      color: #276749;
+    }
+
+    .all-check {
+      border-color: #1a4731;
+      background: #f0f4f1;
+    }
+
+    .team-check-label input { accent-color: #38a169; }
+
+    /* 등록 버튼 */
+    .btn-submit {
+      background: linear-gradient(135deg, #1a4731, #38a169);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      padding: 13px 28px;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn-submit:hover { opacity: 0.9; }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* 관리자 목록 아이템 */
+    .directive-admin-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      background: #fafafa;
+    }
+
+    .dir-admin-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .dir-target-badge {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .dir-admin-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .dir-date { font-size: 12px; color: #a0aec0; }
+
+    .btn-delete-dir {
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      color: #e53e3e;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .dir-content-text {
+      font-size: 14px;
+      color: #2d3748;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .dir-admin-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .dir-deadline-label { font-size: 12px; color: #718096; }
+
+    .dir-progress-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      max-width: 200px;
+    }
+
+    .dir-progress-bg {
+      flex: 1;
+      background: #e2e8f0;
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+    }
+
+    .dir-progress-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.6s ease;
+    }
+
+    .dir-progress-pct { font-size: 12px; font-weight: 700; white-space: nowrap; }
+
+    /* 기사 목록 */
+    .driver-directive-item {
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      transition: opacity 0.4s;
+    }
+
+    .driver-directive-item.done {
+      border-color: #c6f6d5;
+      background: #f0fff4;
+    }
+
+    .directive-check-wrap {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .directive-cb {
+      width: 18px;
+      height: 18px;
+      accent-color: #38a169;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .directive-content-text {
+      font-size: 14px;
+      color: #2d3748;
+      line-height: 1.5;
+    }
+
+    .strikethrough { text-decoration: line-through; color: #a0aec0; }
+
+    .driver-dir-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+      padding-left: 28px;
+    }
+
+    .deadline-label { font-size: 12px; color: #718096; }
+    .deadline-label.overdue { color: #e53e3e; font-weight: 600; }
+
+    .done-label {
+      font-size: 12px;
+      color: #38a169;
+      font-weight: 600;
+    }
+
+    /* 코멘트 영역 */
+    .comment-area {
+      margin-top: 10px;
+      padding-left: 28px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .comment-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .comment-input:focus { border-color: #38a169; }
+
+    .btn-confirm-done {
+      background: #38a169;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* 공통 */
+    .empty-msg {
+      text-align: center;
+      color: #a0aec0;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    .card-error {
+      text-align: center;
+      color: #e53e3e;
+      font-size: 13px;
+      padding: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .main { padding: 14px; }
+      .dir-admin-footer { flex-direction: column; align-items: flex-start; }
+      .dir-progress-wrap { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div>
+    <div class="header-title">지시사항</div>
+    <div class="header-sub" id="dUserName">-</div>
+  </div>
+  <div class="header-right">
+    <a class="btn-back" id="backBtn" href="/dashboard.html">← 대시보드</a>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- 관리자 화면 -->
+  <div id="adminSection" style="display:none">
+
+    <!-- 등록 폼 -->
+    <div class="card">
+      <div class="card-title">지시사항 등록</div>
+
+      <div class="form-group">
+        <label class="form-label">대상 팀 선택</label>
+        <div class="team-checkboxes" id="targetTeamsArea">
+          <!-- JS로 채워짐 -->
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">지시사항 내용</label>
+        <textarea class="form-textarea" id="directiveContent" placeholder="지시사항 내용을 입력하세요..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">마감일 (선택)</label>
+        <input class="form-input" type="date" id="directiveDeadline">
+      </div>
+
+      <button class="btn-submit" id="submitBtn" onclick="submitDirective()">등록</button>
+    </div>
+
+    <!-- 등록된 목록 -->
+    <div class="card">
+      <div class="card-title">등록된 지시사항</div>
+      <div id="adminDirectiveList">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 기사 화면 -->
+  <div id="driverSection" style="display:none">
+    <div class="card">
+      <div class="card-title">우리 팀 지시사항</div>
+      <div id="driverDirectiveList">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/directive.js"></script>
+<script>
+  initDirective().then(() => {
+    // 관리자면 백버튼을 admin으로
+    if (directiveUser && (directiveUser.role === 'admin' || directiveUser.role === 'manager')) {
+      document.getElementById('backBtn').href = '/admin.html';
+    }
+  });
+</script>
+</body>
+</html>

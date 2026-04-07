@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>준도시락 - 관리자 대시보드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left .header-title { font-size: 18px; font-weight: 700; }
+    .header-left .header-sub { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .admin-badge {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.3);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .btn-nav {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .btn-logout {
+      background: rgba(220,38,38,0.2);
+      border: 1px solid rgba(220,38,38,0.4);
+      color: #fca5a5;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메인 */
+    .main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    /* 월 헤더 */
+    .month-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .month-label {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a4731;
+    }
+
+    .biz-days-label {
+      font-size: 14px;
+      color: #718096;
+      background: white;
+      padding: 5px 14px;
+      border-radius: 20px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    }
+
+    /* 요약 카드 3개 */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 600px) {
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+
+    .summary-card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .summary-card-title {
+      font-size: 12px;
+      color: #718096;
+      font-weight: 600;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .summary-val {
+      font-size: 24px;
+      font-weight: 700;
+      color: #1a4731;
+    }
+
+    .summary-sub {
+      font-size: 12px;
+      color: #718096;
+      margin-top: 4px;
+    }
+
+    .positive { color: #38a169 !important; }
+    .negative { color: #e53e3e !important; }
+
+    /* 경보 요약 */
+    .alert-summary-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .alert-count {
+      font-size: 20px;
+      font-weight: 700;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    .alert-count.urgent { color: #e53e3e; }
+    .alert-count.watch { color: #d69e2e; }
+    .alert-count.check { color: #e53e3e; }
+
+    .alert-label { font-size: 12px; color: #4a5568; }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 18px;
+      background: #38a169;
+      border-radius: 2px;
+    }
+
+    /* 관리자 테이블 */
+    .admin-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    .admin-table th {
+      background: #f0f4f1;
+      color: #4a5568;
+      padding: 10px 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .admin-table td {
+      padding: 11px 12px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f1;
+    }
+
+    .admin-table tbody tr:hover { background: #f7fafc; }
+
+    .grade-badge-sm {
+      color: white;
+      padding: 3px 9px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    /* 경보 목록 */
+    .alert-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .alert-urgent { background: #fff5f5; border-left: 3px solid #fc8181; }
+    .alert-watch { background: #fffff0; border-left: 3px solid #f6e05e; }
+
+    .alert-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+    }
+
+    .alert-urgent .alert-badge { background: #fed7d7; color: #c53030; }
+    .alert-watch .alert-badge { background: #fefcbf; color: #975a16; }
+
+    .alert-client { font-size: 13px; font-weight: 600; color: #2d3748; flex: 1; }
+    .alert-days-sm { font-size: 12px; color: #718096; }
+
+    /* 이행률 */
+    .progress-item {
+      margin-bottom: 14px;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+
+    .progress-team { font-size: 13px; font-weight: 600; color: #2d3748; }
+    .progress-pct { font-size: 13px; font-weight: 700; }
+
+    .progress-bar-bg {
+      background: #e2e8f0;
+      border-radius: 6px;
+      height: 10px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.8s ease;
+    }
+
+    .progress-sub { font-size: 11px; color: #a0aec0; margin-top: 3px; }
+
+    /* 빈 상태 */
+    .empty-msg {
+      text-align: center;
+      color: #a0aec0;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    .card-error {
+      text-align: center;
+      color: #e53e3e;
+      font-size: 13px;
+      padding: 16px;
+    }
+
+    /* 2열 그리드 */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .two-col { grid-template-columns: 1fr; }
+      .main { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">준도시락 관리자</div>
+    <div class="header-sub">배송기사 통합 관리 시스템</div>
+  </div>
+  <div class="header-right">
+    <span class="admin-badge" id="adminName">관리자</span>
+    <a class="btn-nav" href="/directive.html">지시사항</a>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- 월 헤더 -->
+  <div class="month-header">
+    <div class="month-label" id="monthLabel">-</div>
+    <div class="biz-days-label" id="bizDaysLabel">-</div>
+  </div>
+
+  <!-- 요약 카드 3개 -->
+  <div class="summary-grid">
+    <div class="summary-card">
+      <div class="summary-card-title">이번달 전체 누적수량</div>
+      <div id="summaryTotal">
+        <div class="summary-val">-</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">거래처 경보 현황</div>
+      <div id="summaryAlerts">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-card-title">예상 판매수당 합계</div>
+      <div id="summaryBonus">
+        <div class="summary-val">-</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 팀 순위 테이블 -->
+  <div class="card">
+    <div class="card-title">팀 순위</div>
+    <div id="adminRankingTable">
+      <div class="empty-msg">데이터 로딩 중...</div>
+    </div>
+  </div>
+
+  <!-- 2열: 경보 목록 + 이행률 -->
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">거래처 경보 목록</div>
+      <div id="adminAlertsCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">지시사항 이행률 (팀별)</div>
+      <div id="directiveProgressCard">
+        <div class="empty-msg">데이터 로딩 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 피드백 미완료 -->
+  <div class="card">
+    <div class="card-title">피드백 미답변</div>
+    <div id="feedbackPendingCard">
+      <div class="empty-msg">로딩 중...</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/admin.js"></script>
+<script>
+  initAdmin();
+</script>
+</body>
+</html>

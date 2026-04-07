@@ -1,0 +1,594 @@
+// dashboard.js - 기사 대시보드
+
+let currentUser = null;
+let myTeam = null;
+let myTeamStats = null;
+let allTeams = [];
+let allStats = {};
+
+async function initDashboard() {
+  currentUser = requireAuth(['admin', 'manager', 'leader', 'driver']);
+  if (!currentUser) return;
+
+  document.getElementById('userName').textContent = currentUser.name;
+
+  // 현재 탭 표시
+  showTab('home');
+
+  // 데이터 로드
+  await Promise.all([
+    loadTeamData(),
+    loadDirectives(),
+    loadAlerts()
+  ]);
+}
+
+// 팀 및 월간 통계 로드
+async function loadTeamData() {
+  const ym = getCurrentYearMonth();
+
+  try {
+    // 모든 팀 불러오기
+    const teamsSnap = await db.collection('teams').get();
+    allTeams = [];
+    teamsSnap.forEach(doc => {
+      allTeams.push({ id: doc.id, ...doc.data() });
+    });
+
+    // 팀 이름 헤더에 표시
+    if (currentUser.teamId) {
+      const t = allTeams.find(t => t.id === currentUser.teamId);
+      if (t) {
+        myTeam = t;
+        document.getElementById('teamName').textContent = t.name;
+      }
+    }
+
+    // 월간 통계 불러오기
+    const statsDoc = await db.collection('monthly_stats').doc(ym).get();
+    allStats = statsDoc.exists ? statsDoc.data() : {};
+
+    if (currentUser.teamId) {
+      myTeamStats = allStats[currentUser.teamId] || null;
+    }
+
+    renderIncentiveGauge();
+    renderTeamRanking();
+
+  } catch (e) {
+    console.error('팀 데이터 로드 실패:', e);
+    document.getElementById('gaugeCard').innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+  }
+}
+
+// 카드 1: 인센티브 게이지
+function renderIncentiveGauge() {
+  const container = document.getElementById('gaugeCard');
+  if (!myTeam || !myTeamStats) {
+    container.innerHTML = '<div class="empty-msg">팀 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const s = myTeamStats;
+  const t = myTeam;
+  const cumul = s.cumulativeTotal || 0;
+  const baseline = s.baselineCumulative || t.baselineDailyAvg;
+  const diff = cumul - baseline;
+  const diffStr = diff >= 0 ? `+${numFormat(diff)}` : numFormat(diff);
+  const grade = s.grade || calcGrade(cumul, t);
+  const gColor = gradeColor(grade);
+
+  // 게이지 계산 (기준선 0%, A등급 100%)
+  const rangeMin = baseline;
+  const rangeMax = t.gradeA * (baseline / t.baselineDailyAvg || 1);
+  // 누적 기반 진행도 (기준미달=0, A초과=100)
+  const gaugePct = Math.min(100, Math.max(0,
+    ((cumul - rangeMin) / (rangeMax - rangeMin + 1)) * 100
+  ));
+
+  // B까지 남은 개수
+  const toB = t.gradeB ? Math.max(0, t.gradeB - cumul) : null;
+  const toA = t.gradeA ? Math.max(0, t.gradeA - cumul) : null;
+  let remainMsg = '';
+  if (grade === 'A') {
+    remainMsg = '🏆 A등급 달성!';
+  } else if (grade === 'B') {
+    remainMsg = toA > 0 ? `A등급까지 <strong>${numFormat(toA)}개</strong> 남음` : '';
+  } else {
+    remainMsg = toB > 0 ? `B등급까지 <strong>${numFormat(toB)}개</strong> 남음` : '';
+  }
+
+  container.innerHTML = `
+    <div class="gauge-header">
+      <span class="gauge-team">${t.name}</span>
+      <span class="grade-badge" style="background:${gColor}">${grade}등급</span>
+    </div>
+    <div class="gauge-numbers">
+      <div class="gauge-num-item">
+        <div class="gauge-num-label">누적수량</div>
+        <div class="gauge-num-val">${numFormat(cumul)}</div>
+      </div>
+      <div class="gauge-num-item">
+        <div class="gauge-num-label">기준누적</div>
+        <div class="gauge-num-val">${numFormat(baseline)}</div>
+      </div>
+      <div class="gauge-num-item">
+        <div class="gauge-num-label">기준대비</div>
+        <div class="gauge-num-val ${diff >= 0 ? 'positive' : 'negative'}">${diffStr}</div>
+      </div>
+    </div>
+    <div class="gauge-bar-wrap">
+      <div class="gauge-bar-bg">
+        <div class="gauge-bar-fill" style="width:${gaugePct.toFixed(1)}%;background:${gColor}"></div>
+      </div>
+      <div class="gauge-bar-labels">
+        <span>기준</span><span>C</span><span>B</span><span>A</span>
+      </div>
+    </div>
+    <div class="gauge-remain">${remainMsg}</div>
+  `;
+}
+
+// 카드 2: 팀 순위
+function renderTeamRanking() {
+  const container = document.getElementById('rankingCard');
+  if (!allTeams.length) {
+    container.innerHTML = '<div class="empty-msg">팀 데이터가 없습니다.</div>';
+    return;
+  }
+
+  // 일평균 기준 정렬
+  const ranked = allTeams.map(t => {
+    const s = allStats[t.id] || {};
+    const bizDays = s.bizDays || 1;
+    const cumTotal = s.cumulativeTotal || 0;
+    const dailyAvg = s.dailyAvg || (bizDays > 0 ? Math.round(cumTotal / bizDays) : 0);
+    const dailyAvgDiff = s.dailyAvgDiff || 0;
+    const grade = s.grade || calcGrade(cumTotal, t);
+    const baseline = t.baselineDailyAvg || 0;
+    return { ...t, dailyAvg, dailyAvgDiff, grade, cumTotal, bizDays, baseline };
+  }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
+
+  const rows = ranked.map((t, i) => {
+    const isMe = t.id === currentUser.teamId;
+    const diffStr = t.dailyAvgDiff >= 0 ? `+${t.dailyAvgDiff}` : `${t.dailyAvgDiff}`;
+    const gColor = gradeColor(t.grade);
+    const diffColor = t.dailyAvgDiff >= 0 ? '#276749' : '#e53e3e';
+    return `
+      <tr class="${isMe ? 'my-team-row' : ''}">
+        <td class="rank-cell">${i + 1}</td>
+        <td class="name-cell">${t.name}${isMe ? ' <span class="me-tag">나</span>' : ''}</td>
+        <td class="num-cell" onclick="showCumExplain('${t.name}', ${t.cumTotal}, ${t.dailyAvg}, ${t.bizDays}, ${t.dailyAvgDiff}, ${t.baseline||0})" style="cursor:pointer;text-decoration:underline dotted;color:var(--primary);">${t.dailyAvg}</td>
+        <td class="num-cell" style="font-weight:700;color:${diffColor}">${diffStr}</td>
+        <td class="grade-cell"><span class="grade-badge-sm" style="background:${gColor}">${t.grade}</span></td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="rank-table">
+      <thead>
+        <tr>
+          <th>순위</th><th>팀명</th><th>일평균</th><th>기준대비</th><th>등급</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+// 카드 3: 거래처 경보 로드
+async function loadAlerts() {
+  const container = document.getElementById('alertsCard');
+  if (!currentUser.courseId) {
+    container.innerHTML = '<div class="empty-msg">담당 코스가 없습니다.</div>';
+    return;
+  }
+
+  try {
+    const snap = await db.collection('alerts').get();
+
+    const items = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.courseId === currentUser.courseId) items.push({ id: doc.id, ...d });
+    });
+
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-msg">현재 경보가 없습니다.</div>';
+      return;
+    }
+
+    const levelOrder = { urgent: 0, watch: 1, check: 2 };
+    items.sort((a, b) => (levelOrder[a.level] ?? 99) - (levelOrder[b.level] ?? 99));
+
+    const html = items.map(a => {
+      let levelLabel, levelClass;
+      if (a.level === 'urgent') { levelLabel = '즉시경보'; levelClass = 'alert-urgent'; }
+      else if (a.level === 'watch') { levelLabel = '주시'; levelClass = 'alert-watch'; }
+      else { levelLabel = '확인보고'; levelClass = 'alert-check'; }
+
+      const lastDate = a.lastOrderDate ? a.lastOrderDate.toDate().toLocaleDateString('ko-KR') : '-';
+      return `
+        <div class="alert-item ${levelClass}">
+          <div class="alert-left">
+            <span class="alert-badge ${levelClass}">${levelLabel}</span>
+            <span class="alert-name">${a.clientName}</span>
+            ${a.isPriority ? '<span class="priority-tag">우선</span>' : ''}
+          </div>
+          <div class="alert-right">
+            <span class="alert-days">${a.consecutiveDays}일 연속</span>
+            <span class="alert-date">${lastDate}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = html;
+
+  } catch (e) {
+    console.error('경보 데이터 로드 실패:', e);
+    container.innerHTML = '<div class="card-error">경보 데이터를 불러오지 못했습니다.</div>';
+  }
+}
+
+// 카드 4: 지시사항 로드
+async function loadDirectives() {
+  const container = document.getElementById('directivesCard');
+
+  try {
+    const now = new Date();
+    const snap = await db.collection('directives').get();
+
+    const allDirectives = [];
+    snap.forEach(doc => allDirectives.push({ id: doc.id, ...doc.data() }));
+    allDirectives.sort((a, b) => {
+      const ta = a.createdAt ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt ? b.createdAt.toMillis() : 0;
+      return tb - ta;
+    });
+
+    const items = [];
+    allDirectives.slice(0, 20).forEach(d => {
+      // 내 팀 해당 지시사항 필터
+      if (d.targetTeams && d.targetTeams.length > 0) {
+        if (!currentUser.teamId || !d.targetTeams.includes(currentUser.teamId)) return;
+      }
+      // 미완료 항목만
+      const myCompletion = d.completions && d.completions[currentUser.uid];
+      if (myCompletion && myCompletion.done) return;
+
+      items.push(d);
+    });
+
+    if (!items.length) {
+      container.innerHTML = '<div class="empty-msg">✅ 미완료 지시사항이 없습니다.</div>';
+      return;
+    }
+
+    const html = items.map(d => {
+      const dl = d.deadline ? d.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
+      const isOverdue = d.deadline && d.deadline.toDate() < now;
+      return `
+        <div class="directive-item" id="dir-${d.id}">
+          <label class="directive-check-wrap">
+            <input type="checkbox" class="directive-cb" onchange="completeDirective('${d.id}', this)">
+            <span class="directive-content">${d.content}</span>
+          </label>
+          <div class="directive-meta">
+            <span class="directive-deadline ${isOverdue ? 'overdue' : ''}">마감: ${dl}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    container.innerHTML = html;
+
+  } catch (e) {
+    console.error('지시사항 로드 실패:', e);
+    container.innerHTML = '<div class="card-error">지시사항을 불러오지 못했습니다.</div>';
+  }
+}
+
+// 지시사항 완료 처리
+async function completeDirective(directiveId, checkbox) {
+  checkbox.disabled = true;
+  try {
+    await db.collection('directives').doc(directiveId).update({
+      [`completions.${currentUser.uid}`]: {
+        done: true,
+        comment: '',
+        doneAt: firebase.firestore.FieldValue.serverTimestamp()
+      }
+    });
+    // 완료 처리 후 항목 시각적 업데이트
+    const item = document.getElementById(`dir-${directiveId}`);
+    if (item) {
+      item.style.opacity = '0.4';
+      item.style.textDecoration = 'line-through';
+      setTimeout(() => item.remove(), 800);
+    }
+  } catch (e) {
+    console.error('완료 처리 실패:', e);
+    checkbox.checked = false;
+    checkbox.disabled = false;
+    alert('완료 처리에 실패했습니다.');
+  }
+}
+
+window.showCumExplain = function(teamName, cumTotal, dailyAvg, bizDays, dailyAvgDiff, baseline) {
+  const diffStr = dailyAvgDiff >= 0 ? `+${dailyAvgDiff}` : `${dailyAvgDiff}`;
+  const diffColor = dailyAvgDiff >= 0 ? '#276749' : '#e53e3e';
+  const msg = `
+    <div style="font-size:15px;font-weight:800;margin-bottom:12px;">📊 ${teamName} 누적 현황</div>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:14px;">
+      <div>📅 이번달 영업일: <strong>${bizDays}일</strong></div>
+      <div>📦 누적 판매수량: <strong>${cumTotal.toLocaleString()}개</strong></div>
+      <div>📈 일평균 판매수량: <strong>${dailyAvg.toLocaleString()}개</strong></div>
+      <div>🎯 기준 일평균: <strong>${baseline.toLocaleString()}개</strong></div>
+      <div>📉 기준 대비: <strong style="color:${diffColor}">${diffStr}개/일</strong></div>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:#718096;border-top:1px solid #e2e8f0;padding-top:8px;">
+      일평균 = 누적수량 ÷ 영업일수<br>
+      ${cumTotal.toLocaleString()} ÷ ${bizDays}일 = ${dailyAvg.toLocaleString()}개/일
+    </div>
+  `;
+  let modal = document.getElementById('cum-explain-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cum-explain-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;';
+    modal.onclick = (e) => { if(e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:340px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      ${msg}
+      <button onclick="document.getElementById('cum-explain-modal').remove()" style="margin-top:16px;width:100%;padding:10px;background:var(--primary,#4A90D9);color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">확인</button>
+    </div>
+  `;
+};
+
+// ───────────────────────────────────────────
+// 영업 현장 기록 (field_visits)
+// ───────────────────────────────────────────
+
+let fvFiles = [];
+let fvSelectedType = '';
+
+function selectFvType(type) {
+  fvSelectedType = type;
+  document.getElementById('fv-type-new').style.background = type === 'new_sales' ? '#1a4731' : '#f7fafc';
+  document.getElementById('fv-type-new').style.color = type === 'new_sales' ? '#fff' : '#718096';
+  document.getElementById('fv-type-care').style.background = type === 'customer_care' ? '#1a4731' : '#f7fafc';
+  document.getElementById('fv-type-care').style.color = type === 'customer_care' ? '#fff' : '#718096';
+}
+
+function openFieldVisitModal() {
+  fvFiles = [];
+  fvSelectedType = '';
+  document.getElementById('fv-client').value = '';
+  document.getElementById('fv-content').value = '';
+  document.getElementById('fv-preview').innerHTML = '';
+  document.getElementById('fv-msg').textContent = '';
+  document.getElementById('fv-save-btn').disabled = false;
+  document.getElementById('fv-save-btn').textContent = '저장하기';
+  document.getElementById('fv-type-new').style.background = '#f7fafc';
+  document.getElementById('fv-type-new').style.color = '#718096';
+  document.getElementById('fv-type-care').style.background = '#f7fafc';
+  document.getElementById('fv-type-care').style.color = '#718096';
+  const modal = document.getElementById('fieldVisitModal');
+  modal.style.display = 'flex';
+}
+
+function closeFieldVisitModal() {
+  document.getElementById('fieldVisitModal').style.display = 'none';
+}
+
+function onFvFileChange(input) {
+  Array.from(input.files).forEach(file => {
+    if (fvFiles.length >= 5) return;
+    fvFiles.push(file);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.createElement('img');
+      img.src = e.target.result;
+      img.style.cssText = 'width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;';
+      document.getElementById('fv-preview').appendChild(img);
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+async function checkNewSalesMatch(clientName) {
+  const CSV_URL = 'https://docs.google.com/spreadsheets/d/1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM/export?format=csv&gid=1000247276';
+  try {
+    const res = await fetch(CSV_URL);
+    const text = await res.text();
+    const rows = text.split('\n').map(r => r.split(','));
+    const normalized = clientName.replace(/\s/g, '');
+    return rows.some(row => row[1] && row[1].replace(/\s/g, '').replace(/"/g, '') === normalized);
+  } catch (e) {
+    console.warn('신규영업 시트 조회 실패:', e);
+    return false;
+  }
+}
+
+function fvTypeBadge(v) {
+  if (v.visitType === 'new_sales') {
+    return v.isNewSalesConfirmed
+      ? `<span style="font-size:10px;background:#3182ce;color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;">신규✓</span>`
+      : `<span style="font-size:10px;background:#63b3ed;color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;">신규</span>`;
+  }
+  if (v.visitType === 'customer_care') {
+    return `<span style="font-size:10px;background:#38a169;color:#fff;padding:1px 6px;border-radius:10px;font-weight:700;">관리</span>`;
+  }
+  return '';
+}
+
+async function saveFieldVisit() {
+  const clientName = document.getElementById('fv-client').value.trim();
+  const content = document.getElementById('fv-content').value.trim();
+  const msg = document.getElementById('fv-msg');
+  const btn = document.getElementById('fv-save-btn');
+
+  if (!fvSelectedType) { msg.style.color = '#e53e3e'; msg.textContent = '방문 유형을 선택해주세요.'; return; }
+  if (!clientName) { msg.style.color = '#e53e3e'; msg.textContent = '거래처명을 입력하세요.'; return; }
+  if (!content) { msg.style.color = '#e53e3e'; msg.textContent = '방문 내용을 입력하세요.'; return; }
+
+  btn.disabled = true;
+  btn.textContent = '저장 중...';
+  msg.style.color = '#718096';
+  msg.textContent = '';
+
+  try {
+    const ym = getCurrentYearMonth();
+    const photoUrls = [];
+
+    for (const file of fvFiles) {
+      const ts = Date.now();
+      const ref = storage.ref(`field_visits/${ym}/${currentUser.uid}/${ts}_${file.name}`);
+      await ref.put(file);
+      const url = await ref.getDownloadURL();
+      photoUrls.push(url);
+    }
+
+    let isNewSalesConfirmed = false;
+    if (fvSelectedType === 'new_sales') {
+      msg.textContent = '신규업체 목록 확인 중...';
+      isNewSalesConfirmed = await checkNewSalesMatch(clientName);
+    }
+
+    await db.collection('field_visits').add({
+      driverId: currentUser.uid,
+      driverName: currentUser.name,
+      teamId: currentUser.teamId || '',
+      teamName: myTeam ? myTeam.name : '',
+      clientName,
+      content,
+      photoUrls,
+      visitType: fvSelectedType,
+      isNewSalesConfirmed,
+      yearMonth: ym,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    if (fvSelectedType === 'new_sales') {
+      msg.style.color = isNewSalesConfirmed ? '#276749' : '#e53e3e';
+      msg.textContent = isNewSalesConfirmed ? '✅ 저장 완료! 신규영업 인정' : '✅ 저장 완료! ⚠️ 신규업체 목록 미등록';
+    } else {
+      msg.style.color = '#276749';
+      msg.textContent = '✅ 저장 완료!';
+    }
+    setTimeout(() => {
+      closeFieldVisitModal();
+      loadFieldVisits();
+    }, 1400);
+  } catch (e) {
+    console.error('현장기록 저장 실패:', e);
+    msg.style.color = '#e53e3e';
+    msg.textContent = '❌ 저장 실패: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '저장하기';
+  }
+}
+
+async function loadFieldVisits() {
+  const container = document.getElementById('fieldVisitList');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+
+  try {
+    const teamId = currentUser.teamId || '';
+    const snap = await db.collection('field_visits')
+      .where('teamId', '==', teamId)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+
+    if (snap.empty) {
+      container.innerHTML = '<div class="empty-msg">아직 기록이 없습니다.</div>';
+      return;
+    }
+
+    const items = [];
+    snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+
+    container.innerHTML = items.map(v => {
+      const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '-';
+      const isMe = v.driverId === currentUser.uid;
+      const preview = v.content.length > 40 ? v.content.slice(0, 40) + '…' : v.content;
+      const badge = fvTypeBadge(v);
+      const thumb = v.photoUrls && v.photoUrls.length > 0
+        ? `<img src="${v.photoUrls[0]}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" onclick="showFieldVisitDetail(${JSON.stringify(v).replace(/"/g, '&quot;')})">`
+        : '';
+      return `
+        <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="showFieldVisitDetail(${JSON.stringify(v).replace(/"/g, '&quot;')})">
+          ${thumb}
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap;">
+              <span style="font-size:12px;color:#718096;">${dt}</span>
+              <span style="font-size:12px;font-weight:700;color:${isMe ? '#1a4731' : '#4a5568'}">${v.driverName}${isMe ? ' (나)' : ''}</span>
+              <span style="font-size:11px;background:#f0fff4;color:#276749;padding:1px 6px;border-radius:10px;">${v.clientName}</span>
+              ${badge}
+            </div>
+            <div style="font-size:13px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${preview}</div>
+            ${v.photoUrls && v.photoUrls.length > 0 ? `<div style="font-size:11px;color:#a0aec0;margin-top:2px;">📷 ${v.photoUrls.length}장</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('현장기록 로드 실패:', e);
+    container.innerHTML = '<div class="card-error">로드 실패: ' + e.message + '</div>';
+  }
+}
+
+window.showFieldVisitDetail = function(v) {
+  if (typeof v === 'string') v = JSON.parse(v);
+  const dt = v.createdAt && v.createdAt.toDate
+    ? v.createdAt.toDate().toLocaleString('ko-KR')
+    : '-';
+  const photos = (v.photoUrls || []).map(url =>
+    `<img src="${url}" style="width:100%;border-radius:10px;margin-bottom:8px;">`
+  ).join('');
+  const badge = fvTypeBadge(v);
+
+  let modal = document.getElementById('fv-detail-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'fv-detail-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:380px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="font-size:15px;font-weight:800;">&#128247; 현장 기록</div>
+        <button onclick="document.getElementById('fv-detail-modal').remove()" style="background:none;border:none;font-size:20px;color:#718096;cursor:pointer;">✕</button>
+      </div>
+      <div style="font-size:12px;color:#718096;margin-bottom:4px;">${dt}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
+        <span style="font-size:13px;font-weight:700;color:#1a4731;">${v.driverName} · ${v.teamName || ''}</span>
+        ${badge}
+      </div>
+      <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.clientName}</div>
+      <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content}</div>
+      ${photos}
+      <button onclick="document.getElementById('fv-detail-modal').remove()" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">닫기</button>
+    </div>`;
+};
+
+// 탭 전환
+function showTab(tabName) {
+  // 탭 버튼 활성화
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabName);
+  });
+
+  // 섹션 표시/숨김
+  document.querySelectorAll('.tab-section').forEach(sec => {
+    sec.style.display = sec.dataset.tab === tabName ? 'block' : 'none';
+  });
+}

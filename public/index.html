@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>준도시락 배송관리 - 로그인</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 60%, #38a169 100%);
+      color: white;
+      padding: 48px 24px 64px;
+      text-align: center;
+      position: relative;
+    }
+
+    .header-logo {
+      font-size: 13px;
+      letter-spacing: 2px;
+      opacity: 0.8;
+      margin-bottom: 8px;
+    }
+
+    .header-title {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .header-subtitle {
+      font-size: 13px;
+      opacity: 0.75;
+      margin-top: 6px;
+    }
+
+    .header-wave {
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 32px;
+      background: #f0f4f0;
+      clip-path: ellipse(55% 100% at 50% 100%);
+    }
+
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px 40px;
+      margin-top: -16px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px 24px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 4px 24px rgba(26,71,49,0.10);
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4a5568;
+      margin-bottom: 6px;
+    }
+
+    .form-select,
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      background: #f7fafc;
+      color: #2d3748;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    .form-select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231a4731' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 36px;
+    }
+
+    .form-select:focus,
+    .form-input:focus {
+      border-color: #38a169;
+      box-shadow: 0 0 0 3px rgba(56,161,105,0.15);
+      background: white;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #1a4731, #38a169);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      margin-top: 8px;
+      letter-spacing: 1px;
+    }
+
+    .btn-login:hover { opacity: 0.92; }
+    .btn-login:active { transform: scale(0.98); }
+    .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .error-msg {
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      color: #c53030;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      margin-top: 14px;
+      display: none;
+    }
+
+    .error-msg.show { display: block; }
+
+    .loading-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,71,49,0.18);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .loading-overlay.show { display: flex; }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 4px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .footer-note {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 12px;
+      color: #a0aec0;
+    }
+  </style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+</div>
+
+<div class="header">
+  <div class="header-logo">JUNDOSIRAK DELIVERY</div>
+  <div class="header-title">준도시락 배송관리</div>
+  <div class="header-subtitle">배송기사 통합 관리 시스템</div>
+  <div class="header-wave"></div>
+</div>
+
+<div class="content">
+  <div class="card">
+    <div class="card-title">로그인</div>
+
+    <div class="form-group">
+      <label class="form-label" for="nameSelect">이름 선택</label>
+      <select class="form-select" id="nameSelect">
+        <option value="">-- 이름을 선택하세요 --</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="passwordInput">비밀번호</label>
+      <input class="form-input" type="password" id="passwordInput" placeholder="비밀번호를 입력하세요" autocomplete="current-password">
+    </div>
+
+    <button class="btn-login" id="loginBtn" onclick="doLogin()">로그인</button>
+
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="footer-note">준도시락 배송관리 시스템 v1.0</div>
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script>
+  // 이미 로그인되어 있으면 리다이렉트
+  redirectIfLoggedIn();
+
+  // 사용자 목록 불러오기
+  async function loadUsers() {
+    const select = document.getElementById('nameSelect');
+    try {
+      const snap = await db.collection('users').get();
+
+      // 클라이언트에서 필터 + 이름순 정렬
+      const users = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        if (d.active !== false) users.push({ id: doc.id, ...d });
+      });
+      users.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+
+      users.forEach(data => {
+        const opt = document.createElement('option');
+        opt.value = data.id;
+        opt.textContent = data.name;
+        opt.dataset.role = data.role;
+        opt.dataset.teamId = data.teamId || '';
+        opt.dataset.courseId = data.courseId || '';
+        opt.dataset.email = data.email || '';
+        select.appendChild(opt);
+      });
+    } catch (e) {
+      showError('사용자 목록을 불러오지 못했습니다: ' + e.message);
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+
+  function hideError() {
+    document.getElementById('errorMsg').classList.remove('show');
+  }
+
+  function setLoading(on) {
+    document.getElementById('loadingOverlay').classList.toggle('show', on);
+    document.getElementById('loginBtn').disabled = on;
+  }
+
+  async function doLogin() {
+    hideError();
+    const select = document.getElementById('nameSelect');
+    const uid = select.value;
+    const pw = document.getElementById('passwordInput').value;
+
+    if (!uid) {
+      showError('이름을 선택해주세요.');
+      return;
+    }
+    if (!pw) {
+      showError('비밀번호를 입력해주세요.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Firestore에서 해당 사용자 문서 가져오기
+      const userDoc = await db.collection('users').doc(uid).get();
+      if (!userDoc.exists) {
+        showError('사용자 정보를 찾을 수 없습니다.');
+        setLoading(false);
+        return;
+      }
+
+      const userData = userDoc.data();
+
+      // Firestore 비밀번호 직접 비교
+      if (!userData.password || userData.password !== pw) {
+        showError('비밀번호가 올바르지 않습니다.');
+        setLoading(false);
+        return;
+      }
+
+      // 사용자 정보 로컬 저장
+      const userInfo = {
+        uid: uid,
+        docId: uid,
+        name: userData.name,
+        role: userData.role,
+        teamId: userData.teamId || null,
+        courseId: userData.courseId || null,
+        shiftType: userData.shiftType || null
+      };
+      saveUser(userInfo);
+
+      // 역할에 따른 리다이렉트
+      window.location.href = getRoleRedirect(userData.role);
+
+    } catch (e) {
+      showError('로그인에 실패했습니다: ' + e.message);
+      setLoading(false);
+    }
+  }
+
+  // 엔터키 로그인
+  document.getElementById('passwordInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  loadUsers();
+</script>
+</body>
+</html>

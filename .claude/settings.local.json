@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx firebase:*)",
+      "Bash(grep -n \"card-title\\\\|</div>$\\\\|card>\" \"C:\\\\Users\\\\E411\\\\OneDrive\\\\바탕 화면\\\\웹페이지\\\\jundosirak-delivery\\\\public\\\\admin.html\")"
+    ]
+  }
+}

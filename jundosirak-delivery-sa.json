@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "jundosirak-delivery",
+  "private_key_id": "9079e78c8f2dc4475d0290677ffecfee22fd90f6",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDoAEAL/Y4wA/7j\nxa1k1b14cQHLyZOi7imeE81f3z+KEQyv171+0/1Idnr7VPPTmhe3VboYDTvityP1\nwwASHFUHI/qdt5ovWmEvqGx8hZVUR5Pe//Jzs4eIf3vBl2KDGznmc2Sg/gLeJYmm\n5vk+Lg+GxIPh0xbPiboaFs5lW2GK/twjcID/ooz+EOy5Y+uRcG0c9lC7BZx+wJuv\n1mSZNWVWZUMHtlu2klByFdU+jgTeElZ1inihrZSDV9AKpizLg02UD7wH3BQ46Hxk\nAGJEil+OgteAXuZWwJM5UmJgxurctyVCngvbgrQcm5DmSQXfgadri0RosjZ2a09n\nCnKhN51vAgMBAAECggEAb+gO/LmlaEvFGyEy7jybVAlOkHn/GMxAjtuGaQRKpdJr\niDZMVWzz84wS7kCgDCV74xca2Jcpl8Y3NkiFNDcuXG9iZ8k0OjsiPdbD3Zyh1zFf\nhmV3EZA7g//aNhtLjWoIl7x5gZ6Ey5rXtwYam3+kRaFs6/TiP+FzPzpY/FMDzgMO\nFwfk1QDgbZeXRlLAsTb3CAHkcsdwTEC3KPgKJgT6DgFdm0NyQreT+GOBaNcGUjNi\nZKs3bRLTul119b1B6x0PXDA4jrnVxIV2KzDkmJKsP7CQXV7vjbiGk3+qIoxIXdNX\nIHqn2ray35X02CGfinyH15+rX7SF3T1sXadDfu1yQQKBgQD1seUc3/ToScO3+77Y\nA3cP/g42liUPGQGztDo18K6LkfmJnYfHkwcq9MNu2Pe3+1v7/tvI9UPeMUmagWyC\nX10EApaQ8f4yFdAEimuyzskzranZ9fwqgjUiCV3PCQCo12STt++1FL1hnIaVgqrj\n6hVFd0O2XPzeqNlwlyOesast1wKBgQDxu1GzYa5P4UuDuzLuqNSYkdxv4duBrHu6\ndRbkqBSRgdu92PToPs2oz2CCOCs/wbC2VDxfE/RQd9DaxyqjY+XORXNtwhywXNut\ndGS2o6k5+4ASYsZmFM+w9+4dvT3LxSej8TjZBEOTjxK2BPIxzEBoI9YGvwkZE4s/\nzbOz6fgqKQKBgQCYIeMAEhyPiL1LuvHcx6h9mo4qdqXTx2QqZbp1k+ZAPc8JyyU8\nCmoxywUIKgiZP2chjhmBQX0Yo+Qza1hJEcuCpCee8Hi5gpAff6ZYPXqQKUQ21f2i\nRKWpwar4e1aRNW3tmcMvmPv66PTctuAh59vr+4FN9h4NsPeSo8NGjDS2WQKBgB9t\nAsoXQNoRqAeQJqbwO/M5wzaoXikVi2BKKJfBYisofrDHq88lmwb/LsS/GKBJRffu\nK4sQxQpRCU3n5psnOZD/Zmo2ehRTfhumrhEwZaesEpJRVQmgWv/eu44SNB5xmx2t\nFn7gFwjv6LbRHctrilP/lKt72mrwJ4I788jH+gNBAoGAGexh0PaRrEoVRfqnZMz2\nn11mnhMVzhvbX9gZBQvM5W22/aAgBSfaoDmCWHXVPAGxFanztEjufAU8knH+khY4\nuSyjIYRZQvR+GYgCmDzik5PM0a69b83+1nrJMisT4clBPaAaZUE19GdS+i0RWBy8\nueW0FnkMvC7aCqLHRVTPbqY=\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@jundosirak-delivery.iam.gserviceaccount.com",
+  "client_id": "102449576233202504809",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40jundosirak-delivery.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
