@@ -109,7 +109,7 @@ const crypto = require('crypto');
 
 const SOLAPI_KEY = 'NCSJP3I9QX02TKZO';
 const SOLAPI_SECRET = 'JSBXRDGAFLL0DLTNAOP2EAEERH90FRMS';
-const SOLAPI_FROM = '01049066196';
+const SOLAPI_FROM = '0517154600';
 
 function getSolapiAuth() {
   const date = new Date().toISOString();
@@ -119,6 +119,108 @@ function getSolapiAuth() {
   const signature = hmac.digest('hex');
   return `HMAC-SHA256 apiKey=${SOLAPI_KEY}, date=${date}, salt=${salt}, signature=${signature}`;
 }
+
+// ── 경보 생성 시 팀장 자동 문자 발송 ──────────────────────────
+exports.onAlertCreated = functions
+  .region('us-central1')
+  .firestore.document('alerts/{alertId}')
+  .onCreate(async (snap, context) => {
+    const alert = snap.data();
+    const { clientName, courseId, level, consecutiveDays, teamId } = alert;
+
+    // 주시(watch) 이상만 문자 발송
+    if (!level || level === 'check') return null;
+
+    const levelLabel = level === 'urgent' ? '🚨 즉시경보' : '⚠️ 주시경보';
+
+    try {
+      // 해당 팀의 팀장 조회
+      let leaderPhone = null;
+      let leaderName = null;
+
+      // teamId로 팀장 찾기
+      const targetTeamId = teamId || (courseId && COURSE_TEAM_MAP[courseId] ? COURSE_TEAM_MAP[courseId].teamId : null);
+
+      if (targetTeamId) {
+        const usersSnap = await db.collection('users')
+          .where('teamId', '==', targetTeamId)
+          .where('role', '==', 'leader')
+          .where('active', '==', true)
+          .get();
+
+        if (!usersSnap.empty) {
+          const leader = usersSnap.docs[0].data();
+          leaderPhone = leader.phone || null;
+          leaderName = leader.name || '팀장';
+        }
+      }
+
+      if (!leaderPhone) {
+        console.log(`경보 발생(${clientName}) - 팀장 전화번호 없음, 문자 미발송`);
+        return null;
+      }
+
+      const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${clientName}\n${consecutiveDays ? consecutiveDays+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+
+      const https = require('https');
+      const body = JSON.stringify({
+        message: {
+          to: leaderPhone.replace(/-/g, ''),
+          from: SOLAPI_FROM,
+          text
+        }
+      });
+
+      await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'api.solapi.com',
+          path: '/messages/v4/send',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': getSolapiAuth(),
+            'Content-Length': Buffer.byteLength(body)
+          }
+        };
+        const r = require('https').request(options, res => {
+          let data = '';
+          res.on('data', d => data += d);
+          res.on('end', () => {
+            console.log(`경보 문자 발송(${leaderName}): ${data}`);
+            resolve();
+          });
+        });
+        r.on('error', reject);
+        r.write(body);
+        r.end();
+      });
+
+      // 문자 발송 이력 저장
+      await db.collection('sms_logs').add({
+        type: 'alert_auto',
+        alertId: context.params.alertId,
+        clientName,
+        level,
+        targets: [leaderName],
+        text,
+        sent: 1,
+        failed: 0,
+        sentAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // alert 문서에 문자발송 기록
+      await snap.ref.update({
+        smsSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        smsSentTo: leaderName
+      });
+
+      console.log(`경보 자동문자 발송 완료: ${clientName} → ${leaderName}(${leaderPhone})`);
+
+    } catch (e) {
+      console.error('경보 자동문자 발송 실패:', e);
+    }
+    return null;
+  });
 
 exports.sendSms = functions
   .region('us-central1')

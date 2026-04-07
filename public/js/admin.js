@@ -196,7 +196,9 @@ async function loadAdminAlerts() {
     container.innerHTML = items.slice(0,10).map(a => {
       const levelLabel = a.level==='urgent'?'즉시경보':a.level==='watch'?'주시':'확인보고';
       const levelClass = a.level==='watch'?'alert-watch':'alert-urgent';
-      return `<div class="alert-row ${levelClass}"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span><span class="alert-days-sm">${a.consecutiveDays}일</span></div>`;
+      const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
+      const smsBtn = `<button onclick="sendAlertSms('${a.id}','${a.clientName}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
+      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span><span class="alert-days-sm">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
     }).join('');
   } catch(e) {
     console.error('경보 로드 실패:', e);
@@ -755,4 +757,51 @@ window.showAdminFvDetail = function(v) {
       ${photos}
       <button onclick="document.getElementById('admin-fv-detail-modal').remove()" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">닫기</button>
     </div>`;
+};
+
+// ── 경보 팀장 문자 수동 발송 ──────────────────────────────────
+window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
+  const levelLabel = level === 'urgent' ? '🚨 즉시경보' : level === 'watch' ? '⚠️ 주시경보' : '확인보고';
+  const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${clientName}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+
+  if (!confirm(`팀장에게 경보 문자를 발송하시겠습니까?\n\n[메시지]\n${text}`)) return;
+
+  try {
+    let targets = [];
+    if (teamId) {
+      const snap = await db.collection('users')
+        .where('teamId', '==', teamId)
+        .where('role', '==', 'leader')
+        .get();
+      snap.forEach(doc => {
+        const u = doc.data();
+        if (u.phone && u.active !== false) targets.push({ name: u.name, phone: u.phone });
+      });
+    }
+
+    if (!targets.length) {
+      alert('해당 팀 팀장의 전화번호가 등록되어 있지 않습니다.');
+      return;
+    }
+
+    const res = await fetch('https://us-central1-jundosirak-delivery.cloudfunctions.net/sendSms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targets, text })
+    });
+    const data = await res.json();
+
+    if (data.ok && data.sent > 0) {
+      await db.collection('alerts').doc(alertId).update({
+        smsSentAt: firebase.firestore.FieldValue.serverTimestamp(),
+        smsSentTo: targets.map(t => t.name).join(', ')
+      });
+      alert('✅ ' + targets.map(t=>t.name).join(', ') + '에게 문자 발송 완료!');
+      loadAdminAlerts();
+    } else {
+      alert('❌ 문자 발송 실패: ' + (data.error || '알 수 없는 오류'));
+    }
+  } catch (e) {
+    alert('❌ 오류: ' + e.message);
+  }
 };
