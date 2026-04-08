@@ -149,26 +149,18 @@ let _users = [], _claims = [], _monthly = {}, _clients = [], _alerts = [], _dire
 let _curYM = '', _curWeek = '', _curTeam = '';
 
 // ── 초기화 ──────────────────────────────────────
-// Firebase Auth 세션 복원 대기 (최대 5초)
-let _authResolved = false;
-const _authTimeout = setTimeout(() => {
-  if (!_authResolved) {
-    document.getElementById('mainContent').innerHTML =
-      '<div style="color:#e53e3e;padding:30px;text-align:center;">로그인 세션이 만료되었습니다.<br><br><a href="/index.html" style="color:#2b6cb0;">다시 로그인</a></div>';
-  }
-}, 5000);
-
+// Auth 상태 확인 후 로딩 (세션 없으면 로그인 페이지로)
 auth.onAuthStateChanged(async user => {
-  _authResolved = true;
-  clearTimeout(_authTimeout);
-  if (!user) { location.href = '/index.html'; return; }
+  if (!user) {
+    location.href = '/index.html';
+    return;
+  }
   try {
-    const doc = await db.collection('users').doc(user.uid).get();
-    if (!doc.exists || doc.data().role !== 'admin') { location.href = '/dashboard.html'; return; }
     initFilters();
     await loadAll();
   } catch(e) {
-    document.getElementById('mainContent').innerHTML = `<div style="color:#e53e3e;padding:20px;text-align:center;">로딩 오류: ${e.message}<br><br><a href="/index.html" style="color:#2b6cb0;">다시 로그인</a></div>`;
+    document.getElementById('mainContent').innerHTML =
+      `<div style="color:#e53e3e;padding:20px;text-align:center;">로딩 오류: ${e.message}<br><br><a href="/index.html" style="color:#2b6cb0;">다시 로그인</a></div>`;
   }
 });
 
@@ -190,6 +182,10 @@ async function loadAll() {
   _curYM   = document.getElementById('filterMonth').value;
   _curWeek = document.getElementById('filterWeek').value;
   _curTeam = document.getElementById('filterTeam').value;
+
+  // filterMonth가 비어있으면 initFilters 재실행
+  if (!_curYM) { initFilters(); _curYM = document.getElementById('filterMonth').value; }
+  if (!_curYM) return;
 
   document.getElementById('mainContent').innerHTML = '<div class="loading">데이터 로딩 중...</div>';
 
