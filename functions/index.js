@@ -51,6 +51,102 @@ const SOLAPI_KEY    = 'NCSUMH158EDTPETL';
 const SOLAPI_SECRET = 'OHER7WUU4VYIIN2XP6W8B5CAFOYSV3GH';
 const SOLAPI_FROM   = '01024763473'; // 010-2476-3473
 
+// ── 날씨 가져오기 (부산) ──
+async function getBusanWeather() {
+  return new Promise((resolve) => {
+    https.get('https://api.open-meteo.com/v1/forecast?latitude=35.1796&longitude=129.0756&current=temperature_2m,weather_code&timezone=Asia/Seoul', (res) => {
+      let data = '';
+      res.on('data', d => data += d);
+      res.on('end', () => {
+        try {
+          const j = JSON.parse(data);
+          const temp = Math.round(j.current.temperature_2m);
+          const code = j.current.weather_code;
+          resolve({ temp, code });
+        } catch(e) {
+          resolve({ temp: null, code: null });
+        }
+      });
+    }).on('error', () => resolve({ temp: null, code: null }));
+  });
+}
+
+// 날씨 코드 → 상태 텍스트
+function weatherText(code) {
+  if (code === null) return '맑음';
+  if (code <= 1) return '맑음';
+  if (code <= 3) return '흐림';
+  if (code <= 67) return '비';
+  if (code <= 77) return '눈';
+  return '흐림';
+}
+
+// 날씨별 이모지
+function weatherEmoji(code, temp) {
+  if (code === null) return '🌤️';
+  if (code <= 1) return temp >= 15 ? '🌤️' : '☀️';
+  if (code <= 3) return '☁️';
+  if (code <= 67) return '🌧️';
+  if (code <= 77) return '❄️';
+  return '☁️';
+}
+
+// 날씨 + 기온 기반 인사말 (15가지)
+function getWeatherGreeting(driverName, weather) {
+  const { temp, code } = weather;
+  const tempVal = temp !== null ? temp : 15;
+  const w = weatherText(code);
+  const emoji = weatherEmoji(code, tempVal);
+  
+  const greetings = [];
+  
+  // 맑음 + 따뜻 (15℃↑)
+  if (w === '맑음' && tempVal >= 15) {
+    greetings.push(`${emoji} ${driverName} 기사님, 좋은 아침입니다! 오늘 부산 화창해요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 안녕하세요! 날씨 정말 좋네요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 활기찬 하루 시작하세요! 오늘 부산 맑음, ${tempVal}℃`);
+  }
+  // 맑음 + 쌀쌀 (10℃↓)
+  else if (w === '맑음' && tempVal < 10) {
+    greetings.push(`${emoji} ${driverName} 기사님, 좋은 아침입니다! 오늘 부산 맑지만 쌀쌀해요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 안녕하세요! 날씨 맑지만 옷 따뜻하게 입으세요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 건강한 하루 되세요! 오늘 부산 맑음, ${tempVal}℃ 쌀쌀`);
+  }
+  // 맑음 + 중간 (10~15℃)
+  else if (w === '맑음') {
+    greetings.push(`${emoji} ${driverName} 기사님, 좋은 아침입니다! 오늘 부산 맑음, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 즐거운 하루 보내세요! 날씨 맑아요, ${tempVal}℃`);
+  }
+  // 흐림
+  else if (w === '흐림') {
+    greetings.push(`${emoji} ${driverName} 기사님, 좋은 아침입니다! 오늘 부산 흐림, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 안녕하세요! 날씨 흐리지만 힘내세요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 오늘도 파이팅입니다! 부산 흐림, ${tempVal}℃`);
+  }
+  // 비
+  else if (w === '비') {
+    greetings.push(`${emoji} ${driverName} 기사님, 안전운전하세요! 오늘 부산 비 예보, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 조심히 다녀오세요! 빗길 운전 주의하세요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 건강 챙기세요! 오늘 부산 비, ${tempVal}℃`);
+  }
+  // 눈
+  else if (w === '눈') {
+    greetings.push(`${emoji} ${driverName} 기사님, 조심히 다녀오세요! 오늘 부산 눈 예보, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 안전운전하세요! 눈길 미끄러워요, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 천천히 운전하세요! 부산 눈, ${tempVal}℃`);
+  }
+  
+  // 기본값
+  if (greetings.length === 0) {
+    greetings.push(`${emoji} ${driverName} 기사님, 좋은 아침입니다! 오늘 부산 ${w}, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 안녕하세요! 오늘 부산 ${w}, ${tempVal}℃`);
+    greetings.push(`${emoji} ${driverName} 기사님, 힘차게 시작하세요! 부산 ${w}, ${tempVal}℃`);
+  }
+  
+  // 랜덤 선택
+  return greetings[Math.floor(Math.random() * greetings.length)];
+}
+
 function getSolapiAuth() {
   const date = new Date().toISOString();
   const salt = crypto.randomBytes(16).toString('hex');
@@ -205,6 +301,10 @@ exports.scheduledSmsAtDawn = functions
   .onRun(async () => {
     console.log('=== 새벽 자동문자 스케줄러 시작 ===');
 
+    // 부산 날씨 가져오기
+    const weather = await getBusanWeather();
+    console.log(`부산 날씨: ${weatherText(weather.code)} ${weather.temp}℃`);
+
     // KST 기준 "어제" 날짜 (이 함수가 UTC 19:30에 실행 = KST 04:30)
     const now = new Date();
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -282,7 +382,11 @@ exports.scheduledSmsAtDawn = functions
 
         const templates = type === 'new_client' ? NEW_CLIENT_TEMPLATES : PRIORITY_CLIENT_TEMPLATES;
         const templateIdx = await pickTemplate(templates, driverName, clientName, type);
-        const text = templates[templateIdx](vars);
+        let text = templates[templateIdx](vars);
+        
+        // 문자 앞에 날씨 인사말 추가
+        const greeting = getWeatherGreeting(driverName, weather);
+        text = greeting + '\n\n' + text.replace(`[준도시락] ${driverName} 기사님, `, '').replace(/^(안녕하세요|좋은 아침입니다|새벽부터 수고 많으십니다|오늘 특별한 배송이 있어요|새벽 출근 고생하십니다|반가운 소식 전해드려요|오늘도 힘내세요|새벽 출근 감사합니다|오늘 기분 좋은 소식|Good morning) [🌅🙏☀️⭐🚚📣💙🌄🎉!]*\n/, '');
 
         const result = await sendOneSms(driverInfo.phone, text);
 
