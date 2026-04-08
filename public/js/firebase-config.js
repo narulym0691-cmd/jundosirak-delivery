@@ -8,12 +8,16 @@ const firebaseConfig = {
   appId: "1:570663336725:web:16f1a6662196d6ce7c071c"
 };
 
-// Firebase 초기화
-firebase.initializeApp(firebaseConfig);
+// Firebase 초기화 (중복 방지)
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.storage();
+const storage = firebase.apps.length && firebase.app().name ? (() => {
+  try { return firebase.storage(); } catch(e) { return null; }
+})() : null;
 
 // 현재 년월 (YYYY-MM 형식)
 function getCurrentYearMonth() {

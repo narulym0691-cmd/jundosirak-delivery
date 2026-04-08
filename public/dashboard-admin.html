@@ -9,6 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; background:#f0f4f0; min-height:100vh; }
@@ -132,9 +133,8 @@ body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; 
   <div class="loading">데이터 로딩 중...</div>
 </div>
 
-<script src="/js/firebase-config.js"></script>
 <script>
-// db, auth는 firebase-config.js에서 이미 선언됨 — 재선언 없이 바로 사용
+// db, auth는 head의 firebase-config.js에서 이미 선언됨
 
 // 팀 정보
 const TEAM_NAMES = {
