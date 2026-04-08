@@ -680,6 +680,28 @@
   </div>
 </div>
 
+<!-- CS 미완료 클레임 모달 -->
+<div id="claimCsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">🚨 CS 미완료 클레임</div>
+      <button onclick="closeClaimCsModal()" style="background:none;border:none;font-size:24px;color:#718096;cursor:pointer;">✕</button>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-bottom:16px;">
+      <select id="claimCsType" onchange="loadClaimCs()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        <option value="all">전체</option>
+        <option value="상함">상함</option>
+        <option value="이물">이물</option>
+      </select>
+    </div>
+    
+    <div id="claimCsSummary" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;"></div>
+    
+    <div id="claimCsTable" style="overflow-x:auto;"></div>
+  </div>
+</div>
+
 <!-- 영업현장 통계 모달 -->
 <div id="fieldVisitStatsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
   <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
@@ -2095,6 +2117,10 @@ async function sendSms() {
     <span>📸</span> 영업현장 통계
   </button>
   <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showClaimCsModal();">
+    <span>🚨</span> CS 미완료 클레임
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showEvalModal();">
     <span>📋</span> 정성평가
   </button>
@@ -2280,6 +2306,101 @@ function downloadFieldVisitExcel() {
   XLSX.utils.book_append_sheet(wb, ws, '기사별집계');
   
   XLSX.writeFile(wb, `준도시락_영업현장통계_${ym}.xlsx`);
+}
+
+// ── CS 미완료 클레임 ──
+let _claimCsData = [];
+
+function showClaimCsModal() {
+  document.getElementById('claimCsModal').style.display = 'block';
+  loadClaimCs();
+}
+
+function closeClaimCsModal() {
+  document.getElementById('claimCsModal').style.display = 'none';
+}
+
+async function loadClaimCs() {
+  const type = document.getElementById('claimCsType').value;
+  
+  try {
+    let query = db.collection('claims')
+      .where('csCompleted','==',false);
+    
+    if (type !== 'all') {
+      query = query.where('type','==',type);
+    }
+    
+    const snap = await query.get();
+    
+    const data = [];
+    snap.forEach(d => data.push({ id: d.id, ...d.data() }));
+    
+    // 상함/이물만 필터 (오배송/지연 제외)
+    _claimCsData = data.filter(c => c.type === '상함' || c.type === '이물');
+    
+    // 요약
+    const total = _claimCsData.length;
+    const sangham = _claimCsData.filter(c => c.type === '상함').length;
+    const imul = _claimCsData.filter(c => c.type === '이물').length;
+    
+    document.getElementById('claimCsSummary').innerHTML = [
+      ['전체', total+'건', '#e53e3e', '#fff5f5'],
+      ['상함', sangham+'건', '#dd6b20', '#fffaf0']
+    ].map(([label,val,color,bg]) => `
+      <div style="background:${bg};border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:11px;color:#718096;">${label}</div>
+        <div style="font-size:20px;font-weight:800;color:${color};">${val}</div>
+      </div>`).join('');
+    
+    // 테이블
+    document.getElementById('claimCsTable').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#fff5f5;border-bottom:2px solid #feb2b2;">
+            <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">날짜</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">유형</th>
+            <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">거래처</th>
+            <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">내용</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">문자발송</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">작성완료</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_claimCsData.map(c => `
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:10px;font-size:12px;">${c.date}</td>
+              <td style="padding:10px;text-align:center;font-weight:700;color:${c.type==='상함'?'#dd6b20':'#e53e3e'};">${c.type}</td>
+              <td style="padding:10px;">${c.clientName||'-'}</td>
+              <td style="padding:10px;font-size:12px;color:#718096;">${(c.content||'').slice(0,30)}${(c.content||'').length>30?'...':''}</td>
+              <td style="padding:10px;text-align:center;">${c.csSmsSent?'✅':'❌'}</td>
+              <td style="padding:10px;text-align:center;"><button onclick="checkFieldVisit('${c.clientName}')" style="padding:4px 10px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">확인</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    
+  } catch(e) {
+    alert('로딩 오류: ' + e.message);
+  }
+}
+
+async function checkFieldVisit(clientName) {
+  try {
+    const snap = await db.collection('field_visits')
+      .where('clientName','==',clientName)
+      .where('type','==','customer_care')
+      .limit(1)
+      .get();
+    
+    if (snap.empty) {
+      alert(`${clientName} 고객관리 기록이 없습니다.`);
+    } else {
+      const fv = snap.docs[0].data();
+      alert(`✅ 작성 완료\n\n거래처: ${fv.clientName}\n내용: ${fv.content||'-'}\n작성일: ${fv.visitDate}`);
+    }
+  } catch(e) {
+    alert('확인 오류: ' + e.message);
+  }
 }
 </script>
 </body>

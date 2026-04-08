@@ -852,3 +852,148 @@ async function checkNewClientFeedback() {
   }
 }
 
+// ── 클레임 발생 시 자동 처리 ──
+exports.onClaimCreated = functions
+  .region('us-central1')
+  .firestore.document('claims/{claimId}')
+  .onCreate(async (snap, context) => {
+    const claim = snap.data();
+    const { type, driverName, date, clientName } = claim;
+    
+    console.log(`클레임 발생: ${type} | ${driverName} | ${clientName} | ${date}`);
+    
+    try {
+      // 1. 오배송/지연 → 정성평가 감점
+      if ((type === '오배송' || type === '누락' || type === '지연') && driverName) {
+        const points = (type === '지연') ? -2 : -5;
+        const yearMonth = date.slice(0,7);  // YYYY-MM
+        
+        // users에서 uid 찾기
+        const userSnap = await db.collection('users')
+          .where('name','==',driverName)
+          .limit(1)
+          .get();
+        
+        if (userSnap.empty) {
+          console.log(`⚠️ ${driverName} 사용자 없음`);
+          return null;
+        }
+        
+        const uid = userSnap.docs[0].id;
+        const userData = userSnap.docs[0].data();
+        const teamId = userData.teamId;
+        
+        // monthly_stats에 감점 기록
+        const statsRef = db.doc(`monthly_stats/${yearMonth}/drivers/${uid}`);
+        const statsSnap = await statsRef.get();
+        
+        if (statsSnap.exists) {
+          await statsRef.update({
+            claimPenalty: admin.firestore.FieldValue.increment(points)
+          });
+        } else {
+          await statsRef.set({
+            uid,
+            driverName,
+            teamId,
+            claimPenalty: points,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+        }
+        
+        console.log(`✅ 감점 적용: ${driverName} ${points}점 (${type})`);
+      }
+      
+      // 2. 상함/이물 → 기사 고객관리 문자
+      if ((type === '상함' || type === '이물') && clientName) {
+        // 거래처 → 담당 기사 찾기
+        const clientSnap = await db.collection('clients')
+          .where('clientName','==',clientName)
+          .limit(1)
+          .get();
+        
+        if (clientSnap.empty) {
+          console.log(`⚠️ ${clientName} 거래처 없음`);
+          return null;
+        }
+        
+        const client = clientSnap.docs[0].data();
+        const teamId = client.teamId;
+        
+        // 팀 기사 찾기
+        const driverSnap = await db.collection('users')
+          .where('teamId','==',teamId)
+          .where('role','in',['driver','leader'])
+          .limit(1)
+          .get();
+        
+        if (driverSnap.empty) {
+          console.log(`⚠️ ${teamId} 담당 기사 없음`);
+          return null;
+        }
+        
+        const driver = driverSnap.docs[0].data();
+        const driverName = driver.name;
+        const driverPhone = driver.phone;
+        
+        if (!driverPhone) {
+          console.log(`⚠️ ${driverName} 전화번호 없음`);
+          return null;
+        }
+        
+        // 오늘 이미 발송했는지 체크
+        const today = new Date().toISOString().slice(0,10);
+        const logSnap = await db.collection('sms_logs')
+          .where('type','==','claim_cs')
+          .where('driverName','==',driverName)
+          .where('clientName','==',clientName)
+          .where('date','==',today)
+          .limit(1)
+          .get();
+        
+        if (!logSnap.empty) {
+          console.log(`이미 발송함: ${driverName} → ${clientName}`);
+          return null;
+        }
+        
+        // 문자 발송
+        const text = `[준도시락] ${driverName} 기사님, ${clientName} ${type} 발생했습니다. 고객관리 기록을 작성해주세요. (재배송 여부, 고객 반응 등)`;
+        
+        const result = await sendOneSms(driverPhone, text);
+        
+        // 로그 저장
+        await db.collection('sms_logs').add({
+          type: 'claim_cs',
+          claimType: type,
+          driverName,
+          clientName,
+          phone: driverPhone,
+          text,
+          date: today,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          error: result.ok ? null : (result.error||null),
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        // claim 문서에 문자 발송 기록
+        await snap.ref.update({
+          csSmsSent: true,
+          csSmsSentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        if (result.ok) {
+          console.log(`✅ CS 문자: ${driverName}(${driverPhone}) → ${clientName} ${type}`);
+        } else {
+          console.log(`❌ CS 문자 실패: ${driverName}: ${result.error}`);
+        }
+      }
+      
+    } catch(e) {
+      console.error('onClaimCreated 오류:', e);
+    }
+    
+    return null;
+  });
+
+
