@@ -180,44 +180,47 @@ function renderTeamRanking() {
 // 카드 3: 거래처 경보 로드
 async function loadAlerts() {
   const container = document.getElementById('alertsCard');
-  if (!currentUser.courseId) {
-    container.innerHTML = '<div class="empty-msg">담당 코스가 없습니다.</div>';
+  if (!currentUser.teamId) {
+    container.innerHTML = '<div class="empty-msg">담당 팀이 없습니다.</div>';
     return;
   }
 
   try {
-    const snap = await db.collection('alerts').get();
+    const snap = await db.collection('alerts')
+      .where('teamId','==',currentUser.teamId)
+      .where('resolved','==',false)
+      .get();
 
     const items = [];
     snap.forEach(doc => {
       const d = doc.data();
-      if (d.courseId === currentUser.courseId) items.push({ id: doc.id, ...d });
+      items.push({ id: doc.id, ...d });
     });
 
     if (!items.length) {
-      container.innerHTML = '<div class="empty-msg">현재 경보가 없습니다.</div>';
+      container.innerHTML = '<div class="empty-msg">✅ 현재 경보가 없습니다.</div>';
       return;
     }
 
+    // grade 정렬: urgent > watch > check
     const levelOrder = { urgent: 0, watch: 1, check: 2 };
-    items.sort((a, b) => (levelOrder[a.level] ?? 99) - (levelOrder[b.level] ?? 99));
+    items.sort((a, b) => (levelOrder[a.grade] ?? 99) - (levelOrder[b.grade] ?? 99));
 
     const html = items.map(a => {
       let levelLabel, levelClass;
-      if (a.level === 'urgent') { levelLabel = '즉시경보'; levelClass = 'alert-urgent'; }
-      else if (a.level === 'watch') { levelLabel = '주시'; levelClass = 'alert-watch'; }
-      else { levelLabel = '확인보고'; levelClass = 'alert-check'; }
+      if (a.grade === 'urgent') { levelLabel = '🔴 즉시경보'; levelClass = 'alert-urgent'; }
+      else if (a.grade === 'watch') { levelLabel = '🟡 주시'; levelClass = 'alert-watch'; }
+      else { levelLabel = '🔴 확인보고'; levelClass = 'alert-check'; }
 
-      const lastDate = a.lastOrderDate ? a.lastOrderDate.toDate().toLocaleDateString('ko-KR') : '-';
       return `
         <div class="alert-item ${levelClass}">
           <div class="alert-left">
             <span class="alert-badge ${levelClass}">${levelLabel}</span>
             <span class="alert-name">${a.clientName}</span>
-            ${a.isPriority ? '<span class="priority-tag">우선</span>' : ''}
+            <span style="font-size:11px;color:#718096;">${a.dailyAvgOrder}개</span>
           </div>
           <div class="alert-right">
-            <span class="alert-days">${a.consecutiveDays}일 연속</span>
+            <span class="alert-days">${a.consecutiveDays||1}일째</span>
             <span class="alert-date">${lastDate}</span>
           </div>
         </div>

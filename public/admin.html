@@ -680,6 +680,34 @@
   </div>
 </div>
 
+<!-- 거래처 경보 모달 -->
+<div id="alertModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">🚨 거래처 경보</div>
+      <button onclick="closeAlertModal()" style="background:none;border:none;font-size:24px;color:#718096;cursor:pointer;">✕</button>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <select id="alertTeamFilter" onchange="loadAlerts()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
+        <option value="all">전체 팀</option>
+        <option value="team1">1팀 준고</option>
+        <option value="team2">2팀 해운대</option>
+        <option value="team3">3팀 공오일</option>
+        <option value="team4">4팀 연수남</option>
+        <option value="team5">5팀 아가리</option>
+        <option value="team6">6팀 도세마</option>
+        <option value="team7">7팀 강서영</option>
+      </select>
+      <label style="display:flex;align-items:center;gap:6px;font-size:14px;"><input type="checkbox" id="alertResolvedFilter" onchange="loadAlerts()"> 해제된 경보 포함</label>
+    </div>
+    
+    <div id="alertSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
+    
+    <div id="alertTable" style="overflow-x:auto;"></div>
+  </div>
+</div>
+
 <!-- CS 미완료 클레임 모달 -->
 <div id="claimCsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
   <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
@@ -1162,6 +1190,60 @@
     return count;
   }
 
+  // ── 경보 생성 (8개 이상 업체 미주문 감지) ──
+  async function createAlertsFromSales(date, driverRows) {
+    const dow = new Date(date).getDay();
+    const dowIndex = dow === 0 ? 6 : dow - 1;  // 0=월 1=화 ... 4=금
+    
+    // 오늘 주문한 거래처 목록
+    const ordered = new Set();
+    driverRows.forEach(d => {
+      if (d.clients && Array.isArray(d.clients)) {
+        d.clients.forEach(c => ordered.add(c));
+      }
+    });
+    
+    // clients 컬렉션에서 8개 이상 업체 조회
+    const clientsSnap = await db.collection('clients')
+      .where('dailyAvgOrder','>=',8)
+      .get();
+    
+    let alertCount = 0;
+    
+    for (const doc of clientsSnap.docs) {
+      const client = doc.data();
+      const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
+      
+      if (!orderDays || !Array.isArray(orderDays)) continue;
+      
+      // 오늘 주문 요일인가?
+      const shouldOrder = orderDays.includes(dowIndex);
+      if (!shouldOrder) continue;
+      
+      // 실제 주문했는가?
+      const didOrder = ordered.has(clientName);
+      if (didOrder) continue;
+      
+      // 경보 생성
+      await db.collection('alerts').add({
+        type: 'no_order',
+        grade: 'urgent',  // 8개 이상은 즉시경보
+        clientName,
+        dailyAvgOrder,
+        teamId,
+        courseId,
+        date,
+        consecutiveDays: 1,
+        resolved: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      
+      alertCount++;
+    }
+    
+    return alertCount;
+  }
+
   window.saveSalesData = async () => {
     const date = document.getElementById('su-date').value;
     if (!date) { alert('날짜를 선택해주세요.'); return; }
@@ -1239,8 +1321,17 @@
         console.warn('신규업체 SMS 스케줄 오류(무시):', e.message);
       }
 
+      // 4. 경보 생성 (8개 이상 업체 미주문 감지)
+      let alertCount = 0;
+      try {
+        alertCount = await createAlertsFromSales(date, driverRows);
+      } catch(e) {
+        console.warn('경보 생성 오류(무시):', e.message);
+      }
+
       const smsMsg = newClientCount > 0 ? `\n신규업체 ${newClientCount}건 SMS 새벽 발송 예약됨.` : '';
-      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}`);
+      const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
+      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}`);
       closeSalesUpload();
       location.reload();
 
@@ -2113,12 +2204,16 @@ async function sendSms() {
     <span>📊</span> 경영 대시보드
   </button>
   <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showAlertModal();">
+    <span>🚨</span> 거래처 경보
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showFieldVisitStatsModal();">
     <span>📸</span> 영업현장 통계
   </button>
   <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showClaimCsModal();">
-    <span>🚨</span> CS 미완료 클레임
+    <span>🩹</span> CS 미완료 클레임
   </button>
   <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showEvalModal();">
@@ -2400,6 +2495,116 @@ async function checkFieldVisit(clientName) {
     }
   } catch(e) {
     alert('확인 오류: ' + e.message);
+  }
+}
+
+// ── 거래처 경보 ──
+let _alertData = [];
+
+function showAlertModal() {
+  document.getElementById('alertModal').style.display = 'block';
+  loadAlerts();
+}
+
+function closeAlertModal() {
+  document.getElementById('alertModal').style.display = 'none';
+}
+
+async function loadAlerts() {
+  const teamFilter = document.getElementById('alertTeamFilter').value;
+  const includeResolved = document.getElementById('alertResolvedFilter').checked;
+  
+  try {
+    let query = db.collection('alerts');
+    
+    if (teamFilter !== 'all') {
+      query = query.where('teamId','==',teamFilter);
+    }
+    
+    if (!includeResolved) {
+      query = query.where('resolved','==',false);
+    }
+    
+    const snap = await query.get();
+    
+    const data = [];
+    snap.forEach(d => data.push({ id: d.id, ...d.data() }));
+    
+    // 정렬: grade(urgent>watch>check) → consecutiveDays 내림차순
+    const gradeOrder = { urgent:0, watch:1, check:2 };
+    data.sort((a,b) => {
+      const gDiff = (gradeOrder[a.grade]||99) - (gradeOrder[b.grade]||99);
+      if (gDiff !== 0) return gDiff;
+      return (b.consecutiveDays||0) - (a.consecutiveDays||0);
+    });
+    
+    _alertData = data;
+    
+    // 요약
+    const urgent = data.filter(a => a.grade==='urgent' && !a.resolved).length;
+    const watch = data.filter(a => a.grade==='watch' && !a.resolved).length;
+    const check = data.filter(a => a.grade==='check' && !a.resolved).length;
+    
+    document.getElementById('alertSummary').innerHTML = [
+      ['🔴 즉시경보', urgent+'건', '#e53e3e', '#fff5f5'],
+      ['🟡 주시', watch+'건', '#dd6b20', '#fffaf0'],
+      ['🔴 확인보고', check+'건', '#c53030', '#fff5f5']
+    ].map(([label,val,color,bg]) => `
+      <div style="background:${bg};border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:11px;color:#718096;">${label}</div>
+        <div style="font-size:20px;font-weight:800;color:${color};">${val}</div>
+      </div>`).join('');
+    
+    // 테이블
+    document.getElementById('alertTable').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#fff5f5;border-bottom:2px solid #feb2b2;">
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">등급</th>
+            <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">거래처</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">일평균</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">팀</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">날짜</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">연속</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">상태</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">조치</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.map(a => `
+            <tr style="border-bottom:1px solid #f0f0f0;${a.resolved?'opacity:0.5;':''}" data-id="${a.id}">
+              <td style="padding:10px;text-align:center;font-weight:700;color:${a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c53030'};">${a.grade==='urgent'?'🔴':a.grade==='watch'?'🟡':'🔴'}</td>
+              <td style="padding:10px;font-weight:600;">${a.clientName||'-'}</td>
+              <td style="padding:10px;text-align:center;">${a.dailyAvgOrder||'-'}개</td>
+              <td style="padding:10px;text-align:center;font-size:12px;">${a.teamId||'-'}</td>
+              <td style="padding:10px;text-align:center;font-size:12px;">${a.date||'-'}</td>
+              <td style="padding:10px;text-align:center;font-weight:700;">${a.consecutiveDays||1}일째</td>
+              <td style="padding:10px;text-align:center;">${a.resolved?'✅ 해제':'❌ 미해제'}</td>
+              <td style="padding:10px;text-align:center;">
+                ${!a.resolved ? `<button onclick="resolveAlert('${a.id}')" style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">해제</button>` : '-'}
+              </td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    
+  } catch(e) {
+    alert('로딩 오류: ' + e.message);
+  }
+}
+
+async function resolveAlert(alertId) {
+  if (!confirm('이 경보를 해제하시겠습니까?')) return;
+  
+  try {
+    await db.collection('alerts').doc(alertId).update({
+      resolved: true,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+    alert('✅ 경보가 해제되었습니다.');
+    loadAlerts();
+  } catch(e) {
+    alert('해제 오류: ' + e.message);
   }
 }
 </script>
