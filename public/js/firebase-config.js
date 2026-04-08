@@ -15,9 +15,9 @@ if (!firebase.apps.length) {
 
 const db = firebase.firestore();
 const auth = firebase.auth();
-const storage = firebase.apps.length && firebase.app().name ? (() => {
-  try { return firebase.storage(); } catch(e) { return null; }
-})() : null;
+// storage: SDK 로드된 경우에만 초기화
+let storage = null;
+try { storage = firebase.storage(); } catch(e) { storage = null; }
 
 // 현재 년월 (YYYY-MM 형식)
 function getCurrentYearMonth() {
