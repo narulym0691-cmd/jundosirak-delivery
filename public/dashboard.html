@@ -608,7 +608,7 @@
     </div>
 
     <!-- 섹션2: 타팀 동료 평가 -->
-    <div class="card">
+    <div class="card" id="peerReviewCard">
       <div class="card-title">⭐ 타팀 평가</div>
       <div style="background:#fffbeb;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#92400e;text-align:center;">
         매주 금요일, 본인 팀을 제외한 타팀을 평가해 주세요<br>
@@ -620,7 +620,7 @@
     </div>
 
     <!-- 섹션3: 내 팀 평가 결과 -->
-    <div class="card">
+    <div class="card" id="evalResultCard">
       <div class="card-title">📊 이번 달 내 팀 결과</div>
       <div id="evalResultContent">
         <div class="empty-msg">로딩 중...</div>
@@ -772,11 +772,6 @@
   window.showTab = function(tabName) {
     // 권한에 따른 평가 탭 노출 제어
     applyEvalTabVisibility();
-    // driver가 평가 탭에 직접 접근하면 홈으로 리다이렉트
-    if (tabName === 'evaluation' && currentUser && !['admin','manager','leader'].includes(currentUser.role)) {
-      origShowTab('home');
-      return;
-    }
     origShowTab(tabName);
     if (tabName === 'myinfo') renderMyInfo();
     if (tabName === 'directive') loadAllDirectives();
@@ -787,8 +782,8 @@
     if (!currentUser) return;
     const evalBtn = document.getElementById('tabBtn-evaluation');
     if (!evalBtn) return;
-    const canSee = ['admin', 'manager', 'leader'].includes(currentUser.role);
-    evalBtn.style.display = canSee ? '' : 'none';
+    // driver 포함 모든 역할에서 평가 탭 표시
+    evalBtn.style.display = '';
   }
 
   // 지시 탭용 전체 지시사항 로드
@@ -878,7 +873,18 @@ function getYearWeek(dateStr) {
 }
 
 async function initEvaluationTab() {
-  await Promise.all([loadVehiclePhotos(), loadPeerReview(), loadEvalResult()]);
+  const isDriver = currentUser && currentUser.role === 'driver';
+  // driver는 차량 관리 섹션만 표시
+  const peerCard = document.getElementById('peerReviewCard');
+  const resultCard = document.getElementById('evalResultCard');
+  if (peerCard) peerCard.style.display = isDriver ? 'none' : '';
+  if (resultCard) resultCard.style.display = isDriver ? 'none' : '';
+
+  if (isDriver) {
+    await loadVehiclePhotos();
+  } else {
+    await Promise.all([loadVehiclePhotos(), loadPeerReview(), loadEvalResult()]);
+  }
 }
 
 // ── 차량 사진 ──

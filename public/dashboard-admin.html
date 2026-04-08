@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>준도시락 경영 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Malgun Gothic','Apple SD Gothic Neo',system-ui,sans-serif; background:#f0f4f0; min-height:100vh; }
+
+/* 헤더 */
+.header { background:linear-gradient(135deg,#1a4731 0%,#2d6a4f 60%,#38a169 100%); color:#fff; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; z-index:100; }
+.header-title { font-size:17px; font-weight:700; }
+.header-right { display:flex; gap:8px; align-items:center; }
+.btn-back { background:rgba(255,255,255,0.15); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:600; }
+.btn-excel { background:#217346; border:none; color:#fff; padding:6px 14px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:700; }
+.btn-print { background:rgba(255,255,255,0.15); border:none; color:#fff; padding:6px 12px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:600; }
+
+/* 필터바 */
+.filter-bar { background:#fff; padding:10px 16px; display:flex; gap:8px; align-items:center; border-bottom:1px solid #e2e8f0; flex-wrap:wrap; }
+.filter-bar select { padding:6px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; background:#f7fafc; }
+.filter-label { font-size:12px; color:#718096; font-weight:600; }
+
+/* 메인 */
+.main { padding:14px; max-width:900px; margin:0 auto; padding-bottom:30px; }
+
+/* 섹션 타이틀 */
+.section-title { font-size:14px; font-weight:700; color:#1a4731; margin:18px 0 10px; display:flex; align-items:center; gap:6px; }
+.section-title::before { content:''; display:block; width:4px; height:16px; background:#38a169; border-radius:2px; }
+
+/* 요약 카드 그리드 */
+.kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:4px; }
+@media(max-width:500px) { .kpi-grid { grid-template-columns:repeat(2,1fr); } }
+.kpi-card { background:#fff; border-radius:10px; padding:14px 12px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.kpi-label { font-size:11px; color:#718096; margin-bottom:4px; }
+.kpi-val { font-size:22px; font-weight:800; color:#1a4731; }
+.kpi-sub { font-size:11px; color:#718096; margin-top:3px; }
+.kpi-up { color:#38a169; font-weight:700; }
+.kpi-down { color:#e53e3e; font-weight:700; }
+
+/* 카드 */
+.card { background:#fff; border-radius:10px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); margin-bottom:12px; }
+.card-title { font-size:13px; font-weight:700; color:#2d3748; margin-bottom:10px; }
+
+/* 테이블 공통 */
+.tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th { background:#f0fff4; color:#276749; font-weight:700; padding:7px 8px; text-align:center; border-bottom:2px solid #c6f6d5; }
+.tbl td { padding:7px 8px; text-align:center; border-bottom:1px solid #f0f0f0; }
+.tbl tbody tr:hover { background:#f7fafc; }
+.tbl .name-col { text-align:left; font-weight:600; }
+
+/* 배지 */
+.badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:700; }
+.badge-A { background:#fefcbf; color:#744210; }
+.badge-B { background:#e2e8f0; color:#2d3748; }
+.badge-C { background:#fed7aa; color:#7b341e; }
+.badge-miss { background:#fff5f5; color:#c53030; }
+.badge-new { background:#ebf8ff; color:#2b6cb0; }
+.badge-ok { background:#f0fff4; color:#276749; }
+.badge-warn { background:#fff5f5; color:#c53030; }
+
+/* 성과 게이지 */
+.score-bar { height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; margin-top:4px; }
+.score-fill { height:100%; border-radius:4px; transition:width .3s; }
+
+/* 거래처 증감 */
+.change-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f0f0f0; font-size:12px; }
+.change-row:last-child { border-bottom:none; }
+
+/* 클레임 차트 */
+.claim-bar-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:12px; }
+.claim-bar-label { width:60px; color:#4a5568; text-align:right; }
+.claim-bar-track { flex:1; height:14px; background:#f0f0f0; border-radius:4px; overflow:hidden; }
+.claim-bar-fill { height:100%; border-radius:4px; }
+.claim-bar-val { width:30px; font-weight:700; color:#2d3748; }
+
+/* 기사 성과표 */
+.perf-table { width:100%; border-collapse:collapse; font-size:11px; }
+.perf-table th { background:#1a4731; color:#fff; padding:8px 6px; text-align:center; font-size:11px; white-space:nowrap; }
+.perf-table td { padding:7px 6px; text-align:center; border-bottom:1px solid #f0f0f0; white-space:nowrap; }
+.perf-table tbody tr:hover { background:#f7fafc; }
+.perf-table .team-header td { background:#e8f5e9; font-weight:700; color:#1a4731; font-size:12px; text-align:left; padding-left:10px; }
+.score-total { font-size:15px; font-weight:800; }
+
+/* 인쇄 */
+@media print {
+  .header .btn-back, .header .btn-excel, .header .btn-print, .filter-bar { display:none !important; }
+  body { background:#fff; }
+  .card { box-shadow:none; border:1px solid #ddd; page-break-inside:avoid; }
+  .main { max-width:100%; padding:10px; }
+}
+
+.loading { text-align:center; padding:30px; color:#718096; font-size:13px; }
+.empty { text-align:center; padding:16px; color:#a0aec0; font-size:12px; }
+</style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-title">📊 경영 대시보드</div>
+  <div class="header-right">
+    <button class="btn-print" onclick="window.print()">🖨️ 인쇄</button>
+    <button class="btn-excel" onclick="downloadExcel()">📥 엑셀</button>
+    <button class="btn-back" onclick="location.href='/admin.html'">← 관리자</button>
+  </div>
+</div>
+
+<!-- 필터바 -->
+<div class="filter-bar">
+  <span class="filter-label">기간</span>
+  <select id="filterMonth" onchange="loadAll()"></select>
+  <select id="filterWeek" onchange="loadAll()">
+    <option value="">전체</option>
+    <option value="1">1주차</option>
+    <option value="2">2주차</option>
+    <option value="3">3주차</option>
+    <option value="4">4주차</option>
+  </select>
+  <select id="filterTeam" onchange="loadAll()">
+    <option value="">전체 팀</option>
+  </select>
+  <span id="lastUpdated" style="margin-left:auto;font-size:11px;color:#a0aec0;"></span>
+</div>
+
+<div class="main" id="mainContent">
+  <div class="loading">데이터 로딩 중...</div>
+</div>
+
+<script src="/js/firebase-config.js"></script>
+<script>
+const db   = firebase.firestore();
+const auth = firebase.auth();
+
+// 팀 정보
+const TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+const TEAM_ORDER = ['team1','team2','team3','team4','team5','team6','team7'];
+const MENU_PRICE = { 뜨:8250, 품:8250, 프:7700, 덮:7150, 샐:7150, 샌:6600 };
+
+// 전역 데이터 캐시
+let _users = [], _claims = [], _monthly = {}, _clients = [], _alerts = [], _directives = [], _smsLogs = [];
+let _curYM = '', _curWeek = '', _curTeam = '';
+
+// ── 초기화 ──────────────────────────────────────
+auth.onAuthStateChanged(async user => {
+  if (!user) { location.href = '/index.html'; return; }
+  try {
+    const doc = await db.collection('users').doc(user.uid).get();
+    if (!doc.exists || doc.data().role !== 'admin') { location.href = '/dashboard.html'; return; }
+    initFilters();
+    await loadAll();
+  } catch(e) {
+    document.getElementById('mainContent').innerHTML = `<div style="color:#e53e3e;padding:20px;text-align:center;">로딩 오류: ${e.message}</div>`;
+  }
+});
+
+function initFilters() {
+  const sel = document.getElementById('filterMonth');
+  const now = new Date();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = ym.replace('-','년 ') + '월';
+    if (i === 0) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadAll() {
+  _curYM   = document.getElementById('filterMonth').value;
+  _curWeek = document.getElementById('filterWeek').value;
+  _curTeam = document.getElementById('filterTeam').value;
+
+  document.getElementById('mainContent').innerHTML = '<div class="loading">데이터 로딩 중...</div>';
+
+  const [y, m] = _curYM.split('-').map(Number);
+  const dateFrom = `${_curYM}-01`;
+  const dateTo   = `${_curYM}-31`;
+
+  // 병렬 로딩
+  const [usersSnap, claimsSnap, monthlySnap, clientsSnap, alertsSnap, dirsSnap, smsSnap, teamsSnap, dailySalesSnap] = await Promise.all([
+    db.collection('users').get(),
+    db.collection('claims').where('date','>=',dateFrom).where('date','<=',dateTo).get(),
+    db.collection('monthly_stats').doc(_curYM).get(),
+    db.collection('clients').get(),
+    db.collection('alerts').get(),
+    db.collection('directives').get(),
+    db.collection('sms_logs').where('date','>=',dateFrom).where('date','<=',dateTo).get(),
+    db.collection('teams').get(),
+    db.collection('daily_sales').where('date','>=',dateFrom).where('date','<=',dateTo).orderBy('date').get(),
+  ]);
+
+  // 캐싱
+  _users = []; usersSnap.forEach(d => _users.push({id:d.id,...d.data()}));
+  _claims = []; claimsSnap.forEach(d => _claims.push(d.data()));
+  _monthly = monthlySnap.exists ? monthlySnap.data() : {};
+  _clients = []; clientsSnap.forEach(d => _clients.push({id:d.id,...d.data()}));
+  _alerts = []; alertsSnap.forEach(d => _alerts.push({id:d.id,...d.data()}));
+  _directives = []; dirsSnap.forEach(d => _directives.push({id:d.id,...d.data()}));
+  _smsLogs = []; smsSnap.forEach(d => _smsLogs.push(d.data()));
+
+  const teamsData = {};
+  teamsSnap.forEach(d => teamsData[d.id] = d.data());
+
+  // 팀 필터 초기화 (최초 1회)
+  const teamSel = document.getElementById('filterTeam');
+  if (teamSel.options.length === 1) {
+    TEAM_ORDER.forEach(tid => {
+      const opt = document.createElement('option');
+      opt.value = tid; opt.textContent = TEAM_NAMES[tid];
+      teamSel.appendChild(opt);
+    });
+  }
+
+  // directives completions 로드
+  for (const dir of _directives) {
+    const snap = await db.collection('directives').doc(dir.id).collection('completions').get();
+    dir._completions = [];
+    snap.forEach(d => dir._completions.push({uid:d.id,...d.data()}));
+  }
+
+  // daily_sales 데이터
+  const dailySales = [];
+  dailySalesSnap.forEach(d => dailySales.push(d.data()));
+
+  // 주간 필터 적용
+  let filteredDaily = dailySales;
+  if (_curWeek) {
+    filteredDaily = dailySales.filter(d => getWeekNum(d.date) == _curWeek);
+  }
+
+  document.getElementById('lastUpdated').textContent = '업데이트: ' + new Date().toLocaleTimeString('ko-KR');
+
+  // 렌더
+  renderAll(teamsData, filteredDaily);
+}
+
+function getWeekNum(dateStr) {
+  const d = new Date(dateStr);
+  return Math.ceil(d.getDate() / 7);
+}
+
+// ── 전체 렌더 ──────────────────────────────────
+function renderAll(teamsData, dailySales) {
+  const html = `
+    ${renderKPI(dailySales)}
+    ${renderClientChange()}
+    ${renderClaimSummary()}
+    ${renderPerfTable(teamsData)}
+  `;
+  document.getElementById('mainContent').innerHTML = html;
+}
+
+// ── 섹션1: KPI 카드 ─────────────────────────────
+function renderKPI(dailySales) {
+  // 오늘 판매
+  const today = new Date().toISOString().slice(0,10);
+  const todaySale = dailySales.find(d => d.date === today);
+  const todayTotal = todaySale ? Object.values(todaySale.teamTotals||{}).reduce((s,v)=>s+v,0) : 0;
+
+  // 이번달 일평균
+  const bizDays = dailySales.length;
+  const monthTotal = dailySales.reduce((s,d) => s + Object.values(d.teamTotals||{}).reduce((a,b)=>a+b,0), 0);
+  const monthAvg = bizDays > 0 ? Math.round(monthTotal/bizDays) : 0;
+  const baselineTotal = Object.values(teamsBaselineSum()).reduce((s,v)=>s+v,0);
+  const avgDiff = monthAvg - baselineTotal;
+
+  // 신규업체
+  const newClients = _clients.filter(c => c.firstOrderDate && c.firstOrderDate >= `${_curYM}-01` && c.firstOrderDate <= `${_curYM}-31`);
+
+  // 이탈업체 (alerts에서 resolved:false + consecutiveDays >= 3)
+  const lostClients = _alerts.filter(a => !a.resolved && (a.consecutiveDays||0) >= 3);
+
+  // 신규 매출 증가 추정
+  const newQty = newClients.reduce((s,c) => s+(c.dailyAvgOrder||0), 0);
+  const lostQty = lostClients.reduce((s,a) => s+(a.dailyAvgOrder||0), 0);
+  const netChange = newQty - lostQty;
+
+  // 클레임
+  const claimCount = _claims.length;
+  const claimBurden = _claims.reduce((s,c) => s+(c.driverBurden||0), 0);
+
+  const diffColor = avgDiff >= 0 ? 'kpi-up' : 'kpi-down';
+  const diffSign  = avgDiff >= 0 ? '+' : '';
+  const netColor  = netChange >= 0 ? 'kpi-up' : 'kpi-down';
+  const netSign   = netChange >= 0 ? '+' : '';
+
+  return `
+  <div class="section-title">📊 핵심 현황</div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-label">오늘 총 판매</div>
+      <div class="kpi-val">${todayTotal.toLocaleString()}<span style="font-size:13px;color:#718096;">개</span></div>
+      <div class="kpi-sub">${today}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">이번달 일평균</div>
+      <div class="kpi-val">${monthAvg.toLocaleString()}<span style="font-size:13px;color:#718096;">개</span></div>
+      <div class="kpi-sub">기준 대비 <span class="${diffColor}">${diffSign}${avgDiff}</span>개 | 영업일 ${bizDays}일</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">신규 / 이탈 업체</div>
+      <div class="kpi-val"><span class="kpi-up">+${newClients.length}</span> / <span class="kpi-down">-${lostClients.length}</span></div>
+      <div class="kpi-sub">순 증감 <span class="${netColor}">${netSign}${netChange}</span>개/일</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">이번달 클레임</div>
+      <div class="kpi-val ${claimCount > 0 ? 'kpi-down' : ''}">${claimCount}<span style="font-size:13px;color:#718096;">건</span></div>
+      <div class="kpi-sub">부담금 합계 ${claimBurden.toLocaleString()}원</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">자동문자 발송</div>
+      <div class="kpi-val kpi-up">${_smsLogs.filter(s=>s.sent>0).length}<span style="font-size:13px;color:#718096;">건</span></div>
+      <div class="kpi-sub">실패 ${_smsLogs.filter(s=>s.failed>0).length}건</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">경보 미해제</div>
+      <div class="kpi-val ${_alerts.filter(a=>!a.resolved).length > 0 ? 'kpi-down' : 'kpi-up'}">${_alerts.filter(a=>!a.resolved).length}<span style="font-size:13px;color:#718096;">건</span></div>
+      <div class="kpi-sub">즉시경보 ${_alerts.filter(a=>!a.resolved&&a.level==='urgent').length}건</div>
+    </div>
+  </div>`;
+}
+
+function teamsBaselineSum() {
+  const map = { team1:488,team2:541,team3:349,team4:554,team5:483,team6:299,team7:460 };
+  return map;
+}
+
+// ── 섹션2: 거래처 증감 ──────────────────────────
+function renderClientChange() {
+  const newClients = _clients.filter(c => c.firstOrderDate && c.firstOrderDate >= `${_curYM}-01` && c.firstOrderDate <= `${_curYM}-31`);
+  const lostClients = _alerts.filter(a => !a.resolved && (a.consecutiveDays||0) >= 3);
+
+  // 기사별 신규 건수
+  const newByDriver = {};
+  newClients.forEach(c => {
+    const driver = _users.find(u => u.teamId === (c.teamId||'') && (u.role==='driver'||u.role==='leader'));
+    const dname = driver ? driver.name : (c.courseId||'-');
+    newByDriver[dname] = (newByDriver[dname]||0) + 1;
+  });
+
+  const newRows = newClients.slice(0,8).map(c => `
+    <div class="change-row">
+      <div>
+        <span class="badge badge-new">신규</span>
+        <span style="margin-left:6px;font-weight:600;">${c.clientName}</span>
+      </div>
+      <div style="color:#718096;">${c.firstOrderDate||'-'} | ${c.dailyAvgOrder||0}개/일</div>
+    </div>`).join('') || '<div class="empty">이번달 신규업체 없음</div>';
+
+  const lostRows = lostClients.slice(0,8).map(a => `
+    <div class="change-row">
+      <div>
+        <span class="badge badge-warn">이탈위험</span>
+        <span style="margin-left:6px;font-weight:600;">${a.clientName}</span>
+      </div>
+      <div style="color:#e53e3e;">${a.consecutiveDays||0}일 미주문 | ${a.dailyAvgOrder||0}개/일</div>
+    </div>`).join('') || '<div class="empty">이탈 위험 업체 없음</div>';
+
+  return `
+  <div class="section-title">🏢 거래처 증감 현황</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div class="card">
+      <div class="card-title">🆕 신규업체 <span style="color:#2b6cb0;">${newClients.length}개</span></div>
+      ${newRows}
+      ${newClients.length > 8 ? `<div style="text-align:center;font-size:11px;color:#718096;margin-top:6px;">+${newClients.length-8}건 더보기</div>` : ''}
+    </div>
+    <div class="card">
+      <div class="card-title">⚠️ 이탈위험 <span style="color:#e53e3e;">${lostClients.length}개</span></div>
+      ${lostRows}
+    </div>
+  </div>`;
+}
+
+// ── 섹션3: 클레임 현황 ──────────────────────────
+function renderClaimSummary() {
+  const types = ['오배송','누락','지연','상함','이물'];
+  const typeCount = {};
+  types.forEach(t => typeCount[t] = _claims.filter(c=>c.type===t).length);
+  const maxVal = Math.max(...Object.values(typeCount), 1);
+
+  const typeColors = { 오배송:'#e53e3e', 누락:'#dd6b20', 지연:'#d69e2e', 상함:'#3182ce', 이물:'#805ad5' };
+
+  const bars = types.map(t => `
+    <div class="claim-bar-row">
+      <div class="claim-bar-label">${t}</div>
+      <div class="claim-bar-track">
+        <div class="claim-bar-fill" style="width:${Math.round(typeCount[t]/maxVal*100)}%;background:${typeColors[t]};"></div>
+      </div>
+      <div class="claim-bar-val">${typeCount[t]}</div>
+    </div>`).join('');
+
+  // 기사별 클레임 Top5
+  const driverClaims = {};
+  _claims.filter(c=>c.driverName).forEach(c => {
+    if (!driverClaims[c.driverName]) driverClaims[c.driverName] = { total:0, burden:0 };
+    driverClaims[c.driverName].total++;
+    driverClaims[c.driverName].burden += c.driverBurden||0;
+  });
+  const sorted = Object.entries(driverClaims).sort((a,b)=>b[1].total-a[1].total).slice(0,5);
+
+  const driverRows = sorted.map(([name,v], i) => `
+    <div class="change-row">
+      <div><span style="color:#718096;margin-right:6px;">${i+1}.</span><span style="font-weight:600;">${name}</span></div>
+      <div style="color:#e53e3e;">${v.total}건 | 부담금 ${v.burden.toLocaleString()}원</div>
+    </div>`).join('') || '<div class="empty">클레임 없음</div>';
+
+  // CS미완료
+  const csUnfinished = _claims.filter(c => (c.type==='상함'||c.type==='이물') && !c.csCompleted).length;
+
+  return `
+  <div class="section-title">🚨 클레임 현황</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <div class="card">
+      <div class="card-title">유형별 건수 ${csUnfinished > 0 ? `<span style="color:#e53e3e;font-size:11px;">CS미완료 ${csUnfinished}건</span>` : ''}</div>
+      ${bars}
+    </div>
+    <div class="card">
+      <div class="card-title">기사별 클레임 TOP</div>
+      ${driverRows}
+    </div>
+  </div>`;
+}
+
+// ── 섹션4: 기사별 성과 종합표 ──────────────────
+function renderPerfTable(teamsData) {
+  const activeDrivers = _users.filter(u => u.active !== false && u.role !== 'admin' && u.role !== 'manager');
+  const filtered = _curTeam ? activeDrivers.filter(u => u.teamId === _curTeam) : activeDrivers;
+
+  // 기사별 점수 계산
+  const rows = [];
+  for (const u of filtered) {
+    // 1. 팀 판매등급 (40점)
+    const teamStat = _monthly[u.teamId] || {};
+    const grade = teamStat.grade || '기준미달';
+    const salesScore = grade==='A'?40 : grade==='B'?32 : grade==='C'?24 : 10;
+
+    // 2. 클레임 감점 (최대 -30)
+    const myClaims = _claims.filter(c => c.driverName === u.name);
+    const claimDeduct = Math.min(30,
+      myClaims.filter(c=>c.type==='오배송').length * 5 +
+      myClaims.filter(c=>c.type==='누락').length * 5 +
+      myClaims.filter(c=>c.type==='지연').length * 2 +
+      myClaims.filter(c=>(c.type==='상함'||c.type==='이물')&&!c.csCompleted).length * 3
+    );
+
+    // 3. 지시사항 이행률 (20점)
+    let dirTotal = 0, dirDone = 0;
+    _directives.forEach(d => {
+      if (!d.targetTeams || d.targetTeams.length === 0 || d.targetTeams.includes(u.teamId)) {
+        dirTotal++;
+        if ((d._completions||[]).find(c => c.uid === u.id)) dirDone++;
+      }
+    });
+    const dirScore = dirTotal > 0 ? Math.round((dirDone/dirTotal)*20) : 20;
+    const dirPct = dirTotal > 0 ? Math.round(dirDone/dirTotal*100) : 100;
+
+    // 4. 동료평가 (20점)
+    const myReviews = []; // peer_reviews는 현재 데이터 미비 → 기본 20점
+    const peerScore = 20;
+
+    // 5. 종합점수
+    const total = Math.max(0, salesScore - claimDeduct + dirScore + peerScore);
+
+    rows.push({
+      ...u,
+      grade, salesScore, claimDeduct,
+      claimCount: myClaims.length,
+      dirPct, dirScore,
+      peerScore, total,
+      burden: myClaims.reduce((s,c)=>s+(c.driverBurden||0),0)
+    });
+  }
+
+  // 팀별 그룹핑
+  let html = `
+  <div class="section-title">👤 기사별 성과 종합표</div>
+  <div class="card" style="overflow-x:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="card-title" style="margin:0;">📋 ${_curYM} 성과 종합</div>
+      <div style="font-size:11px;color:#718096;">판매40 + 지시20 + 동료평가20 - 클레임감점</div>
+    </div>
+    <table class="perf-table" id="perfTableEl">
+      <thead>
+        <tr>
+          <th style="text-align:left;">기사명</th>
+          <th>팀</th>
+          <th>판매등급</th>
+          <th>클레임</th>
+          <th>감점</th>
+          <th>부담금</th>
+          <th>지시이행</th>
+          <th>동료평가</th>
+          <th>종합점수</th>
+        </tr>
+      </thead>
+      <tbody id="perfTbody">`;
+
+  const teamGroups = {};
+  rows.forEach(r => {
+    if (!teamGroups[r.teamId]) teamGroups[r.teamId] = [];
+    teamGroups[r.teamId].push(r);
+  });
+
+  TEAM_ORDER.forEach(tid => {
+    const group = teamGroups[tid];
+    if (!group || group.length === 0) return;
+    const teamAvg = Math.round(group.reduce((s,r)=>s+r.total,0)/group.length);
+    const gradeMap = { A:'badge-A', B:'badge-B', C:'badge-C', '기준미달':'badge-miss' };
+
+    html += `<tr class="team-header"><td colspan="9">▸ ${TEAM_NAMES[tid]} &nbsp; <span style="font-size:11px;font-weight:400;">팀 평균 ${teamAvg}점</span></td></tr>`;
+
+    group.sort((a,b)=>b.total-a.total).forEach(r => {
+      const scoreColor = r.total >= 80 ? '#276749' : r.total >= 60 ? '#744210' : '#c53030';
+      html += `
+        <tr>
+          <td style="text-align:left;font-weight:600;">${r.name}<span style="font-size:10px;color:#718096;margin-left:4px;">${r.role==='leader'?'팀장':''}</span></td>
+          <td style="font-size:10px;color:#718096;">${(TEAM_NAMES[r.teamId]||'').replace(/\d팀 /,'')}</td>
+          <td><span class="badge ${gradeMap[r.grade]||'badge-miss'}">${r.grade}</span></td>
+          <td>${r.claimCount > 0 ? `<span style="color:#e53e3e;font-weight:700;">${r.claimCount}건</span>` : '<span style="color:#38a169;">0건</span>'}</td>
+          <td>${r.claimDeduct > 0 ? `<span style="color:#e53e3e;">-${r.claimDeduct}</span>` : '0'}</td>
+          <td style="font-size:11px;">${r.burden > 0 ? r.burden.toLocaleString()+'원' : '-'}</td>
+          <td>${r.dirPct}%</td>
+          <td>${r.peerScore}점</td>
+          <td><span class="score-total" style="color:${scoreColor};">${r.total}</span></td>
+        </tr>`;
+    });
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+// ── 엑셀 다운로드 ──────────────────────────────
+function downloadExcel() {
+  const wb = XLSX.utils.book_new();
+
+  // ── 시트1: 기사별 성과 ──
+  const perfData = [
+    ['준도시락 배송팀 성과 종합표', '', '', '', '', '', '', '', ''],
+    [`기준월: ${_curYM}`, '', '출력일: ' + new Date().toLocaleDateString('ko-KR'), '', '', '', '', '', ''],
+    [''],
+    ['기사명', '소속팀', '판매등급', '클레임건수', '감점', '부담금(원)', '지시이행률', '동료평가', '종합점수'],
+  ];
+
+  const activeDrivers = _users.filter(u => u.active !== false && u.role !== 'admin' && u.role !== 'manager');
+  TEAM_ORDER.forEach(tid => {
+    const group = activeDrivers.filter(u => u.teamId === tid);
+    if (!group.length) return;
+    perfData.push([TEAM_NAMES[tid], '', '', '', '', '', '', '', '']);
+    group.forEach(u => {
+      const teamStat = _monthly[u.teamId] || {};
+      const grade = teamStat.grade || '기준미달';
+      const salesScore = grade==='A'?40:grade==='B'?32:grade==='C'?24:10;
+      const myClaims = _claims.filter(c=>c.driverName===u.name);
+      const claimDeduct = Math.min(30,
+        myClaims.filter(c=>c.type==='오배송').length*5+
+        myClaims.filter(c=>c.type==='누락').length*5+
+        myClaims.filter(c=>c.type==='지연').length*2+
+        myClaims.filter(c=>(c.type==='상함'||c.type==='이물')&&!c.csCompleted).length*3
+      );
+      let dirTotal=0, dirDone=0;
+      _directives.forEach(d => {
+        if (!d.targetTeams||d.targetTeams.length===0||d.targetTeams.includes(u.teamId)) {
+          dirTotal++;
+          if ((d._completions||[]).find(c=>c.uid===u.id)) dirDone++;
+        }
+      });
+      const dirPct = dirTotal>0?Math.round(dirDone/dirTotal*100):100;
+      const total = Math.max(0, salesScore - claimDeduct + (dirTotal>0?Math.round(dirPct/100*20):20) + 20);
+      const burden = myClaims.reduce((s,c)=>s+(c.driverBurden||0),0);
+      perfData.push([u.name, TEAM_NAMES[u.teamId]||'-', grade, myClaims.length, claimDeduct>0?`-${claimDeduct}`:0, burden, `${dirPct}%`, 20, total]);
+    });
+    perfData.push(['']);
+  });
+
+  const ws1 = XLSX.utils.aoa_to_sheet(perfData);
+
+  // 열 너비
+  ws1['!cols'] = [
+    {wch:12},{wch:16},{wch:10},{wch:10},{wch:8},{wch:14},{wch:12},{wch:10},{wch:10}
+  ];
+
+  // 스타일 — 타이틀 병합
+  ws1['!merges'] = [
+    {s:{r:0,c:0},e:{r:0,c:8}},
+    {s:{r:1,c:0},e:{r:1,c:8}},
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws1, '기사별 성과');
+
+  // ── 시트2: 클레임 내역 ──
+  const claimData = [
+    ['준도시락 클레임 내역', '', '', '', '', ''],
+    [`기준월: ${_curYM}`, '', '', '', '', ''],
+    [''],
+    ['날짜', '유형', '기사명', '업체명', '내용', '부담금(원)'],
+  ];
+  _claims.sort((a,b)=>a.date>b.date?1:-1).forEach(c => {
+    claimData.push([c.date||'-', c.type||'-', c.driverName||'-', c.clientName||'-', c.content||'-', c.driverBurden||0]);
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(claimData);
+  ws2['!cols'] = [{wch:12},{wch:10},{wch:10},{wch:20},{wch:30},{wch:12}];
+  ws2['!merges'] = [{s:{r:0,c:0},e:{r:0,c:5}},{s:{r:1,c:0},e:{r:1,c:5}}];
+  XLSX.utils.book_append_sheet(wb, ws2, '클레임 내역');
+
+  // ── 시트3: 신규업체 ──
+  const newClients = _clients.filter(c => c.firstOrderDate && c.firstOrderDate >= `${_curYM}-01` && c.firstOrderDate <= `${_curYM}-31`);
+  const clientData = [
+    ['준도시락 신규업체 현황', '', '', '', ''],
+    [`기준월: ${_curYM}`, '', '', '', ''],
+    [''],
+    ['첫주문일', '업체명', '코스', '일평균수량', '비고'],
+  ];
+  newClients.forEach(c => {
+    clientData.push([c.firstOrderDate||'-', c.clientName||'-', c.courseId||'-', c.dailyAvgOrder||0, c.memo||'']);
+  });
+  const ws3 = XLSX.utils.aoa_to_sheet(clientData);
+  ws3['!cols'] = [{wch:12},{wch:24},{wch:8},{wch:12},{wch:20}];
+  ws3['!merges'] = [{s:{r:0,c:0},e:{r:0,c:4}},{s:{r:1,c:0},e:{r:1,c:4}}];
+  XLSX.utils.book_append_sheet(wb, ws3, '신규업체');
+
+  // 다운로드
+  XLSX.writeFile(wb, `준도시락_성과보고서_${_curYM}.xlsx`);
+}
+</script>
+</body>
+</html>

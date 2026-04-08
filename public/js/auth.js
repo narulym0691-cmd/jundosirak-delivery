@@ -32,6 +32,7 @@ function getRoleRedirect(role) {
   }
   return '/dashboard.html';
 }
+// ※ driver 포함 모든 역할은 dashboard.html로 이동 (vehicle.html 직접 진입 제거)
 
 // 로그인 필요 페이지에서 인증 확인
 // requiredRoles: 배열 (빈 배열이면 모두 허용)

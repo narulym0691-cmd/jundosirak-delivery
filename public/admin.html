@@ -44,30 +44,103 @@
       font-size: 12px;
     }
 
-    .btn-nav {
-      background: rgba(255,255,255,0.15);
-      border: 1px solid rgba(255,255,255,0.3);
-      color: white;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
+    /* 바텀 탭 */
+    .bottom-tab {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      border-top: 1px solid #e2e8f0;
+      display: flex;
+      align-items: stretch;
+      z-index: 200;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    }
+
+    .bottom-tab-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 4px;
+      gap: 3px;
+      background: none;
+      border: none;
       cursor: pointer;
       font-family: inherit;
       text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
+      color: #718096;
+      font-size: 10px;
+      font-weight: 600;
+      line-height: 1.2;
+      min-height: 60px;
+      transition: color 0.15s;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    .btn-logout {
-      background: rgba(220,38,38,0.2);
-      border: 1px solid rgba(220,38,38,0.4);
-      color: #fca5a5;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 12px;
+    .bottom-tab-item:active,
+    .bottom-tab-item:hover { color: #1a4731; }
+
+    .bottom-tab-item .tab-icon {
+      font-size: 20px;
+      line-height: 1;
+    }
+
+    .bottom-tab-item.tab-more { color: #4a5568; }
+
+    /* 더보기 드롭업 메뉴 */
+    .dropup-menu {
+      position: fixed;
+      bottom: 64px;
+      right: 0;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px 12px 0 0;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.12);
+      min-width: 180px;
+      z-index: 210;
+      overflow: hidden;
+      display: none;
+    }
+
+    .dropup-menu.open { display: block; }
+
+    .dropup-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 209;
+      display: none;
+    }
+
+    .dropup-overlay.open { display: block; }
+
+    .dropup-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d3748;
       cursor: pointer;
+      border: none;
+      background: none;
+      width: 100%;
       font-family: inherit;
+      text-align: left;
+      transition: background 0.1s;
+    }
+
+    .dropup-item:hover { background: #f7fafc; }
+
+    .dropup-item.logout-item { color: #e53e3e; }
+
+    .dropup-divider {
+      height: 1px;
+      background: #e2e8f0;
+      margin: 0;
     }
 
     /* 메인 */
@@ -75,6 +148,7 @@
       max-width: 960px;
       margin: 0 auto;
       padding: 20px;
+      padding-bottom: 80px;
     }
 
     /* 월 헤더 */
@@ -318,13 +392,6 @@
   </div>
   <div class="header-right">
     <span class="admin-badge" id="adminName">관리자</span>
-    <a class="btn-nav" href="/directive.html">지시사항</a>
-    <button class="btn-nav" onclick="showSalesUpload()">📊 판매업로드</button>
-    <button class="btn-nav" onclick="showClientUpload()">🏢 거래처업로드</button>
-    <button class="btn-nav" onclick="showSmsModal()" id="btnSms">📱 문자발송</button>
-    <button class="btn-nav" onclick="showDriverMgmt()" id="btnDriverMgmt">👥 기사관리</button>
-    <button class="btn-nav" onclick="showEvalModal()">📋 정성평가</button>
-    <button class="btn-logout" onclick="logout()">로그아웃</button>
   </div>
 </div>
 
@@ -951,6 +1018,109 @@
     }
   };
 
+  // ── 신규업체 감지 → sms_schedule 적재 ──
+  // 구글시트 신규업체 시트에서 해당 날짜 신규업체 체크 후 sms_schedule 적재
+  const SHEET_ID = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
+  const NEW_CLIENT_GID = '1000247276';
+
+  const DRIVER_COURSE_MAP = {
+    '표창훈':'코스1','박인수':'코스6','안준수':'코스7','김민기':'코스3',
+    '최용혁':'코스8','이창목':'코스13','오철석':'코스4','전태영':'코스15',
+    '이진우':'코스5','송정':'코스6','유상하':'코스9','금정':'코스10',
+    '김종호':'코스16','최준은':'코스18','이호주':'코스11','김창연':'코스12',
+    '조홍철':'코스19','김동완':'코스14','류대현':'코스17',
+  };
+  const COURSE_TEAM = {
+    '코스1':{teamId:'team2',teamName:'해운대'},'코스2':{teamId:'team2',teamName:'해운대'},
+    '코스3':{teamId:'team4',teamName:'연수남'},'코스4':{teamId:'team3',teamName:'공오일(051)'},
+    '코스5':{teamId:'team1',teamName:'준고'},'코스6':{teamId:'team1',teamName:'준고'},
+    '코스7':{teamId:'team2',teamName:'해운대'},'코스8':{teamId:'team4',teamName:'연수남'},
+    '코스9':{teamId:'team1',teamName:'준고'},'코스10':{teamId:'team5',teamName:'아가리'},
+    '코스11':{teamId:'team7',teamName:'강서영'},'코스12':{teamId:'team6',teamName:'도세마'},
+    '코스13':{teamId:'team4',teamName:'연수남'},'코스14':{teamId:'team7',teamName:'강서영'},
+    '코스15':{teamId:'team3',teamName:'공오일(051)'},'코스16':{teamId:'team5',teamName:'아가리'},
+    '코스17':{teamId:'team7',teamName:'강서영'},'코스18':{teamId:'team5',teamName:'아가리'},
+    '코스19':{teamId:'team6',teamName:'도세마'},
+  };
+
+  async function checkNewClientsAndScheduleSms(date, driverRows) {
+    // 구글시트 CSV 가져오기
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${NEW_CLIENT_GID}`;
+    const resp = await fetch(url);
+    const text = await resp.text();
+    const lines = text.split('\n').slice(1); // 헤더 제거
+
+    // 해당 날짜 신규업체 파싱
+    // 날짜 형식: 2026.04.01 또는 2026. 4. 1.
+    const newOnDate = [];
+    for (const line of lines) {
+      const cols = line.split(',');
+      const rawDate = (cols[0]||'').trim().replace(/\s/g,'').replace(/\.$/,'');
+      const clientName = (cols[1]||'').trim().replace(/^"|"$/g,'');
+      const driver = (cols[5]||'').trim().replace(/^"|"$/g,'');
+      const qty = parseInt((cols[6]||'0').replace(/[^0-9]/g,'')) || 0;
+      if (!rawDate || !clientName) continue;
+      // 날짜 정규화: 2026.04.01 → 2026-04-01
+      const normalized = rawDate.replace(/\./g,'-').replace(/--/g,'-').replace(/-$/,'');
+      // YYYY-MM-DD 형식 맞추기
+      const parts = normalized.split('-').filter(Boolean);
+      if (parts.length < 3) continue;
+      const isoDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+      if (isoDate === date) {
+        newOnDate.push({ clientName, driver, qty });
+      }
+    }
+
+    if (!newOnDate.length) return 0;
+
+    // sms_schedule 적재
+    let count = 0;
+    for (const item of newOnDate) {
+      const courseId = DRIVER_COURSE_MAP[item.driver];
+      if (!courseId) continue;
+      const teamInfo = COURSE_TEAM[courseId];
+      // 중복 체크
+      const existing = await db.collection('sms_schedule')
+        .where('date','==',date)
+        .where('clientName','==',item.clientName)
+        .where('type','==','new_client')
+        .limit(1).get();
+      if (!existing.empty) continue;
+
+      await db.collection('sms_schedule').add({
+        type: 'new_client',
+        date,
+        courseId,
+        driverName: item.driver,
+        clientName: item.clientName,
+        menu: '뜨근한식',
+        quantity: item.qty,
+        teamId: teamInfo.teamId,
+        teamName: teamInfo.teamName,
+        sent: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // clients에 firstOrderDate 업데이트
+      const clientSnap = await db.collection('clients')
+        .where('clientName','==',item.clientName).limit(1).get();
+      if (!clientSnap.empty) {
+        await clientSnap.docs[0].ref.update({ firstOrderDate: date, isNew: true });
+      } else {
+        await db.collection('clients').add({
+          clientName: item.clientName, courseId,
+          teamId: teamInfo.teamId, isPriority: false, isNew: true,
+          firstOrderDate: date, orderDays:[0,1,2,3,4],
+          dayLabels:['월','화','수','목','금'],
+          dailyAvgOrder: item.qty, memo:'판매업로드 자동등록',
+          active: true, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      count++;
+    }
+    return count;
+  }
+
   window.saveSalesData = async () => {
     const date = document.getElementById('su-date').value;
     if (!date) { alert('날짜를 선택해주세요.'); return; }
@@ -1020,7 +1190,16 @@
 
       await db.collection('monthly_stats').doc(ym).set(monthlyStats);
 
-      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.`);
+      // 3. 신규업체 sms_schedule 적재 (구글시트 체크)
+      let newClientCount = 0;
+      try {
+        newClientCount = await checkNewClientsAndScheduleSms(date, driverRows);
+      } catch(e) {
+        console.warn('신규업체 SMS 스케줄 오류(무시):', e.message);
+      }
+
+      const smsMsg = newClientCount > 0 ? `\n신규업체 ${newClientCount}건 SMS 새벽 발송 예약됨.` : '';
+      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}`);
       closeSalesUpload();
       location.reload();
 
@@ -1191,7 +1370,7 @@
     </div>
     <div style="padding:20px;">
       <!-- 탭 -->
-      <div style="display:flex;gap:6px;margin-bottom:16px;">
+      <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;">
         <button onclick="switchSmsTab('individual')" id="smsTab-individual"
           style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#1a4731;color:#fff;font-size:12px;">개별 발송</button>
         <button onclick="switchSmsTab('team')" id="smsTab-team"
@@ -1200,6 +1379,8 @@
           style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">팀장</button>
         <button onclick="switchSmsTab('all')" id="smsTab-all"
           style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">전체 발송</button>
+        <button onclick="switchSmsTab('history')" id="smsTab-history"
+          style="flex:1;padding:8px;border:none;border-radius:6px;cursor:pointer;font-weight:600;background:#edf2f7;color:#4a5568;font-size:12px;">📊 발송이력</button>
       </div>
 
       <!-- 개별 발송 -->
@@ -1230,6 +1411,30 @@
           ⚠️ 전화번호가 등록된 <strong>전체 기사</strong>에게 발송됩니다.
         </div>
         <div id="smsAllCount" style="font-size:13px;color:#4a5568;"></div>
+      </div>
+
+      <!-- 발송이력 탭 -->
+      <div id="smsPane-history" style="display:none;">
+        <!-- 필터 -->
+        <div style="display:flex;gap:6px;margin-bottom:10px;align-items:center;">
+          <select id="smsHistoryType" onchange="loadSmsHistory()" style="flex:1;padding:6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+            <option value="">전체 유형</option>
+            <option value="new_client">신규업체</option>
+            <option value="priority_client">1순위업체</option>
+            <option value="alert_auto">경보자동</option>
+            <option value="manual">수동발송</option>
+          </select>
+          <select id="smsHistoryDriver" onchange="loadSmsHistory()" style="flex:1;padding:6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;">
+            <option value="">전체 기사</option>
+          </select>
+          <input type="date" id="smsHistoryDate" onchange="loadSmsHistory()"
+            style="flex:1;padding:6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;"
+            value="">
+        </div>
+        <!-- 요약 카드 -->
+        <div id="smsHistorySummary" style="display:flex;gap:8px;margin-bottom:10px;"></div>
+        <!-- 이력 목록 -->
+        <div id="smsHistoryList" style="max-height:340px;overflow-y:auto;"></div>
       </div>
 
       <!-- 메시지 입력 -->
@@ -1688,12 +1893,116 @@ function updateSmsAllCount() {
 
 function switchSmsTab(tab) {
   smsCurTab = tab;
-  ['individual','team','leader','all'].forEach(t => {
+  ['individual','team','leader','all','history'].forEach(t => {
     document.getElementById('smsPane-' + t).style.display = t === tab ? 'block' : 'none';
     const btn = document.getElementById('smsTab-' + t);
+    if (!btn) return;
     btn.style.background = t === tab ? '#1a4731' : '#edf2f7';
     btn.style.color = t === tab ? '#fff' : '#4a5568';
   });
+  // 메시지 입력창 / 발송버튼 이력탭에서 숨기기
+  const isHistory = tab === 'history';
+  document.getElementById('smsText').closest('div[style*="margin-top:12px"]') &&
+    (document.getElementById('smsText').closest('div').style.display = isHistory ? 'none' : '');
+  document.getElementById('btnSmsSend').style.display = isHistory ? 'none' : '';
+  if (isHistory) { initSmsHistoryDriverFilter(); loadSmsHistory(); }
+}
+
+// ── 자동발송 이력 ──
+async function initSmsHistoryDriverFilter() {
+  const sel = document.getElementById('smsHistoryDriver');
+  if (sel.options.length > 1) return; // 이미 로드됨
+  const snap = await db.collection('users').where('active','==',true).get();
+  snap.forEach(doc => {
+    const d = doc.data();
+    if (d.role === 'admin') return;
+    const opt = document.createElement('option');
+    opt.value = d.name; opt.textContent = d.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadSmsHistory() {
+  const container = document.getElementById('smsHistoryList');
+  const summary = document.getElementById('smsHistorySummary');
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:#718096;font-size:13px;">로딩 중...</div>';
+  summary.innerHTML = '';
+
+  const typeFilter   = document.getElementById('smsHistoryType').value;
+  const driverFilter = document.getElementById('smsHistoryDriver').value;
+  const dateFilter   = document.getElementById('smsHistoryDate').value;
+
+  try {
+    let query = db.collection('sms_logs').orderBy('sentAt','desc').limit(100);
+    const snap = await query.get();
+
+    let rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (typeFilter && d.type !== typeFilter) return;
+      if (driverFilter && d.driverName !== driverFilter) return;
+      if (dateFilter && d.date !== dateFilter) return;
+      rows.push(d);
+    });
+
+    // 요약 카드
+    const totalSent  = rows.reduce((s,r) => s + (r.sent||0), 0);
+    const totalFail  = rows.reduce((s,r) => s + (r.failed||0), 0);
+    const newCnt     = rows.filter(r => r.type === 'new_client').length;
+    const prioCnt    = rows.filter(r => r.type === 'priority_client').length;
+    const alertCnt   = rows.filter(r => r.type === 'alert_auto').length;
+    const manualCnt  = rows.filter(r => r.type === 'manual').length;
+
+    summary.innerHTML = [
+      ['총 발송', totalSent + '건', '#276749', '#f0fff4'],
+      ['실패', totalFail + '건', totalFail > 0 ? '#c53030' : '#276749', totalFail > 0 ? '#fff5f5' : '#f0fff4'],
+      ['신규업체', newCnt + '건', '#2b6cb0', '#ebf8ff'],
+      ['1순위', prioCnt + '건', '#744210', '#fffff0'],
+    ].map(([label,val,color,bg]) => `
+      <div style="flex:1;background:${bg};border-radius:8px;padding:8px;text-align:center;">
+        <div style="font-size:11px;color:#718096;">${label}</div>
+        <div style="font-size:16px;font-weight:700;color:${color};">${val}</div>
+      </div>`).join('');
+
+    if (rows.length === 0) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:#718096;font-size:13px;">발송 이력 없음</div>';
+      return;
+    }
+
+    const TYPE_LABELS = {
+      new_client:      '🆕 신규업체',
+      priority_client: '⭐ 1순위',
+      alert_auto:      '🚨 경보자동',
+      manual:          '📤 수동',
+    };
+
+    container.innerHTML = rows.map(r => {
+      const sentTime = r.sentAt ? new Date(r.sentAt.seconds * 1000).toLocaleString('ko-KR', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '-';
+      const typeLabel = TYPE_LABELS[r.type] || r.type || '-';
+      const statusColor = (r.sent||0) > 0 ? '#276749' : '#c53030';
+      const statusText  = (r.sent||0) > 0 ? '✅ 성공' : '❌ 실패';
+      const driverLine  = r.driverName ? `<span style="font-weight:600;">${r.driverName}</span> →` : '';
+      const clientLine  = r.clientName ? `<span style="color:#2b6cb0;">${r.clientName}</span>` : (r.targets ? r.targets.join(', ') : '');
+      return `
+        <div style="border-bottom:1px solid #e2e8f0;padding:10px 0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <span style="font-size:11px;background:#edf2f7;padding:2px 6px;border-radius:10px;color:#4a5568;">${typeLabel}</span>
+              <span style="font-size:12px;">${driverLine} ${clientLine}</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:11px;color:${statusColor};font-weight:600;">${statusText}</span>
+              <span style="font-size:11px;color:#718096;">${sentTime}</span>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#718096;background:#f7fafc;padding:6px 8px;border-radius:4px;white-space:pre-wrap;word-break:break-all;">${(r.text||'').slice(0,120)}${(r.text||'').length > 120 ? '...' : ''}</div>
+          ${r.date ? `<div style="font-size:11px;color:#a0aec0;margin-top:3px;">대상일: ${r.date}${r.quantity ? ' | '+r.quantity+'개' : ''}</div>` : ''}
+        </div>`;
+    }).join('');
+
+  } catch(e) {
+    container.innerHTML = `<div style="color:#c53030;font-size:12px;padding:10px;">오류: ${e.message}</div>`;
+  }
 }
 
 // 바이트 카운트
@@ -1751,6 +2060,72 @@ async function sendSms() {
   }
 
   btn.disabled = false; btn.textContent = '📤 문자 발송';
+}
+</script>
+
+<!-- 더보기 드롭업 오버레이 -->
+<div class="dropup-overlay" id="dropupOverlay" onclick="closeDropup()"></div>
+
+<!-- 더보기 드롭업 메뉴 -->
+<div class="dropup-menu" id="dropupMenu">
+  <button class="dropup-item" onclick="closeDropup(); location.href='/dashboard-admin.html';">
+    <span>📊</span> 경영 대시보드
+  </button>
+  <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showEvalModal();">
+    <span>📋</span> 정성평가
+  </button>
+  <div class="dropup-divider"></div>
+  <button class="dropup-item logout-item" onclick="closeDropup(); logout();">
+    <span>🚪</span> 로그아웃
+  </button>
+</div>
+
+<!-- 바텀 탭 -->
+<nav class="bottom-tab">
+  <a class="bottom-tab-item" href="/directive.html">
+    <span class="tab-icon">📋</span>
+    <span>지시사항</span>
+  </a>
+  <button class="bottom-tab-item" onclick="showSalesUpload()">
+    <span class="tab-icon">📊</span>
+    <span>판매업로드</span>
+  </button>
+  <button class="bottom-tab-item" onclick="showClientUpload()">
+    <span class="tab-icon">🏢</span>
+    <span>거래처</span>
+  </button>
+  <button class="bottom-tab-item" id="btnSms" onclick="showSmsModal()">
+    <span class="tab-icon">📱</span>
+    <span>문자</span>
+  </button>
+  <button class="bottom-tab-item" id="btnDriverMgmt" onclick="showDriverMgmt()">
+    <span class="tab-icon">👥</span>
+    <span>기사관리</span>
+  </button>
+  <button class="bottom-tab-item tab-more" onclick="toggleDropup()">
+    <span class="tab-icon">⋯</span>
+    <span>더보기</span>
+  </button>
+</nav>
+
+<script>
+function toggleDropup() {
+  var menu = document.getElementById('dropupMenu');
+  var overlay = document.getElementById('dropupOverlay');
+  var isOpen = menu.classList.contains('open');
+  if (isOpen) {
+    menu.classList.remove('open');
+    overlay.classList.remove('open');
+  } else {
+    menu.classList.add('open');
+    overlay.classList.add('open');
+  }
+}
+
+function closeDropup() {
+  document.getElementById('dropupMenu').classList.remove('open');
+  document.getElementById('dropupOverlay').classList.remove('open');
 }
 </script>
 </body>
