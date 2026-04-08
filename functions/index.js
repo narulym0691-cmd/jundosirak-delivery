@@ -340,7 +340,7 @@ exports.scheduledSmsAtDawn = functions
       for (const schedDoc of scheduleSnap.docs) {
         const task = schedDoc.data();
         const {
-          type,          // 'new_client' | 'priority_client'
+          type,          // 'new_client' | 'priority_client' | 'broadcast_0409'
           driverName,
           clientName,
           menu,
@@ -348,7 +348,50 @@ exports.scheduledSmsAtDawn = functions
           teamId,
           teamName,
           courseId,
+          message,       // broadcast용
+          phone,         // broadcast용
         } = task;
+
+        // broadcast 타입 처리
+        if (type === 'broadcast_0409') {
+          if (!phone) {
+            console.log(`❌ ${driverName} 전화번호 없음 (broadcast)`);
+            await schedDoc.ref.update({ sent: true, skipped: true });
+            continue;
+          }
+          
+          const greeting = getWeatherGreeting(driverName, weather);
+          const text = greeting + '\n\n' + message;
+          const result = await sendOneSms(phone, text);
+          
+          await db.collection('sms_logs').add({
+            type: 'broadcast',
+            driverName,
+            teamId,
+            date: yesterdayStr,
+            text,
+            phone,
+            sent: result.ok ? 1 : 0,
+            failed: result.ok ? 0 : 1,
+            error: result.ok ? null : (result.error || null),
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          
+          await schedDoc.ref.update({
+            sent: true,
+            sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            ok: result.ok,
+          });
+          
+          if (result.ok) {
+            console.log(`✅ 전체발송: ${driverName}(${phone})`);
+            totalSent++;
+          } else {
+            console.log(`❌ 전체발송 실패: ${driverName}: ${result.error}`);
+            totalFailed++;
+          }
+          continue;
+        }
 
         const driverInfo = usersMap[driverName];
         if (!driverInfo || !driverInfo.phone) {
