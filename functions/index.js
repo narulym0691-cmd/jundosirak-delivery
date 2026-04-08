@@ -322,6 +322,10 @@ exports.scheduledSmsAtDawn = functions
       }
 
       console.log(`=== 완료: 성공 ${totalSent}건, 실패 ${totalFailed}건 ===`);
+      
+      // ── 신규업체 고객관리 기록 체크 ──
+      await checkNewClientFeedback();
+      
     } catch (e) {
       console.error('scheduledSmsAtDawn 오류:', e);
     }
@@ -596,3 +600,108 @@ exports.sendTestSms = functions
       res.status(500).json({ ok: false, error: e.message });
     }
   });
+
+// ── 신규업체 고객관리 기록 체크 (3일째) ──
+async function checkNewClientFeedback() {
+  try {
+    console.log('\n=== 신규업체 고객관리 체크 시작 ===');
+    
+    // 오늘 날짜
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0,10);
+    
+    // 신규업체 (firstOrderDate 있는 것)
+    const clientsSnap = await admin.firestore().collection('clients')
+      .where('isNew','==',true)
+      .where('firstOrderDate','!=',null)
+      .get();
+    
+    let fbNeeded = 0;
+    let fbSent = 0;
+    
+    for (const doc of clientsSnap.docs) {
+      const client = doc.data();
+      const firstDate = new Date(client.firstOrderDate);
+      
+      // firstOrderDate부터 오늘까지 일수
+      const diffDays = Math.floor((today - firstDate) / (1000*60*60*24));
+      
+      // 3일 이상 경과 (firstOrderDate 포함 3일째 = +2일)
+      if (diffDays < 2) continue;
+      
+      // 이미 고객관리 기록 있는지 확인
+      const fvSnap = await admin.firestore().collection('field_visits')
+        .where('clientName','==',client.clientName)
+        .where('type','==','customer_care')
+        .limit(1)
+        .get();
+      
+      if (!fvSnap.empty) continue;  // 이미 작성됨
+      
+      fbNeeded++;
+      
+      // 담당 기사 찾기
+      const usersSnap = await admin.firestore().collection('users')
+        .where('teamId','==',client.teamId)
+        .where('role','in',['driver','leader'])
+        .limit(1)
+        .get();
+      
+      if (usersSnap.empty) {
+        console.log(`⚠️ ${client.clientName}: 담당 기사 없음 (${client.teamId})`);
+        continue;
+      }
+      
+      const driver = usersSnap.docs[0].data();
+      const driverName = driver.name;
+      const driverPhone = driver.phone;
+      
+      if (!driverPhone) {
+        console.log(`⚠️ ${driverName}: 전화번호 없음`);
+        continue;
+      }
+      
+      // 오늘 이미 발송했는지 체크
+      const logSnap = await admin.firestore().collection('sms_logs')
+        .where('type','==','new_client_feedback')
+        .where('driverName','==',driverName)
+        .where('clientName','==',client.clientName)
+        .where('date','==',todayStr)
+        .limit(1)
+        .get();
+      
+      if (!logSnap.empty) continue;  // 오늘 이미 발송
+      
+      // 문자 발송
+      const text = `[준도시락] ${driverName} 기사님, ${client.clientName}(신규업체) 고객관리 기록을 작성해주세요. (첫 주문 ${diffDays+1}일째)`;
+      
+      const result = await sendSolapiSms(driverPhone, text);
+      
+      // 로그 저장
+      await admin.firestore().collection('sms_logs').add({
+        type: 'new_client_feedback',
+        driverName,
+        clientName: client.clientName,
+        phone: driverPhone,
+        text,
+        date: todayStr,
+        sent: result.ok ? 1 : 0,
+        failed: result.ok ? 0 : 1,
+        error: result.ok ? null : (result.error||null),
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      
+      if (result.ok) {
+        console.log(`✅ 신규업체 문자: ${driverName}(${driverPhone}) → ${client.clientName}`);
+        fbSent++;
+      } else {
+        console.log(`❌ 신규업체 문자 실패: ${driverName} → ${client.clientName}: ${result.error}`);
+      }
+    }
+    
+    console.log(`=== 신규업체 고객관리 체크 완료: 대상 ${fbNeeded}건, 발송 ${fbSent}건 ===`);
+  } catch (e) {
+    console.error('checkNewClientFeedback 오류:', e);
+  }
+}
+

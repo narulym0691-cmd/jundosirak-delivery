@@ -680,6 +680,25 @@
   </div>
 </div>
 
+<!-- 영업현장 통계 모달 -->
+<div id="fieldVisitStatsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">📸 영업 현장 통계</div>
+      <button onclick="closeFieldVisitStatsModal()" style="background:none;border:none;font-size:24px;color:#718096;cursor:pointer;">✕</button>
+    </div>
+    
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;">
+      <select id="fvStatsMonth" onchange="loadFieldVisitStats()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;"></select>
+      <button onclick="downloadFieldVisitExcel()" style="padding:8px 16px;background:#217346;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">📥 엑셀 다운로드</button>
+    </div>
+    
+    <div id="fvStatsSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
+    
+    <div id="fvStatsTable" style="overflow-x:auto;"></div>
+  </div>
+</div>
+
 <!-- 정성평가 모달 -->
 <div id="evalModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
   <div style="background:#fff;max-width:760px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
@@ -2072,6 +2091,10 @@ async function sendSms() {
     <span>📊</span> 경영 대시보드
   </button>
   <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showFieldVisitStatsModal();">
+    <span>📸</span> 영업현장 통계
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showEvalModal();">
     <span>📋</span> 정성평가
   </button>
@@ -2126,6 +2149,137 @@ function toggleDropup() {
 function closeDropup() {
   document.getElementById('dropupMenu').classList.remove('open');
   document.getElementById('dropupOverlay').classList.remove('open');
+}
+
+// ── 영업 현장 통계 ──
+let _fvStatsData = [];
+
+function showFieldVisitStatsModal() {
+  document.getElementById('fieldVisitStatsModal').style.display = 'block';
+  initFvStatsMonth();
+  loadFieldVisitStats();
+}
+
+function closeFieldVisitStatsModal() {
+  document.getElementById('fieldVisitStatsModal').style.display = 'none';
+}
+
+function initFvStatsMonth() {
+  const sel = document.getElementById('fvStatsMonth');
+  if (sel.options.length > 0) return;
+  const now = new Date();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = ym.replace('-','년 ') + '월';
+    if (i === 0) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+async function loadFieldVisitStats() {
+  const ym = document.getElementById('fvStatsMonth').value;
+  const [y, m] = ym.split('-').map(Number);
+  const dateFrom = `${ym}-01`;
+  const dateTo   = `${ym}-31`;
+  
+  try {
+    const snap = await db.collection('field_visits')
+      .where('visitDate','>=',dateFrom)
+      .where('visitDate','<=',dateTo)
+      .get();
+    
+    const data = [];
+    snap.forEach(d => data.push(d.data()));
+    
+    // 기사별 집계
+    const byDriver = {};
+    data.forEach(fv => {
+      const name = fv.driverName || '-';
+      if (!byDriver[name]) byDriver[name] = { new_sales:0, customer_care:0, total:0 };
+      if (fv.type === 'new_sales') byDriver[name].new_sales++;
+      else if (fv.type === 'customer_care') byDriver[name].customer_care++;
+      byDriver[name].total++;
+    });
+    
+    _fvStatsData = Object.entries(byDriver).map(([name,v]) => ({name, ...v})).sort((a,b)=>b.total-a.total);
+    
+    // 요약 카드
+    const totalNew  = _fvStatsData.reduce((s,r)=>s+r.new_sales,0);
+    const totalCare = _fvStatsData.reduce((s,r)=>s+r.customer_care,0);
+    const totalAll  = _fvStatsData.reduce((s,r)=>s+r.total,0);
+    
+    document.getElementById('fvStatsSummary').innerHTML = [
+      ['신규영업', totalNew+'건', '#2b6cb0', '#ebf8ff'],
+      ['고객관리', totalCare+'건', '#38a169', '#f0fff4'],
+      ['전체', totalAll+'건', '#744210', '#fffff0']
+    ].map(([label,val,color,bg]) => `
+      <div style="background:${bg};border-radius:8px;padding:12px;text-align:center;">
+        <div style="font-size:11px;color:#718096;">${label}</div>
+        <div style="font-size:20px;font-weight:800;color:${color};">${val}</div>
+      </div>`).join('');
+    
+    // 테이블
+    document.getElementById('fvStatsTable').innerHTML = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f0fff4;border-bottom:2px solid #c6f6d5;">
+            <th style="padding:10px;text-align:left;font-weight:700;color:#276749;">기사명</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#276749;">신규영업</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#276749;">고객관리</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#276749;">합계</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${_fvStatsData.map(r => `
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:10px;font-weight:600;">${r.name}</td>
+              <td style="padding:10px;text-align:center;color:#2b6cb0;font-weight:700;">${r.new_sales}</td>
+              <td style="padding:10px;text-align:center;color:#38a169;font-weight:700;">${r.customer_care}</td>
+              <td style="padding:10px;text-align:center;font-weight:700;">${r.total}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+    
+  } catch(e) {
+    alert('로딩 오류: ' + e.message);
+  }
+}
+
+function downloadFieldVisitExcel() {
+  if (!window.XLSX) { alert('엑셀 라이브러리 로딩 중...'); return; }
+  
+  const ym = document.getElementById('fvStatsMonth').value;
+  const wb = XLSX.utils.book_new();
+  
+  // 시트1: 기사별 집계
+  const data = [
+    ['준도시락 영업 현장 통계', '', '', ''],
+    [`기준월: ${ym}`, '', `출력일: ${new Date().toLocaleDateString('ko-KR')}`, ''],
+    [''],
+    ['기사명', '신규영업', '고객관리', '합계'],
+  ];
+  _fvStatsData.forEach(r => {
+    data.push([r.name, r.new_sales, r.customer_care, r.total]);
+  });
+  data.push(['']);
+  data.push(['총계', 
+    _fvStatsData.reduce((s,r)=>s+r.new_sales,0),
+    _fvStatsData.reduce((s,r)=>s+r.customer_care,0),
+    _fvStatsData.reduce((s,r)=>s+r.total,0)
+  ]);
+  
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:15},{wch:12},{wch:12},{wch:12}];
+  ws['!merges'] = [
+    {s:{r:0,c:0},e:{r:0,c:3}},
+    {s:{r:1,c:0},e:{r:1,c:3}}
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, '기사별집계');
+  
+  XLSX.writeFile(wb, `준도시락_영업현장통계_${ym}.xlsx`);
 }
 </script>
 </body>
