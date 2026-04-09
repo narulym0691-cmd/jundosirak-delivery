@@ -539,6 +539,27 @@
   </div>
 </div>
 
+<!-- 피드백 모달 -->
+<div id="feedbackModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:2000;display:none;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:16px;padding:24px;width:90%;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <div style="font-size:16px;font-weight:700;color:#e53e3e;margin-bottom:6px;">📝 주문 미발생 사유 입력</div>
+    <div style="font-size:13px;color:#718096;margin-bottom:16px;" id="feedbackClientName"></div>
+    <div style="display:grid;gap:8px;margin-bottom:16px;">
+      <button class="fb-btn" onclick="selectFeedback(this,'담당자 휴가/부재')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">🏖️ 담당자 휴가/부재</button>
+      <button class="fb-btn" onclick="selectFeedback(this,'메뉴 불만')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">😞 메뉴 불만</button>
+      <button class="fb-btn" onclick="selectFeedback(this,'폐업/이전')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">🚪 폐업/이전</button>
+      <button class="fb-btn" onclick="selectFeedback(this,'가격 문제')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">💰 가격 문제</button>
+      <button class="fb-btn" onclick="selectFeedback(this,'연락 안됨')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">📵 연락 안됨</button>
+      <button class="fb-btn" onclick="selectFeedback(this,'기타')" style="padding:11px;border:2px solid #e2e8f0;border-radius:8px;background:#fff;font-size:14px;cursor:pointer;text-align:left;">📌 기타</button>
+    </div>
+    <textarea id="feedbackExtra" placeholder="추가 내용 (선택사항)" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;height:64px;box-sizing:border-box;margin-bottom:12px;"></textarea>
+    <div style="display:flex;gap:8px;">
+      <button onclick="closeFeedbackModal()" style="flex:1;padding:11px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;cursor:pointer;">취소</button>
+      <button onclick="submitFeedback()" style="flex:2;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">제출</button>
+    </div>
+  </div>
+</div>
+
 <!-- 홈 탭 섹션 -->
 <div class="main">
 
@@ -930,6 +951,68 @@
     } catch (e) {
       console.error('CS 완료 처리 실패:', e);
       alert('처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  // ── 확인보고 피드백 ──
+  let _feedbackAlertId = null;
+  let _feedbackSelected = null;
+
+  window.openFeedbackModal = function(alertId, clientName) {
+    _feedbackAlertId = alertId;
+    _feedbackSelected = null;
+    document.getElementById('feedbackClientName').textContent = '거래처: ' + clientName;
+    document.getElementById('feedbackExtra').value = '';
+    document.querySelectorAll('.fb-btn').forEach(b => {
+      b.style.background = '#fff';
+      b.style.borderColor = '#e2e8f0';
+      b.style.color = '#2d3748';
+    });
+    document.getElementById('feedbackModal').style.display = 'flex';
+  };
+
+  window.closeFeedbackModal = function() {
+    document.getElementById('feedbackModal').style.display = 'none';
+    _feedbackAlertId = null;
+    _feedbackSelected = null;
+  };
+
+  window.selectFeedback = function(btn, value) {
+    _feedbackSelected = value;
+    document.querySelectorAll('.fb-btn').forEach(b => {
+      b.style.background = '#fff';
+      b.style.borderColor = '#e2e8f0';
+      b.style.color = '#2d3748';
+    });
+    btn.style.background = '#1a4731';
+    btn.style.borderColor = '#1a4731';
+    btn.style.color = '#fff';
+  };
+
+  window.submitFeedback = async function() {
+    if (!_feedbackSelected) {
+      alert('사유를 선택해 주세요.');
+      return;
+    }
+    const extra = document.getElementById('feedbackExtra').value.trim();
+    const text = extra ? _feedbackSelected + ' — ' + extra : _feedbackSelected;
+
+    try {
+      await db.collection('alerts').doc(_feedbackAlertId).update({
+        feedback: {
+          text: text,
+          submittedBy: currentUser.uid,
+          submittedByName: currentUser.name,
+          submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }
+      });
+      closeFeedbackModal();
+      // 경보 카드 새로고침
+      await loadAlerts();
+      alert('피드백이 제출되었습니다.');
+    } catch(e) {
+      console.error('피드백 저장 실패:', e);
+      alert('저장 중 오류가 발생했습니다.');
     }
   };
 

@@ -212,6 +212,21 @@ async function loadAlerts() {
       else if (a.grade === 'watch') { levelLabel = '🟡 주시'; levelClass = 'alert-watch'; }
       else { levelLabel = '🔴 확인보고'; levelClass = 'alert-check'; }
 
+      const isCheck = a.grade === 'check';
+      const hasFeedback = a.feedback && a.feedback.text;
+
+      const feedbackSection = isCheck ? (hasFeedback ? `
+        <div style="margin-top:8px;background:#f0fff4;border-radius:6px;padding:8px 10px;font-size:12px;color:#276749;">
+          ✅ 피드백 완료: ${a.feedback.text}
+          <span style="color:#a0aec0;margin-left:6px;">${a.feedback.submittedAt ? new Date(a.feedback.submittedAt.toDate()).toLocaleDateString('ko-KR') : ''}</span>
+        </div>` : `
+        <div style="margin-top:8px;">
+          <button onclick="openFeedbackModal('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}')"
+            style="width:100%;padding:9px;background:#e53e3e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+            📝 사유 입력 필요
+          </button>
+        </div>`) : '';
+
       return `
         <div class="alert-item ${levelClass}">
           <div class="alert-left">
@@ -223,6 +238,7 @@ async function loadAlerts() {
             <span class="alert-days">${a.consecutiveDays||1}일째</span>
             <span class="alert-date">${a.lastOrderDate || ''}</span>
           </div>
+          ${feedbackSection}
         </div>
       `;
     }).join('');
