@@ -203,7 +203,11 @@ async function loadAdminAlerts() {
       }
     });
     const activeItems = Array.from(latestByClient.values());
-    activeItems.sort((a, b) => (gradeOrder[a.level]||9) - (gradeOrder[b.level]||9));
+    activeItems.sort((a, b) => {
+      const ao = gradeOrder[a.level] !== undefined ? gradeOrder[a.level] : 9;
+      const bo = gradeOrder[b.level] !== undefined ? gradeOrder[b.level] : 9;
+      return ao - bo;
+    });
 
     // 중복 제거 후 카운트로 대시보드 요약 표시
     urgent = 0; watch = 0; check = 0;
