@@ -183,6 +183,8 @@ async function loadAdminAlerts() {
       const a = { id: doc.id, ...doc.data() };
       // grade 또는 level 필드 통일 (grade 우선)
       a.level = a.grade || a.level || 'check';
+      // grade:'none' (1일째 추적용) 제외
+      if (a.level === 'none') return;
       items.push(a);
       // 미해제 건만 집계
       if (a.resolved) return;
@@ -196,8 +198,17 @@ async function loadAdminAlerts() {
       <div class="alert-summary-row"><span class="alert-count check">${check}</span><span class="alert-label">확인보고</span></div>
     `;
     if (!items.length) { container.innerHTML = '<div class="empty-msg">경보가 없습니다.</div>'; return; }
-    // 미해제만 필터링 후 정렬
-    const activeItems = items.filter(a => !a.resolved);
+    // 미해제만 필터링
+    const unresolvedItems = items.filter(a => !a.resolved);
+    // 동일 거래처 중복 제거: clientName 기준 최신 날짜 경보 1건만 유지
+    const latestByClient = new Map();
+    unresolvedItems.forEach(a => {
+      const existing = latestByClient.get(a.clientName);
+      if (!existing || (a.date || '') > (existing.date || '')) {
+        latestByClient.set(a.clientName, a);
+      }
+    });
+    const activeItems = Array.from(latestByClient.values());
     activeItems.sort((a, b) => { const order = { urgent: 0, watch: 1, check: 2 }; return (order[a.level]||9)-(order[b.level]||9); });
 
     // 팀명 매핑
