@@ -998,71 +998,83 @@
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
 
-      // YYMMDD 형식 시트 찾기 (260407 등), 없으면 '결과' 또는 첫 번째 시트
-      const sheetName = wb.SheetNames.find(s => /^\d{6}$/.test(s))
-        || wb.SheetNames.find(s => s === '결과')
-        || wb.SheetNames[0];
+      // ── 일일장부 파싱 (붙여넣기 시트) ──────────────────────────
+      // 컬럼: No.|주문시간|주문일|주문자ID|업체명&현장명|주문배송지|받는사람|연락처|이메일|배송시작일|담당기사|메뉴명|수량|금액|부가세|합계|메모
+      const sheetName = wb.SheetNames.find(s => s === '붙여넣기') || wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
 
-      // 헤더행 찾기 (기사명 컬럼)
-      let nameCol = -1, totalCol = -1, headerRow = -1;
-      let 뜨Col=-1, 프Col=-1, 샐Col=-1, 품Col=-1, 덮Col=-1, 샌Col=-1, 세트Col=-1, 유부Col=-1;
-      for (let i = 0; i < rows.length; i++) {
+      // 헤더행 찾기 (No. 또는 업체명 컬럼)
+      let headerRow = -1;
+      let colClient=-1, colDriver=-1, colMenu=-1, colQty=-1, colAmt=-1;
+      for (let i = 0; i < Math.min(rows.length, 10); i++) {
         const row = rows[i];
         for (let j = 0; j < row.length; j++) {
           const cell = String(row[j]||'').trim();
-          if (cell === '기사명') { nameCol = j; headerRow = i; }
-          if (cell.includes('합') && cell.includes('계') && nameCol >= 0) { totalCol = j; }
-          if (cell === '뜨') 뜨Col = j;
-          if (cell === '프') 프Col = j;
-          if (cell === '샐') 샐Col = j;
-          if (cell === '품') 품Col = j;
-          if (cell === '덮') 덮Col = j;
-          if (cell === '샌') 샌Col = j;
-          if (cell === '세트') 세트Col = j;
-          if (cell === '유부') 유부Col = j;
+          if (cell === 'No.' || cell === 'No') headerRow = i;
+          if (cell.includes('업체명')) colClient = j;
+          if (cell === '담당기사') colDriver = j;
+          if (cell === '메뉴명') colMenu = j;
+          if (cell === '수량') colQty = j;
+          if (cell === '금액') colAmt = j;
         }
-        if (nameCol >= 0 && totalCol >= 0) break;
+        if (colClient >= 0 && colDriver >= 0) break;
       }
-      if (nameCol < 0) throw new Error("'기사명' 컬럼을 찾을 수 없습니다. (시트: " + sheetName + ")");
-      if (totalCol < 0) throw new Error("'합계' 컬럼을 찾을 수 없습니다.");
+      if (colClient < 0) throw new Error("'업체명&현장명' 컬럼을 찾을 수 없습니다. '붙여넣기' 시트를 확인해주세요.");
+      if (colDriver < 0) throw new Error("'담당기사' 컬럼을 찾을 수 없습니다.");
+
+      // 메뉴 → 단가 매핑
+      const MENU_PRICE = {
+        '뜨끈 한식 도시락': 8250, '프리미엄 도시락': 7700,
+        '뜨끈 일품 도시락': 8250, '뜨끈 덮밥 도시락': 7150,
+        '샐러드 도시락': 7150, '샐러드 도시락(배송당일 주문불가)': 7150,
+        '샌드위치 단품(배송당일 주문불가)': 6600, '샌드위치 세트(배송당일 주문불가)': 6600,
+        '공기밥(단품배송불가)': 0, '건조국(단품배송불가)': 0
+      };
+
+      // 행별 집계
+      const driverMap = {}; // 기사명 → { team, total, revenue, clients:Set }
+      const allClients = new Set(); // 오늘 주문한 거래처 전체
+
+      for (let i = (headerRow >= 0 ? headerRow + 1 : 1); i < rows.length; i++) {
+        const row = rows[i];
+        const clientRaw = String(row[colClient]||'').trim();
+        const driverRaw = String(row[colDriver]||'').trim();
+        const menu      = String(row[colMenu]||'').trim();
+        const qty       = Number(row[colQty]||0);
+        const amt       = Number(row[colAmt]||0);
+
+        if (!clientRaw || !driverRaw || qty <= 0) continue;
+        const team = DRIVER_TEAM[driverRaw];
+        if (!team) continue; // 시스템에 없는 기사 스킵
+
+        if (!driverMap[driverRaw]) {
+          driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: new Set() };
+        }
+        driverMap[driverRaw].total   += qty;
+        driverMap[driverRaw].revenue += amt;
+        driverMap[driverRaw].clients.add(clientRaw);
+        allClients.add(clientRaw);
+      }
+
+      // driverRows 변환 (clients Set → Array)
+      const driverRows = Object.values(driverMap).map(d => ({
+        name: d.name, team: d.team, total: d.total, revenue: d.revenue,
+        clients: [...d.clients]
+      }));
+
+      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
       // 팀별 집계
-      const teamTotals = {};
-      const teamDrivers = {};
-      const teamRevenues = {};
-      const driverRows = [];
+      const teamTotals = {}, teamDrivers = {}, teamRevenues = {};
+      driverRows.forEach(d => {
+        teamTotals[d.team]   = (teamTotals[d.team]||0)   + d.total;
+        teamRevenues[d.team] = (teamRevenues[d.team]||0) + d.revenue;
+        if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
+        teamDrivers[d.team].push(d.name+':'+d.total);
+      });
 
-      for (let i = headerRow + 1; i < rows.length; i++) {
-        const row = rows[i];
-        const nameRaw = String(row[nameCol]||'').trim();
-        const total = Number(row[totalCol]||0);
-        if (!nameRaw || total === 0) continue;
-
-        // "N. 기사명" 형식에서 이름 추출
-        const name = nameRaw.replace(/^\d+\.\s*/, '').trim();
-        // 합계/총합계 행 제외
-        if (name.includes('합계') || name.includes('공란') || name.includes('미배정') || name.includes('조식')) continue;
-
-        const team = DRIVER_TEAM[name];
-        if (!team) continue;
-
-        const 뜨q=Number(row[뜨Col]||0), 프q=Number(row[프Col]||0), 샐q=Number(row[샐Col]||0);
-        const 품q=Number(row[품Col]||0), 덮q=Number(row[덮Col]||0), 샌q=Number(row[샌Col]||0);
-        const 세트q=Number(row[세트Col]||0), 유부q=Number(row[유부Col]||0);
-        const revenue = 뜨q*8250 + 프q*7700 + 샐q*7150 + 품q*8250 + 덮q*7150 + 샌q*6600 + 세트q*6600 + 유부q*6600;
-
-        driverRows.push({ name, team, total, revenue });
-        teamTotals[team] = (teamTotals[team]||0) + total;
-        teamRevenues[team] = (teamRevenues[team]||0) + revenue;
-        if (!teamDrivers[team]) teamDrivers[team] = [];
-        teamDrivers[team].push(name+':'+total);
-      }
-
-      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다.');
-
-      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows };
+      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients: [...allClients] };
 
       // 미리보기 렌더
       const tbody = document.getElementById('su-preview-body');
@@ -1200,13 +1212,16 @@
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1;  // 0=월 1=화 ... 4=금
 
-    // 오늘 주문한 거래처 목록
+    // 오늘 주문한 거래처 목록 (일일장부 파싱 시 orderedClients로 전달)
     const ordered = new Set();
-    driverRows.forEach(d => {
-      if (d.clients && Array.isArray(d.clients)) {
-        d.clients.forEach(c => ordered.add(c));
-      }
-    });
+    if (_salesData && _salesData.orderedClients) {
+      _salesData.orderedClients.forEach(c => ordered.add(c));
+    } else {
+      // fallback: driverRows.clients 배열
+      driverRows.forEach(d => {
+        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => ordered.add(c));
+      });
+    }
 
     // clients 컬렉션 전체 조회 (1순위 + 일반 모두 포함)
     const clientsSnap = await db.collection('clients').get();
@@ -1303,19 +1318,20 @@
     btn.disabled = true; btn.textContent = '저장 중...';
 
     try {
-      const { teamTotals, teamDrivers, teamRevenues, driverRows } = _salesData;
+      const { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients } = _salesData;
       const driverRevenues = {};
       driverRows.forEach(d => { driverRevenues[d.name] = d.revenue; });
       const ym = date.slice(0,7); // YYYY-MM
 
-      // 1. daily_sales 컬렉션에 일별 저장
+      // 1. daily_sales 컬렉션에 일별 저장 (orderedClients 포함)
       await db.collection('daily_sales').doc(date).set({
         date,
         teamTotals,
         teamDrivers,
         teamRevenues,
-        driverRows,
+        driverRows,       // 기사별 총수량 + clients 배열 포함
         driverRevenues,
+        orderedClients: orderedClients || [],  // 오늘 주문한 거래처 전체 목록
         savedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
