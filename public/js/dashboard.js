@@ -221,7 +221,7 @@ async function loadAlerts() {
           </div>
           <div class="alert-right">
             <span class="alert-days">${a.consecutiveDays||1}일째</span>
-            <span class="alert-date">${lastDate}</span>
+            <span class="alert-date">${a.lastOrderDate || ''}</span>
           </div>
         </div>
       `;
