@@ -181,6 +181,8 @@ async function loadAdminAlerts() {
     const items = [];
     snap.forEach(doc => {
       const a = { id: doc.id, ...doc.data() };
+      // grade 또는 level 필드 통일 (grade 우선)
+      a.level = a.grade || a.level || 'check';
       items.push(a);
       if (a.level === 'urgent') urgent++;
       else if (a.level === 'watch') watch++;
@@ -192,8 +194,10 @@ async function loadAdminAlerts() {
       <div class="alert-summary-row"><span class="alert-count check">${check}</span><span class="alert-label">확인보고</span></div>
     `;
     if (!items.length) { container.innerHTML = '<div class="empty-msg">경보가 없습니다.</div>'; return; }
-    items.sort((a, b) => { const order = { urgent: 0, check: 1, watch: 2 }; return (order[a.level]||9)-(order[b.level]||9); });
-    container.innerHTML = items.slice(0,10).map(a => {
+    // 미해제만 필터링 후 정렬
+    const activeItems = items.filter(a => !a.resolved);
+    activeItems.sort((a, b) => { const order = { urgent: 0, watch: 1, check: 2 }; return (order[a.level]||9)-(order[b.level]||9); });
+    container.innerHTML = activeItems.slice(0,10).map(a => {
       const levelLabel = a.level==='urgent'?'즉시경보':a.level==='watch'?'주시':'확인보고';
       const levelClass = a.level==='watch'?'alert-watch':'alert-urgent';
       const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
