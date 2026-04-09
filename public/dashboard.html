@@ -855,7 +855,7 @@
           .where('courseId', '==', currentUser.courseId)
           .get();
         clientsSnap.forEach(doc => {
-          const name = doc.data().name;
+          const name = doc.data().clientName;
           if (name) myClientNames.add(name);
         });
       }
