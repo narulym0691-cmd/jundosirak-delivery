@@ -848,6 +848,24 @@
     if (!card || !list) return;
 
     try {
+      // 이 기사가 담당하는 거래처명 목록 조회
+      let myClientNames = new Set();
+      if (currentUser.courseId) {
+        const clientsSnap = await db.collection('clients')
+          .where('courseId', '==', currentUser.courseId)
+          .get();
+        clientsSnap.forEach(doc => {
+          const name = doc.data().name;
+          if (name) myClientNames.add(name);
+        });
+      }
+
+      // 담당 거래처가 없으면 종료
+      if (myClientNames.size === 0) {
+        card.style.display = 'none';
+        return;
+      }
+
       const snap = await db.collection('claims')
         .where('type', 'in', ['상함', '이물'])
         .where('csCompleted', '==', false)
@@ -856,8 +874,8 @@
       const items = [];
       snap.forEach(doc => {
         const d = doc.data();
-        // 담당 코스 매칭
-        if (d.courseId && currentUser.courseId && d.courseId !== currentUser.courseId) return;
+        // 내 담당 거래처인 경우만 표시
+        if (!myClientNames.has(d.clientName)) return;
         items.push({ id: doc.id, ...d });
       });
 
