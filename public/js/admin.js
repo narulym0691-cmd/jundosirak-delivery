@@ -191,21 +191,26 @@ async function loadAdminAlerts() {
     });
 
     // 동일 거래처 중복 제거: 더 심각한 등급 우선, 같으면 최신 날짜
-    const gradeOrder = { urgent: 0, watch: 1, check: 2 };
+    // 심각도: urgent > check > watch (urgent가 가장 중요, check가 watch보다 심각)
+    // 표시 순서: urgent(0) → watch(1) → check(2) 오름차순
+    const displayOrder = { urgent: 0, watch: 1, check: 2 };
+    // 심각도 우선순위: check(3) > watch(2) > urgent(1) — 연속일수 기준
+    const severityOrder = { urgent: 1, watch: 2, check: 3 };
     const latestByClient = new Map();
     items.forEach(a => {
       const existing = latestByClient.get(a.clientName);
       if (!existing) { latestByClient.set(a.clientName, a); return; }
-      const aPrio = gradeOrder[a.level] !== undefined ? gradeOrder[a.level] : 9;
-      const ePrio = gradeOrder[existing.level] !== undefined ? gradeOrder[existing.level] : 9;
-      if (aPrio < ePrio || (aPrio === ePrio && (a.date||'') > (existing.date||''))) {
+      const aSev = severityOrder[a.level] !== undefined ? severityOrder[a.level] : 0;
+      const eSev = severityOrder[existing.level] !== undefined ? severityOrder[existing.level] : 0;
+      // 더 심각한 등급 우선, 같으면 최신 날짜
+      if (aSev > eSev || (aSev === eSev && (a.date||'') > (existing.date||''))) {
         latestByClient.set(a.clientName, a);
       }
     });
     const activeItems = Array.from(latestByClient.values());
     activeItems.sort((a, b) => {
-      const ao = gradeOrder[a.level] !== undefined ? gradeOrder[a.level] : 9;
-      const bo = gradeOrder[b.level] !== undefined ? gradeOrder[b.level] : 9;
+      const ao = displayOrder[a.level] !== undefined ? displayOrder[a.level] : 9;
+      const bo = displayOrder[b.level] !== undefined ? displayOrder[b.level] : 9;
       return ao - bo;
     });
 
