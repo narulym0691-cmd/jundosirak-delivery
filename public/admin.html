@@ -1209,6 +1209,64 @@
     return count;
   }
 
+  // ── 1순위 업체 주문 감지 → sms_schedule 적재 ──
+  async function checkPriorityClientsAndScheduleSms(date, driverRows) {
+    // 오늘 주문한 거래처 목록
+    const ordered = new Set();
+    if (_salesData && _salesData.orderedClients) {
+      _salesData.orderedClients.forEach(c => ordered.add(c));
+    } else {
+      driverRows.forEach(d => {
+        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => ordered.add(c));
+      });
+    }
+
+    // clients 컬렉션에서 1순위 업체 조회 (isPriority:true 또는 dailyAvgOrder>=8)
+    const clientsSnap = await db.collection('clients').get();
+    let count = 0;
+
+    for (const doc of clientsSnap.docs) {
+      const client = doc.data();
+      const { clientName, courseId, teamId, dailyAvgOrder, isPriority } = client;
+      const isP = isPriority || (dailyAvgOrder || 0) >= 8;
+      if (!isP) continue;
+      if (!ordered.has(clientName)) continue; // 오늘 주문 없으면 스킵
+
+      // 중복 체크
+      const existing = await db.collection('sms_schedule')
+        .where('date','==',date)
+        .where('clientName','==',clientName)
+        .where('type','==','priority_client')
+        .limit(1).get();
+      if (!existing.empty) continue;
+
+      // 담당 기사 찾기
+      let driverName = null;
+      if (_salesData && _salesData.driverRows) {
+        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(clientName));
+        if (dr) driverName = dr.name;
+      }
+      if (!driverName) continue;
+
+      const teamInfo = COURSE_TEAM[courseId] || { teamId: teamId||'', teamName:'' };
+
+      await db.collection('sms_schedule').add({
+        type: 'priority_client',
+        date,
+        courseId: courseId||'',
+        driverName,
+        clientName,
+        quantity: 0, // 실제 수량은 driverRows에서 추가 파악 가능하나 우선 0
+        teamId: teamInfo.teamId,
+        teamName: teamInfo.teamName,
+        sent: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      count++;
+    }
+    return count;
+  }
+
   // ── 경보 생성 ──────────────────────────────────────────────────
   // 기획서 기준:
   //   1순위 업체 (dailyAvgOrder >= 8) → 하루만 미주문해도 즉시경보
@@ -1464,6 +1522,14 @@
         console.warn('신규업체 SMS 스케줄 오류(무시):', e.message);
       }
 
+      // 3-1. 1순위 업체 주문 감지 → sms_schedule 적재
+      let priorityClientCount = 0;
+      try {
+        priorityClientCount = await checkPriorityClientsAndScheduleSms(date, driverRows);
+      } catch(e) {
+        console.warn('1순위업체 SMS 스케줄 오류(무시):', e.message);
+      }
+
       // 4. 경보 생성 (8개 이상 업체 미주문 감지)
       let alertCount = 0;
       window._lastAlertSmsResult = '';
@@ -1473,7 +1539,7 @@
         console.warn('경보 생성 오류(무시):', e.message);
       }
 
-      const smsMsg = newClientCount > 0 ? `\n신규업체 ${newClientCount}건 SMS 새벽 발송 예약됨.` : '';
+      const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
       const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
       const alertSmsMsg = (typeof _lastAlertSmsResult === 'string' && _lastAlertSmsResult) ? `\n📱 ${_lastAlertSmsResult}` : '';
       alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}${alertSmsMsg}`);
