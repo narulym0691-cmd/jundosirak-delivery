@@ -311,8 +311,6 @@
 
     .alert-urgent { background: #fff5f5; border-left: 3px solid #fc8181; }
     .alert-watch { background: #fffff0; border-left: 3px solid #f6e05e; }
-    .alert-check { background: #fffbf0; border-left: 3px solid #fbd38d; }
-    .alert-check .alert-badge { background: #feebc8; color: #c05621; }
 
     .alert-badge {
       font-size: 11px;
@@ -998,83 +996,71 @@
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
 
-      // ── 일일장부 파싱 (붙여넣기 시트) ──────────────────────────
-      // 컬럼: No.|주문시간|주문일|주문자ID|업체명&현장명|주문배송지|받는사람|연락처|이메일|배송시작일|담당기사|메뉴명|수량|금액|부가세|합계|메모
-      const sheetName = wb.SheetNames.find(s => s === '붙여넣기') || wb.SheetNames[0];
+      // YYMMDD 형식 시트 찾기 (260407 등), 없으면 '결과' 또는 첫 번째 시트
+      const sheetName = wb.SheetNames.find(s => /^\d{6}$/.test(s))
+        || wb.SheetNames.find(s => s === '결과')
+        || wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
 
-      // 헤더행 찾기 (No. 또는 업체명 컬럼)
-      let headerRow = -1;
-      let colClient=-1, colDriver=-1, colMenu=-1, colQty=-1, colAmt=-1;
-      for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      // 헤더행 찾기 (기사명 컬럼)
+      let nameCol = -1, totalCol = -1, headerRow = -1;
+      let 뜨Col=-1, 프Col=-1, 샐Col=-1, 품Col=-1, 덮Col=-1, 샌Col=-1, 세트Col=-1, 유부Col=-1;
+      for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         for (let j = 0; j < row.length; j++) {
           const cell = String(row[j]||'').trim();
-          if (cell === 'No.' || cell === 'No') headerRow = i;
-          if (cell.includes('업체명')) colClient = j;
-          if (cell === '담당기사') colDriver = j;
-          if (cell === '메뉴명') colMenu = j;
-          if (cell === '수량') colQty = j;
-          if (cell === '금액') colAmt = j;
+          if (cell === '기사명') { nameCol = j; headerRow = i; }
+          if (cell.includes('합') && cell.includes('계') && nameCol >= 0) { totalCol = j; }
+          if (cell === '뜨') 뜨Col = j;
+          if (cell === '프') 프Col = j;
+          if (cell === '샐') 샐Col = j;
+          if (cell === '품') 품Col = j;
+          if (cell === '덮') 덮Col = j;
+          if (cell === '샌') 샌Col = j;
+          if (cell === '세트') 세트Col = j;
+          if (cell === '유부') 유부Col = j;
         }
-        if (colClient >= 0 && colDriver >= 0) break;
+        if (nameCol >= 0 && totalCol >= 0) break;
       }
-      if (colClient < 0) throw new Error("'업체명&현장명' 컬럼을 찾을 수 없습니다. '붙여넣기' 시트를 확인해주세요.");
-      if (colDriver < 0) throw new Error("'담당기사' 컬럼을 찾을 수 없습니다.");
-
-      // 메뉴 → 단가 매핑
-      const MENU_PRICE = {
-        '뜨끈 한식 도시락': 8250, '프리미엄 도시락': 7700,
-        '뜨끈 일품 도시락': 8250, '뜨끈 덮밥 도시락': 7150,
-        '샐러드 도시락': 7150, '샐러드 도시락(배송당일 주문불가)': 7150,
-        '샌드위치 단품(배송당일 주문불가)': 6600, '샌드위치 세트(배송당일 주문불가)': 6600,
-        '공기밥(단품배송불가)': 0, '건조국(단품배송불가)': 0
-      };
-
-      // 행별 집계
-      const driverMap = {}; // 기사명 → { team, total, revenue, clients:Set }
-      const allClients = new Set(); // 오늘 주문한 거래처 전체
-
-      for (let i = (headerRow >= 0 ? headerRow + 1 : 1); i < rows.length; i++) {
-        const row = rows[i];
-        const clientRaw = String(row[colClient]||'').trim();
-        const driverRaw = String(row[colDriver]||'').trim();
-        const menu      = String(row[colMenu]||'').trim();
-        const qty       = Number(row[colQty]||0);
-        const amt       = Number(row[colAmt]||0);
-
-        if (!clientRaw || !driverRaw || qty <= 0) continue;
-        const team = DRIVER_TEAM[driverRaw];
-        if (!team) continue; // 시스템에 없는 기사 스킵
-
-        if (!driverMap[driverRaw]) {
-          driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: new Set() };
-        }
-        driverMap[driverRaw].total   += qty;
-        driverMap[driverRaw].revenue += amt;
-        driverMap[driverRaw].clients.add(clientRaw);
-        allClients.add(clientRaw);
-      }
-
-      // driverRows 변환 (clients Set → Array)
-      const driverRows = Object.values(driverMap).map(d => ({
-        name: d.name, team: d.team, total: d.total, revenue: d.revenue,
-        clients: [...d.clients]
-      }));
-
-      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
+      if (nameCol < 0) throw new Error("'기사명' 컬럼을 찾을 수 없습니다. (시트: " + sheetName + ")");
+      if (totalCol < 0) throw new Error("'합계' 컬럼을 찾을 수 없습니다.");
 
       // 팀별 집계
-      const teamTotals = {}, teamDrivers = {}, teamRevenues = {};
-      driverRows.forEach(d => {
-        teamTotals[d.team]   = (teamTotals[d.team]||0)   + d.total;
-        teamRevenues[d.team] = (teamRevenues[d.team]||0) + d.revenue;
-        if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
-        teamDrivers[d.team].push(d.name+':'+d.total);
-      });
+      const teamTotals = {};
+      const teamDrivers = {};
+      const teamRevenues = {};
+      const driverRows = [];
 
-      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients: [...allClients] };
+      for (let i = headerRow + 1; i < rows.length; i++) {
+        const row = rows[i];
+        const nameRaw = String(row[nameCol]||'').trim();
+        const total = Number(row[totalCol]||0);
+        if (!nameRaw || total === 0) continue;
+
+        // "N. 기사명" 형식에서 이름 추출
+        const name = nameRaw.replace(/^\d+\.\s*/, '').trim();
+        // 합계/총합계 행 제외
+        if (name.includes('합계') || name.includes('공란') || name.includes('미배정') || name.includes('조식')) continue;
+
+        const team = DRIVER_TEAM[name];
+        if (!team) continue;
+
+        const 뜨q=Number(row[뜨Col]||0), 프q=Number(row[프Col]||0), 샐q=Number(row[샐Col]||0);
+        const 품q=Number(row[품Col]||0), 덮q=Number(row[덮Col]||0), 샌q=Number(row[샌Col]||0);
+        const 세트q=Number(row[세트Col]||0), 유부q=Number(row[유부Col]||0);
+        const revenue = 뜨q*8250 + 프q*7700 + 샐q*7150 + 품q*8250 + 덮q*7150 + 샌q*6600 + 세트q*6600 + 유부q*6600;
+
+        driverRows.push({ name, team, total, revenue });
+        teamTotals[team] = (teamTotals[team]||0) + total;
+        teamRevenues[team] = (teamRevenues[team]||0) + revenue;
+        if (!teamDrivers[team]) teamDrivers[team] = [];
+        teamDrivers[team].push(name+':'+total);
+      }
+
+      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다.');
+
+      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows };
 
       // 미리보기 렌더
       const tbody = document.getElementById('su-preview-body');
@@ -1204,46 +1190,40 @@
     return count;
   }
 
-  // ── 경보 생성 ──────────────────────────────────────────────────
-  // 기획서 기준:
-  //   1순위 업체 (dailyAvgOrder >= 8) → 하루만 미주문해도 즉시경보
-  //   일반 업체  (dailyAvgOrder < 8)  → 2일 연속=주시 / 3일 연속=확인보고 / 1일=경보없음
+  // ── 경보 생성 (8개 이상 업체 미주문 감지) ──
   async function createAlertsFromSales(date, driverRows) {
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1;  // 0=월 1=화 ... 4=금
-
-    // 오늘 주문한 거래처 목록 (일일장부 파싱 시 orderedClients로 전달)
+    
+    // 오늘 주문한 거래처 목록
     const ordered = new Set();
-    if (_salesData && _salesData.orderedClients) {
-      _salesData.orderedClients.forEach(c => ordered.add(c));
-    } else {
-      // fallback: driverRows.clients 배열
-      driverRows.forEach(d => {
-        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => ordered.add(c));
-      });
-    }
-
-    // clients 컬렉션 전체 조회 (1순위 + 일반 모두 포함)
-    const clientsSnap = await db.collection('clients').get();
-
+    driverRows.forEach(d => {
+      if (d.clients && Array.isArray(d.clients)) {
+        d.clients.forEach(c => ordered.add(c));
+      }
+    });
+    
+    // clients 컬렉션에서 8개 이상 업체 조회
+    const clientsSnap = await db.collection('clients')
+      .where('dailyAvgOrder','>=',8)
+      .get();
+    
     let alertCount = 0;
-    const alertsByDriver = {}; // { driverName: [alertData, ...] }
-    let alertSmsResult = '';
-
+    
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
       const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
-
+      
       if (!orderDays || !Array.isArray(orderDays)) continue;
-
+      
       // 오늘 주문 요일인가?
       const shouldOrder = orderDays.includes(dowIndex);
       if (!shouldOrder) continue;
-
+      
       // 실제 주문했는가?
       const didOrder = ordered.has(clientName);
       if (didOrder) continue;
-
+      
       // 중복 체크: 이미 같은 날짜에 경보가 있으면 생성하지 않음
       const existing = await db.collection('alerts')
         .where('clientName', '==', clientName)
@@ -1251,133 +1231,26 @@
         .where('resolved', '==', false)
         .limit(1)
         .get();
-
-      if (!existing.empty) continue;
-
-      const isPriority = (dailyAvgOrder || 0) >= 8; // 1순위 업체 여부
-
-      // 담당기사 파악 (driverRows에서 clientName 포함 기사 찾기)
-      let driverName = null;
-      if (_salesData && _salesData.driverRows) {
-        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(clientName));
-        if (dr) driverName = dr.name;
-      }
-
-      if (isPriority) {
-        // ── 1순위 업체: 하루만 빠져도 즉시경보 ──
-        const alertData = {
-          type: 'no_order', grade: 'urgent', isPriority: true,
-          clientName, dailyAvgOrder, teamId, courseId, date,
-          consecutiveDays: 1, resolved: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        await db.collection('alerts').add(alertData);
-        alertCount++;
-        if (driverName) {
-          if (!alertsByDriver[driverName]) alertsByDriver[driverName] = [];
-          alertsByDriver[driverName].push({ ...alertData, grade: 'urgent', consecutiveDays: 1 });
-        }
-      } else {
-        // ── 일반 업체: 연속일수 계산 후 2일=주시 / 3일+=확인보고 ──
-        const prevSnap = await db.collection('alerts')
-          .where('clientName', '==', clientName)
-          .where('resolved', '==', false)
-          .orderBy('date', 'desc')
-          .limit(1)
-          .get();
-
-        let consecutiveDays = 1;
-        if (!prevSnap.empty) {
-          consecutiveDays = (prevSnap.docs[0].data().consecutiveDays || 1) + 1;
-        }
-
-        // 1일째는 경보 없음
-        if (consecutiveDays < 2) continue;
-
-        const grade = consecutiveDays >= 3 ? 'check' : 'watch';
-        const alertData = {
-          type: 'no_order', grade, isPriority: false,
-          clientName, dailyAvgOrder, teamId, courseId, date,
-          consecutiveDays, resolved: false,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-        await db.collection('alerts').add(alertData);
-        alertCount++;
-        if (driverName) {
-          if (!alertsByDriver[driverName]) alertsByDriver[driverName] = [];
-          alertsByDriver[driverName].push({ ...alertData, grade, consecutiveDays });
-        }
-      }
+      
+      if (!existing.empty) continue; // 이미 있으면 스킵
+      
+      // 경보 생성
+      await db.collection('alerts').add({
+        type: 'no_order',
+        grade: 'urgent',  // 8개 이상은 즉시경보
+        clientName,
+        dailyAvgOrder,
+        teamId,
+        courseId,
+        date,
+        consecutiveDays: 1,
+        resolved: false,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      
+      alertCount++;
     }
-
-    // ── 경보 발생 기사에게 즉시 문자 발송 ──
-    if (alertCount > 0 && Object.keys(alertsByDriver).length > 0) {
-      try {
-        // users 컬렉션에서 기사 전화번호 조회
-        const usersSnap = await db.collection('users').get();
-        const phoneMap = {};
-        usersSnap.forEach(d => {
-          const u = d.data();
-          if (u.name && u.phone) phoneMap[u.name] = u.phone;
-        });
-
-        const smsTargets = [];
-        for (const [driverName, alerts] of Object.entries(alertsByDriver)) {
-          const phone = phoneMap[driverName];
-          if (!phone) continue;
-
-          // 기사별 문자 내용 구성
-          const urgent = alerts.filter(a => a.grade === 'urgent');
-          const watch  = alerts.filter(a => a.grade === 'watch');
-          const check  = alerts.filter(a => a.grade === 'check');
-
-          let lines = [`[준도시락 거래처 경보]`, `${driverName} 기사님, 담당 거래처 미주문 알림입니다.`, ``];
-          if (urgent.length > 0) {
-            lines.push(`🔴 즉시경보 (${urgent.length}건)`);
-            urgent.forEach(a => lines.push(`  · ${a.clientName}${a.dailyAvgOrder ? ` (일평균 ${a.dailyAvgOrder}개)` : ''}`));
-          }
-          if (watch.length > 0) {
-            lines.push(`🟡 주시 (${watch.length}건)`);
-            watch.forEach(a => lines.push(`  · ${a.clientName} (${a.consecutiveDays}일째)`));
-          }
-          if (check.length > 0) {
-            lines.push(`🟠 확인보고 (${check.length}건)`);
-            check.forEach(a => lines.push(`  · ${a.clientName} (${a.consecutiveDays}일째)`));
-          }
-          lines.push(``);
-          lines.push(`확인 후 연락 부탁드립니다.`);
-
-          smsTargets.push({ name: driverName, phone, text: lines.join('\n') });
-        }
-
-        if (smsTargets.length > 0) {
-          // 기사별 개별 문자 발송 (각자 다른 내용)
-          let smsSent = 0, smsFailed = 0;
-          for (const t of smsTargets) {
-            try {
-              const res = await fetch('https://us-central1-jundosirak-delivery.cloudfunctions.net/sendSms', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  targets: [{ name: t.name, phone: t.phone }],
-                  text: t.text,
-                  from: '01024763473'
-                })
-              });
-              const data = await res.json();
-              if (data.ok && data.sent > 0) smsSent++;
-              else smsFailed++;
-            } catch(e) { smsFailed++; }
-          }
-          console.log(`경보 문자 발송 완료: ${smsSent}명 성공 / ${smsFailed}명 실패`);
-          alertSmsResult = `경보 문자 ${smsSent}명 발송 완료${smsFailed > 0 ? ` (실패 ${smsFailed}명)` : ''}`;
-          window._lastAlertSmsResult = alertSmsResult;
-        }
-      } catch(e) {
-        console.warn('경보 문자 발송 오류(무시):', e.message);
-      }
-    }
-
+    
     return alertCount;
   }
 
@@ -1390,20 +1263,19 @@
     btn.disabled = true; btn.textContent = '저장 중...';
 
     try {
-      const { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients } = _salesData;
+      const { teamTotals, teamDrivers, teamRevenues, driverRows } = _salesData;
       const driverRevenues = {};
       driverRows.forEach(d => { driverRevenues[d.name] = d.revenue; });
       const ym = date.slice(0,7); // YYYY-MM
 
-      // 1. daily_sales 컬렉션에 일별 저장 (orderedClients 포함)
+      // 1. daily_sales 컬렉션에 일별 저장
       await db.collection('daily_sales').doc(date).set({
         date,
         teamTotals,
         teamDrivers,
         teamRevenues,
-        driverRows,       // 기사별 총수량 + clients 배열 포함
+        driverRows,
         driverRevenues,
-        orderedClients: orderedClients || [],  // 오늘 주문한 거래처 전체 목록
         savedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
@@ -1461,7 +1333,6 @@
 
       // 4. 경보 생성 (8개 이상 업체 미주문 감지)
       let alertCount = 0;
-      window._lastAlertSmsResult = '';
       try {
         alertCount = await createAlertsFromSales(date, driverRows);
       } catch(e) {
@@ -1470,8 +1341,7 @@
 
       const smsMsg = newClientCount > 0 ? `\n신규업체 ${newClientCount}건 SMS 새벽 발송 예약됨.` : '';
       const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
-      const alertSmsMsg = (typeof _lastAlertSmsResult === 'string' && _lastAlertSmsResult) ? `\n📱 ${_lastAlertSmsResult}` : '';
-      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}${alertSmsMsg}`);
+      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}`);
       closeSalesUpload();
       location.reload();
 
@@ -2702,37 +2572,28 @@ async function loadAlerts() {
           <tr style="background:#fff5f5;border-bottom:2px solid #feb2b2;">
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">등급</th>
             <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">거래처</th>
-            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">구분</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">일평균</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">팀</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">날짜</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">연속</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">상태</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">조치</th>
           </tr>
         </thead>
         <tbody>
-          ${data.map(a => {
-            const gradeLabel = a.grade==='urgent'?'🔴 즉시경보':a.grade==='watch'?'🟡 주시':'🟠 확인보고';
-            const gradeColor = a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c05621';
-            const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
-            const isPriority = a.isPriority || (a.dailyAvgOrder||0) >= 8;
-            const priorityBadge = isPriority
-              ? '<span style="background:#744210;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;">⭐1순위</span>'
-              : '<span style="background:#e2e8f0;color:#718096;font-size:10px;padding:2px 6px;border-radius:10px;">일반</span>';
-            return `
+          ${data.map(a => `
             <tr style="border-bottom:1px solid #f0f0f0;${a.resolved?'opacity:0.5;':''}" data-id="${a.id}">
-              <td style="padding:10px;text-align:center;font-weight:700;color:${gradeColor};white-space:nowrap;">${gradeLabel}</td>
+              <td style="padding:10px;text-align:center;font-weight:700;color:${a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c53030'};">${a.grade==='urgent'?'🔴':a.grade==='watch'?'🟡':'🔴'}</td>
               <td style="padding:10px;font-weight:600;">${a.clientName||'-'}</td>
-              <td style="padding:10px;text-align:center;">${priorityBadge}</td>
               <td style="padding:10px;text-align:center;">${a.dailyAvgOrder||'-'}개</td>
-              <td style="padding:10px;text-align:center;font-size:12px;">${teamNames[a.teamId]||a.teamId||'-'}</td>
+              <td style="padding:10px;text-align:center;font-size:12px;">${a.teamId||'-'}</td>
               <td style="padding:10px;text-align:center;font-size:12px;">${a.date||'-'}</td>
               <td style="padding:10px;text-align:center;font-weight:700;">${a.consecutiveDays||1}일째</td>
+              <td style="padding:10px;text-align:center;">${a.resolved?'✅ 해제':'❌ 미해제'}</td>
               <td style="padding:10px;text-align:center;">
-                ${!a.resolved ? `<button onclick="resolveAlert('${a.id}')" style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">해제</button>` : '✅ 해제'}
+                ${!a.resolved ? `<button onclick="resolveAlert('${a.id}')" style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">해제</button>` : '-'}
               </td>
-            </tr>`;
-          }).join('')}
+            </tr>`).join('')}
         </tbody>
       </table>`;
     
