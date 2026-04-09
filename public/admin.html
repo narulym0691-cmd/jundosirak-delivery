@@ -1192,11 +1192,14 @@
     return count;
   }
 
-  // ── 경보 생성 (8개 이상 업체 미주문 감지) ──
+  // ── 경보 생성 ──────────────────────────────────────────────────
+  // 기획서 기준:
+  //   1순위 업체 (dailyAvgOrder >= 8) → 하루만 미주문해도 즉시경보
+  //   일반 업체  (dailyAvgOrder < 8)  → 2일 연속=주시 / 3일 연속=확인보고 / 1일=경보없음
   async function createAlertsFromSales(date, driverRows) {
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1;  // 0=월 1=화 ... 4=금
-    
+
     // 오늘 주문한 거래처 목록
     const ordered = new Set();
     driverRows.forEach(d => {
@@ -1204,28 +1207,26 @@
         d.clients.forEach(c => ordered.add(c));
       }
     });
-    
-    // clients 컬렉션에서 8개 이상 업체 조회
-    const clientsSnap = await db.collection('clients')
-      .where('dailyAvgOrder','>=',8)
-      .get();
-    
+
+    // clients 컬렉션 전체 조회 (1순위 + 일반 모두 포함)
+    const clientsSnap = await db.collection('clients').get();
+
     let alertCount = 0;
-    
+
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
       const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
-      
+
       if (!orderDays || !Array.isArray(orderDays)) continue;
-      
+
       // 오늘 주문 요일인가?
       const shouldOrder = orderDays.includes(dowIndex);
       if (!shouldOrder) continue;
-      
+
       // 실제 주문했는가?
       const didOrder = ordered.has(clientName);
       if (didOrder) continue;
-      
+
       // 중복 체크: 이미 같은 날짜에 경보가 있으면 생성하지 않음
       const existing = await db.collection('alerts')
         .where('clientName', '==', clientName)
@@ -1233,45 +1234,63 @@
         .where('resolved', '==', false)
         .limit(1)
         .get();
-      
-      if (!existing.empty) continue; // 이미 있으면 스킵
 
-      // 연속 미주문 일수 계산 (전날까지 해제 안 된 경보 확인)
-      const prevSnap = await db.collection('alerts')
-        .where('clientName', '==', clientName)
-        .where('resolved', '==', false)
-        .orderBy('date', 'desc')
-        .limit(1)
-        .get();
+      if (!existing.empty) continue;
 
-      let consecutiveDays = 1;
-      if (!prevSnap.empty) {
-        const prevData = prevSnap.docs[0].data();
-        consecutiveDays = (prevData.consecutiveDays || 1) + 1;
+      const isPriority = (dailyAvgOrder || 0) >= 8; // 1순위 업체 여부
+
+      if (isPriority) {
+        // ── 1순위 업체: 하루만 빠져도 즉시경보 ──
+        await db.collection('alerts').add({
+          type: 'no_order',
+          grade: 'urgent',
+          isPriority: true,
+          clientName,
+          dailyAvgOrder,
+          teamId,
+          courseId,
+          date,
+          consecutiveDays: 1,
+          resolved: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alertCount++;
+      } else {
+        // ── 일반 업체: 연속일수 계산 후 2일=주시 / 3일+=확인보고 ──
+        const prevSnap = await db.collection('alerts')
+          .where('clientName', '==', clientName)
+          .where('resolved', '==', false)
+          .orderBy('date', 'desc')
+          .limit(1)
+          .get();
+
+        let consecutiveDays = 1;
+        if (!prevSnap.empty) {
+          consecutiveDays = (prevSnap.docs[0].data().consecutiveDays || 1) + 1;
+        }
+
+        // 1일째는 경보 없음
+        if (consecutiveDays < 2) continue;
+
+        const grade = consecutiveDays >= 3 ? 'check' : 'watch';
+
+        await db.collection('alerts').add({
+          type: 'no_order',
+          grade,
+          isPriority: false,
+          clientName,
+          dailyAvgOrder,
+          teamId,
+          courseId,
+          date,
+          consecutiveDays,
+          resolved: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        alertCount++;
       }
-
-      // 등급 분류: 1일=확인보고, 2일=주시, 3일 이상=즉시경보
-      let grade = 'check';
-      if (consecutiveDays >= 3) grade = 'urgent';
-      else if (consecutiveDays === 2) grade = 'watch';
-
-      // 경보 생성
-      await db.collection('alerts').add({
-        type: 'no_order',
-        grade,
-        clientName,
-        dailyAvgOrder,
-        teamId,
-        courseId,
-        date,
-        consecutiveDays,
-        resolved: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
-      
-      alertCount++;
     }
-    
+
     return alertCount;
   }
 
@@ -2593,28 +2612,37 @@ async function loadAlerts() {
           <tr style="background:#fff5f5;border-bottom:2px solid #feb2b2;">
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">등급</th>
             <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">거래처</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">구분</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">일평균</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">팀</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">날짜</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">연속</th>
-            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">상태</th>
             <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">조치</th>
           </tr>
         </thead>
         <tbody>
-          ${data.map(a => `
+          ${data.map(a => {
+            const gradeLabel = a.grade==='urgent'?'🔴 즉시경보':a.grade==='watch'?'🟡 주시':'🟠 확인보고';
+            const gradeColor = a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c05621';
+            const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
+            const isPriority = a.isPriority || (a.dailyAvgOrder||0) >= 8;
+            const priorityBadge = isPriority
+              ? '<span style="background:#744210;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;">⭐1순위</span>'
+              : '<span style="background:#e2e8f0;color:#718096;font-size:10px;padding:2px 6px;border-radius:10px;">일반</span>';
+            return `
             <tr style="border-bottom:1px solid #f0f0f0;${a.resolved?'opacity:0.5;':''}" data-id="${a.id}">
-              <td style="padding:10px;text-align:center;font-weight:700;color:${a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c53030'};">${a.grade==='urgent'?'🔴':a.grade==='watch'?'🟡':'🔴'}</td>
+              <td style="padding:10px;text-align:center;font-weight:700;color:${gradeColor};white-space:nowrap;">${gradeLabel}</td>
               <td style="padding:10px;font-weight:600;">${a.clientName||'-'}</td>
+              <td style="padding:10px;text-align:center;">${priorityBadge}</td>
               <td style="padding:10px;text-align:center;">${a.dailyAvgOrder||'-'}개</td>
-              <td style="padding:10px;text-align:center;font-size:12px;">${a.teamId||'-'}</td>
+              <td style="padding:10px;text-align:center;font-size:12px;">${teamNames[a.teamId]||a.teamId||'-'}</td>
               <td style="padding:10px;text-align:center;font-size:12px;">${a.date||'-'}</td>
               <td style="padding:10px;text-align:center;font-weight:700;">${a.consecutiveDays||1}일째</td>
-              <td style="padding:10px;text-align:center;">${a.resolved?'✅ 해제':'❌ 미해제'}</td>
               <td style="padding:10px;text-align:center;">
-                ${!a.resolved ? `<button onclick="resolveAlert('${a.id}')" style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">해제</button>` : '-'}
+                ${!a.resolved ? `<button onclick="resolveAlert('${a.id}')" style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;">해제</button>` : '✅ 해제'}
               </td>
-            </tr>`).join('')}
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>`;
     

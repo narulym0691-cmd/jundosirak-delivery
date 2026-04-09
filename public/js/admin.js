@@ -209,7 +209,8 @@ async function loadAdminAlerts() {
       const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
       const smsBtn = `<button onclick="event.stopPropagation();sendAlertSms('${a.id}','${a.clientName}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
       const teamLabel = teamNames[a.teamId] || a.teamId || '';
-      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvgOrder||0},'${a.date||''}')"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span><span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
+      const isPriority = a.isPriority || (a.dailyAvgOrder||0) >= 8;
+      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvgOrder||0},'${a.date||''}',${isPriority})"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span>${isPriority?'<span style="font-size:10px;background:#744210;color:#fff;padding:1px 5px;border-radius:8px;margin-left:3px;">⭐</span>':''}<span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
     }).join('');
   } catch(e) {
     console.error('경보 로드 실패:', e);
@@ -818,11 +819,12 @@ window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
 };
 
 // ── 경보 상세 모달 ──────────────────────────────────────────────
-window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId, courseId, dailyAvgOrder, date) {
+window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId, courseId, dailyAvgOrder, date, isPriority) {
   const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
   const levelLabel = level==='urgent'?'🔴 즉시경보':level==='watch'?'🟡 주시':'🟠 확인보고';
   const levelColor = level==='urgent'?'#e53e3e':level==='watch'?'#dd6b20':'#c05621';
   const bgColor    = level==='urgent'?'#fff5f5':level==='watch'?'#fffaf0':'#fffbf5';
+  const priorityLabel = isPriority ? '⭐ 1순위 (8개↑)' : '일반 업체';
 
   // 기존 모달 제거
   const old = document.getElementById('alertDetailModal');
@@ -839,6 +841,7 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
       </div>
       <table style="width:100%;font-size:14px;border-collapse:collapse;">
         <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${clientName}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">구분</td><td style="padding:8px 0;font-weight:700;color:${isPriority?'#744210':'#718096'};">${priorityLabel}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">팀</td><td style="padding:8px 0;">${teamNames[teamId]||teamId||'-'}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">코스</td><td style="padding:8px 0;">${courseId||'-'}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${dailyAvgOrder}개</td></tr>
