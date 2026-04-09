@@ -1224,6 +1224,16 @@
       const didOrder = ordered.has(clientName);
       if (didOrder) continue;
       
+      // 중복 체크: 이미 같은 날짜에 경보가 있으면 생성하지 않음
+      const existing = await db.collection('alerts')
+        .where('clientName', '==', clientName)
+        .where('date', '==', date)
+        .where('resolved', '==', false)
+        .limit(1)
+        .get();
+      
+      if (!existing.empty) continue; // 이미 있으면 스킵
+      
       // 경보 생성
       await db.collection('alerts').add({
         type: 'no_order',
