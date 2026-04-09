@@ -544,6 +544,13 @@
 
   <!-- 홈 섹션 -->
   <div class="tab-section" data-tab="home">
+
+    <!-- CS 알림 카드 (driver 전용, 상함/이물 미완료 시 표시) -->
+    <div class="card" id="csAlertCard" style="display:none;border:2px solid #FFC107;background:#FFF8E1;">
+      <div class="card-title" style="color:#E65100;">⚠️ CS 필요 업체</div>
+      <div id="csAlertList"></div>
+    </div>
+
     <!-- 카드 1: 인센티브 게이지 -->
     <div class="card">
       <div class="card-title">인센티브 게이지</div>
@@ -833,8 +840,83 @@
     }
   }
 
+  // ── CS 알림 (상함/이물 미완료) ──
+  async function loadCsAlerts() {
+    if (!currentUser || currentUser.role !== 'driver') return;
+    const card = document.getElementById('csAlertCard');
+    const list = document.getElementById('csAlertList');
+    if (!card || !list) return;
+
+    try {
+      const snap = await db.collection('claims')
+        .where('type', 'in', ['상함', '이물'])
+        .where('csCompleted', '==', false)
+        .get();
+
+      const items = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        // 담당 코스 매칭
+        if (d.courseId && currentUser.courseId && d.courseId !== currentUser.courseId) return;
+        items.push({ id: doc.id, ...d });
+      });
+
+      if (!items.length) {
+        card.style.display = 'none';
+        return;
+      }
+
+      card.style.display = '';
+      list.innerHTML = items.map(item => {
+        const dateStr = item.date || '';
+        return `
+          <div id="cs-item-${item.id}" style="background:#fff;border:1px solid #FFE082;border-radius:10px;padding:14px;margin-bottom:10px;">
+            <div style="font-weight:700;font-size:15px;color:#E65100;margin-bottom:4px;">
+              ${item.type === '상함' ? '🌡️' : '🔍'} [${item.clientName || '업체명 없음'}] <span style="font-size:12px;color:#888;">${dateStr}</span>
+            </div>
+            <div style="font-size:13px;color:#555;margin-bottom:6px;">
+              ${item.menu || '-'} · ${item.quantity || '-'}개
+              ${item.content ? `<br><span style="color:#777;">${item.content}</span>` : ''}
+            </div>
+            <div style="font-size:12px;color:#795548;background:#FFF3E0;border-radius:6px;padding:8px;margin-bottom:10px;">
+              담당자에게 사과 및 상황 설명 부탁드립니다.
+            </div>
+            <button onclick="completeCsAlert('${item.id}')"
+              style="width:100%;padding:10px;background:#43A047;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+              ✅ CS 완료
+            </button>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      console.error('CS 알림 로드 실패:', e);
+    }
+  }
+
+  window.completeCsAlert = async function(claimId) {
+    if (!confirm('CS 완료 처리하시겠습니까?')) return;
+    try {
+      await db.collection('claims').doc(claimId).update({
+        csCompleted: true,
+        csCompletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+        csCompletedBy: currentUser.uid
+      });
+      const el = document.getElementById('cs-item-' + claimId);
+      if (el) el.remove();
+      // 남은 항목 없으면 카드 숨김
+      const list = document.getElementById('csAlertList');
+      if (list && !list.querySelector('[id^="cs-item-"]')) {
+        document.getElementById('csAlertCard').style.display = 'none';
+      }
+      alert('CS 완료 처리되었습니다.');
+    } catch (e) {
+      console.error('CS 완료 처리 실패:', e);
+      alert('처리 중 오류가 발생했습니다.');
+    }
+  };
+
   // 초기화
-  initDashboard();
+  initDashboard().then(() => loadCsAlerts()).catch(() => loadCsAlerts());
 </script>
 
 <script>
