@@ -179,15 +179,35 @@ async function loadAdminAlerts() {
     const snap = await db.collection('alerts').get();
     let urgent = 0, watch = 0, check = 0;
     const items = [];
+    // (urgent/watch/check는 중복 제거 후 재계산)
     snap.forEach(doc => {
       const a = { id: doc.id, ...doc.data() };
       // grade 또는 level 필드 통일 (grade 우선)
       a.level = a.grade || a.level || 'check';
       // grade:'none' (1일째 추적용) 제외
       if (a.level === 'none') return;
+      if (a.resolved) return; // 해제된 건 제외
       items.push(a);
-      // 미해제 건만 집계
-      if (a.resolved) return;
+    });
+
+    // 동일 거래처 중복 제거: 더 심각한 등급 우선, 같으면 최신 날짜
+    const gradeOrder = { urgent: 0, watch: 1, check: 2 };
+    const latestByClient = new Map();
+    items.forEach(a => {
+      const existing = latestByClient.get(a.clientName);
+      if (!existing) { latestByClient.set(a.clientName, a); return; }
+      const aPrio = gradeOrder[a.level] !== undefined ? gradeOrder[a.level] : 9;
+      const ePrio = gradeOrder[existing.level] !== undefined ? gradeOrder[existing.level] : 9;
+      if (aPrio < ePrio || (aPrio === ePrio && (a.date||'') > (existing.date||''))) {
+        latestByClient.set(a.clientName, a);
+      }
+    });
+    const activeItems = Array.from(latestByClient.values());
+    activeItems.sort((a, b) => (gradeOrder[a.level]||9) - (gradeOrder[b.level]||9));
+
+    // 중복 제거 후 카운트로 대시보드 요약 표시
+    urgent = 0; watch = 0; check = 0;
+    activeItems.forEach(a => {
       if (a.level === 'urgent') urgent++;
       else if (a.level === 'watch') watch++;
       else check++;
@@ -197,19 +217,7 @@ async function loadAdminAlerts() {
       <div class="alert-summary-row"><span class="alert-count watch">${watch}</span><span class="alert-label">주시</span></div>
       <div class="alert-summary-row"><span class="alert-count check">${check}</span><span class="alert-label">확인보고</span></div>
     `;
-    if (!items.length) { container.innerHTML = '<div class="empty-msg">경보가 없습니다.</div>'; return; }
-    // 미해제만 필터링
-    const unresolvedItems = items.filter(a => !a.resolved);
-    // 동일 거래처 중복 제거: clientName 기준 최신 날짜 경보 1건만 유지
-    const latestByClient = new Map();
-    unresolvedItems.forEach(a => {
-      const existing = latestByClient.get(a.clientName);
-      if (!existing || (a.date || '') > (existing.date || '')) {
-        latestByClient.set(a.clientName, a);
-      }
-    });
-    const activeItems = Array.from(latestByClient.values());
-    activeItems.sort((a, b) => { const order = { urgent: 0, watch: 1, check: 2 }; return (order[a.level]||9)-(order[b.level]||9); });
+    if (!activeItems.length) { container.innerHTML = '<div class="empty-msg">경보가 없습니다.</div>'; return; }
 
     // 팀명 매핑
     const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
