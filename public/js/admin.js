@@ -184,6 +184,8 @@ async function loadAdminAlerts() {
       // grade 또는 level 필드 통일 (grade 우선)
       a.level = a.grade || a.level || 'check';
       items.push(a);
+      // 미해제 건만 집계
+      if (a.resolved) return;
       if (a.level === 'urgent') urgent++;
       else if (a.level === 'watch') watch++;
       else check++;
@@ -197,12 +199,17 @@ async function loadAdminAlerts() {
     // 미해제만 필터링 후 정렬
     const activeItems = items.filter(a => !a.resolved);
     activeItems.sort((a, b) => { const order = { urgent: 0, watch: 1, check: 2 }; return (order[a.level]||9)-(order[b.level]||9); });
-    container.innerHTML = activeItems.slice(0,10).map(a => {
+
+    // 팀명 매핑
+    const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
+
+    container.innerHTML = activeItems.map(a => {
       const levelLabel = a.level==='urgent'?'즉시경보':a.level==='watch'?'주시':'확인보고';
-      const levelClass = a.level==='watch'?'alert-watch':'alert-urgent';
+      const levelClass = a.level==='urgent'?'alert-urgent':a.level==='watch'?'alert-watch':'alert-check';
       const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
-      const smsBtn = `<button onclick="sendAlertSms('${a.id}','${a.clientName}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
-      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span><span class="alert-days-sm">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
+      const smsBtn = `<button onclick="event.stopPropagation();sendAlertSms('${a.id}','${a.clientName}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
+      const teamLabel = teamNames[a.teamId] || a.teamId || '';
+      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvgOrder||0},'${a.date||''}')"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span><span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
     }).join('');
   } catch(e) {
     console.error('경보 로드 실패:', e);
@@ -808,4 +815,41 @@ window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
   } catch (e) {
     alert('❌ 오류: ' + e.message);
   }
+};
+
+// ── 경보 상세 모달 ──────────────────────────────────────────────
+window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId, courseId, dailyAvgOrder, date) {
+  const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
+  const levelLabel = level==='urgent'?'🔴 즉시경보':level==='watch'?'🟡 주시':'🟠 확인보고';
+  const levelColor = level==='urgent'?'#e53e3e':level==='watch'?'#dd6b20':'#c05621';
+  const bgColor    = level==='urgent'?'#fff5f5':level==='watch'?'#fffaf0':'#fffbf5';
+
+  // 기존 모달 제거
+  const old = document.getElementById('alertDetailModal');
+  if (old) old.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'alertDetailModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:28px;width:92%;max-width:420px;box-shadow:0 8px 32px rgba(0,0,0,0.18);position:relative;">
+      <button onclick="document.getElementById('alertDetailModal').remove()" style="position:absolute;top:14px;right:16px;background:none;border:none;font-size:22px;color:#718096;cursor:pointer;">✕</button>
+      <div style="background:${bgColor};border-radius:10px;padding:14px 18px;margin-bottom:18px;text-align:center;">
+        <div style="font-size:22px;font-weight:800;color:${levelColor};">${levelLabel}</div>
+      </div>
+      <table style="width:100%;font-size:14px;border-collapse:collapse;">
+        <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${clientName}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">팀</td><td style="padding:8px 0;">${teamNames[teamId]||teamId||'-'}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">코스</td><td style="padding:8px 0;">${courseId||'-'}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${dailyAvgOrder}개</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">연속 미주문</td><td style="padding:8px 0;font-weight:700;color:${levelColor};">${consecutiveDays}일째</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">발생일</td><td style="padding:8px 0;">${date||'-'}</td></tr>
+      </table>
+      <div style="margin-top:20px;display:flex;gap:10px;">
+        <button onclick="sendAlertSms('${id}','${clientName}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
+        <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 };

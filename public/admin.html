@@ -311,6 +311,8 @@
 
     .alert-urgent { background: #fff5f5; border-left: 3px solid #fc8181; }
     .alert-watch { background: #fffff0; border-left: 3px solid #f6e05e; }
+    .alert-check { background: #fffbf0; border-left: 3px solid #fbd38d; }
+    .alert-check .alert-badge { background: #feebc8; color: #c05621; }
 
     .alert-badge {
       font-size: 11px;
@@ -1233,17 +1235,36 @@
         .get();
       
       if (!existing.empty) continue; // 이미 있으면 스킵
-      
+
+      // 연속 미주문 일수 계산 (전날까지 해제 안 된 경보 확인)
+      const prevSnap = await db.collection('alerts')
+        .where('clientName', '==', clientName)
+        .where('resolved', '==', false)
+        .orderBy('date', 'desc')
+        .limit(1)
+        .get();
+
+      let consecutiveDays = 1;
+      if (!prevSnap.empty) {
+        const prevData = prevSnap.docs[0].data();
+        consecutiveDays = (prevData.consecutiveDays || 1) + 1;
+      }
+
+      // 등급 분류: 1일=확인보고, 2일=주시, 3일 이상=즉시경보
+      let grade = 'check';
+      if (consecutiveDays >= 3) grade = 'urgent';
+      else if (consecutiveDays === 2) grade = 'watch';
+
       // 경보 생성
       await db.collection('alerts').add({
         type: 'no_order',
-        grade: 'urgent',  // 8개 이상은 즉시경보
+        grade,
         clientName,
         dailyAvgOrder,
         teamId,
         courseId,
         date,
-        consecutiveDays: 1,
+        consecutiveDays,
         resolved: false,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
