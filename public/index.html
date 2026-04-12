@@ -219,6 +219,23 @@
   </div>
 
   <div class="footer-note">준도시락 배송관리 시스템 v1.0</div>
+
+  <!-- 긴급 비밀번호 초기화 (URL에 ?recovery=1 추가 시 표시) -->
+  <div id="recoverySection" style="display:none;width:100%;max-width:420px;margin-top:12px;">
+    <div class="card" style="border:2px solid #e53e3e;">
+      <div style="font-size:14px;font-weight:700;color:#c53030;margin-bottom:14px;">🔑 비밀번호 초기화</div>
+      <div class="form-group">
+        <label class="form-label">이름</label>
+        <input class="form-input" type="text" id="recoveryName" placeholder="이름 입력 (예: 이영민)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">새 비밀번호</label>
+        <input class="form-input" type="password" id="recoveryPw" placeholder="새 비밀번호">
+      </div>
+      <button class="btn-login" style="background:linear-gradient(135deg,#c53030,#e53e3e);" onclick="doRecovery()">비밀번호 설정</button>
+      <div id="recoveryMsg" style="text-align:center;margin-top:8px;font-size:13px;"></div>
+    </div>
+  </div>
 </div>
 
 <!-- Firebase CDN -->
@@ -304,8 +321,8 @@
 
       const userData = userDoc.data();
 
-      // Firestore 비밀번호 직접 비교
-      if (!userData.password || userData.password !== pw) {
+      // Firestore 비밀번호 직접 비교 (앞뒤 공백 무시)
+      if (!userData.password || userData.password.trim() !== pw.trim()) {
         showError('비밀번호가 올바르지 않습니다.');
         setLoading(false);
         return;
@@ -336,6 +353,27 @@
   document.getElementById('passwordInput').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') doLogin();
   });
+
+  // ?recovery=1 파라미터 시 초기화 섹션 표시
+  if (location.search.includes('recovery=1')) {
+    document.getElementById('recoverySection').style.display = 'block';
+  }
+
+  async function doRecovery() {
+    const name = document.getElementById('recoveryName').value.trim();
+    const pw   = document.getElementById('recoveryPw').value.trim();
+    const msg  = document.getElementById('recoveryMsg');
+    if (!name || !pw) { msg.style.color='#c53030'; msg.textContent='이름과 비밀번호를 입력해주세요.'; return; }
+    msg.style.color='#718096'; msg.textContent='처리 중...';
+    try {
+      const snap = await db.collection('users').where('name','==',name).limit(1).get();
+      if (snap.empty) { msg.style.color='#c53030'; msg.textContent='해당 이름의 사용자를 찾을 수 없습니다.'; return; }
+      await snap.docs[0].ref.update({ password: pw, active: true });
+      msg.style.color='#276749'; msg.textContent=`✅ ${name}의 비밀번호가 변경됐습니다. 로그인해주세요.`;
+    } catch(e) {
+      msg.style.color='#c53030'; msg.textContent='오류: ' + e.message;
+    }
+  }
 
   loadUsers();
 </script>
