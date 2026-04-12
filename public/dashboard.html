@@ -1054,7 +1054,9 @@
           submittedBy: currentUser.uid,
           submittedByName: currentUser.name,
           submittedAt: firebase.firestore.FieldValue.serverTimestamp()
-        }
+        },
+        resolved: true,
+        resolvedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       closeFeedbackModal();
       // 경보 카드 새로고침

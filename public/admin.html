@@ -711,6 +711,7 @@
         <option value="team7">7팀 강서영</option>
       </select>
       <label style="display:flex;align-items:center;gap:6px;font-size:14px;"><input type="checkbox" id="alertResolvedFilter" onchange="loadAlerts()"> 해제된 경보 포함</label>
+      <button onclick="cleanupDuplicateAlerts()" style="padding:8px 14px;background:#744210;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;">🧹 중복 정리</button>
     </div>
     
     <div id="alertSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
@@ -1301,15 +1302,10 @@
     }
 
     // ── 1회 쿼리로 전체 데이터 로드 ──
-    const [clientsSnap, existingAlertsSnap, usersSnap] = await Promise.all([
+    const [clientsSnap, usersSnap] = await Promise.all([
       db.collection('clients').get(),
-      db.collection('alerts').where('date', '==', date).where('resolved', '==', false).get(),
       db.collection('users').get()
     ]);
-
-    // 오늘 이미 생성된 경보 (중복방지)
-    const existingAlertSet = new Set();
-    existingAlertsSnap.forEach(d => existingAlertSet.add(d.data().clientName));
 
     // 기사 전화번호 맵
     const phoneMap = {};
@@ -1318,15 +1314,15 @@
       if (u.name && u.phone) phoneMap[u.name] = u.phone;
     });
 
-    // 미해결 경보 (연속일수 계산용) - 한번에 로드
+    // 미해결 경보 전체 로드 (clientName → {consecutiveDays, date, docId})
     const prevAlertsSnap = await db.collection('alerts')
       .where('resolved', '==', false)
       .get();
-    const prevAlertMap = {}; // clientName → consecutiveDays
+    const prevAlertMap = {};
     prevAlertsSnap.forEach(d => {
       const a = d.data();
       if (!prevAlertMap[a.clientName] || a.date > prevAlertMap[a.clientName].date) {
-        prevAlertMap[a.clientName] = { consecutiveDays: a.consecutiveDays || 1, date: a.date };
+        prevAlertMap[a.clientName] = { consecutiveDays: a.consecutiveDays || 1, date: a.date, docId: d.id };
       }
     });
 
@@ -1346,10 +1342,11 @@
       // 실제 주문했는가? (정규화 비교)
       if (orderedNorm.has(normClient(clientName))) continue;
 
-      // 이미 오늘 경보 있으면 스킵
-      if (existingAlertSet.has(clientName)) continue;
-
       const isPriority = (dailyAvgOrder || 0) >= 8;
+      const prev = prevAlertMap[clientName];
+
+      // 이미 오늘 처리된 경보면 스킵 (같은 날 중복 실행 방지)
+      if (prev && prev.date === date) continue;
 
       // 담당기사 파악
       let driverName = null;
@@ -1361,21 +1358,29 @@
       let grade, consecutiveDays;
       if (isPriority) {
         grade = 'urgent';
-        consecutiveDays = 1;
-      } else {
-        const prev = prevAlertMap[clientName];
         consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
-        if (consecutiveDays < 2) continue; // 1일째는 경보 없음
+      } else {
+        consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
+        if (!prev && consecutiveDays < 2) continue; // 신규 1일째는 경보 없음
         grade = consecutiveDays >= 3 ? 'check' : 'watch';
       }
 
-      const alertRef = db.collection('alerts').doc();
-      batch.set(alertRef, {
-        type: 'no_order', grade, isPriority,
-        clientName, dailyAvgOrder, teamId, courseId, date,
-        consecutiveDays, resolved: false,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+      if (prev) {
+        // 기존 미해결 경보 업데이트 (새 문서 생성 안 함)
+        batch.update(db.collection('alerts').doc(prev.docId), {
+          consecutiveDays, date, grade,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        // 새 경보 문서 생성
+        const alertRef = db.collection('alerts').doc();
+        batch.set(alertRef, {
+          type: 'no_order', grade, isPriority,
+          clientName, dailyAvgOrder, teamId, courseId, date,
+          consecutiveDays, resolved: false,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
       batchCount++;
       alertCount++;
 
@@ -2803,6 +2808,44 @@ async function loadAlerts() {
     
   } catch(e) {
     alert('로딩 오류: ' + e.message);
+  }
+}
+
+// 중복 경보 정리: 같은 거래처의 미해결 경보 중 consecutiveDays 최대인 것만 남기고 나머지 해제
+async function cleanupDuplicateAlerts() {
+  if (!confirm('같은 거래처의 중복 미해결 경보를 정리합니다.\n(consecutiveDays가 가장 높은 것만 남기고 나머지는 해제 처리)\n\n계속하시겠습니까?')) return;
+  try {
+    const snap = await db.collection('alerts').where('resolved','==',false).get();
+    const grouped = {}; // clientName → [{id, consecutiveDays, date}]
+    snap.forEach(d => {
+      const a = d.data();
+      if (!grouped[a.clientName]) grouped[a.clientName] = [];
+      grouped[a.clientName].push({ id: d.id, consecutiveDays: a.consecutiveDays||1, date: a.date||'' });
+    });
+
+    let deleteCount = 0;
+    const batch = db.batch();
+    let batchCount = 0;
+    for (const [, docs] of Object.entries(grouped)) {
+      if (docs.length <= 1) continue;
+      // consecutiveDays 높은 것 유지, 나머지 해제
+      docs.sort((a,b) => (b.consecutiveDays - a.consecutiveDays) || (b.date > a.date ? 1 : -1));
+      for (let i = 1; i < docs.length; i++) {
+        batch.update(db.collection('alerts').doc(docs[i].id), {
+          resolved: true,
+          resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          resolvedReason: 'duplicate_cleanup'
+        });
+        batchCount++;
+        deleteCount++;
+        if (batchCount >= 400) { await batch.commit(); batchCount = 0; }
+      }
+    }
+    if (batchCount > 0) await batch.commit();
+    alert(`✅ 중복 경보 ${deleteCount}건 정리 완료`);
+    loadAlerts();
+  } catch(e) {
+    alert('정리 오류: ' + e.message);
   }
 }
 
