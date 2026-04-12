@@ -466,9 +466,18 @@ async function saveFieldVisit() {
     const photoUrls = [];
 
     if (fvFiles.length > 0) {
+      // storage가 null이면 재초기화 시도
+      if (!storage) {
+        try {
+          storage = firebase.storage();
+          console.log('Storage 재초기화 성공');
+        } catch (initErr) {
+          console.error('Storage 재초기화 실패:', initErr);
+        }
+      }
       if (!storage) {
         msg.style.color = '#e53e3e';
-        msg.textContent = '⚠️ 사진 업로드 실패 - Storage 초기화 오류. 사진 없이 저장합니다.';
+        msg.textContent = '⚠️ 사진 업로드 실패 - Storage를 초기화할 수 없습니다. 사진 없이 저장합니다.';
         await new Promise(r => setTimeout(r, 1500));
         msg.textContent = '';
       } else {
@@ -481,9 +490,22 @@ async function saveFieldVisit() {
             photoUrls.push(url);
           } catch (uploadErr) {
             console.error('사진 업로드 실패:', uploadErr);
+            let errMsg = uploadErr.message || '';
+            let reason = '';
+            if (uploadErr.code === 'storage/unauthorized' || errMsg.includes('403')) {
+              reason = '권한 오류 (Storage 규칙 확인 필요)';
+            } else if (errMsg.includes('CORS') || errMsg.includes('cors') || errMsg.includes('NetworkError') || errMsg.includes('Failed to fetch')) {
+              reason = 'CORS 오류 (네트워크/방화벽 문제)';
+            } else if (uploadErr.code === 'storage/canceled') {
+              reason = '업로드 취소됨';
+            } else if (uploadErr.code === 'storage/quota-exceeded') {
+              reason = 'Storage 용량 초과';
+            } else {
+              reason = errMsg;
+            }
             msg.style.color = '#e53e3e';
-            msg.textContent = `⚠️ 사진 업로드 실패 (${file.name}): ${uploadErr.message}. 사진 없이 저장합니다.`;
-            await new Promise(r => setTimeout(r, 1500));
+            msg.textContent = `⚠️ 사진 업로드 실패 (${file.name}): ${reason}. 사진 없이 저장합니다.`;
+            await new Promise(r => setTimeout(r, 2000));
             msg.textContent = '';
           }
         }
@@ -536,12 +558,31 @@ async function loadFieldVisits() {
   container.innerHTML = '<div class="empty-msg">로딩 중...</div>';
 
   try {
+    const isAdmin = currentUser.role === 'admin' || currentUser.role === 'manager';
     const teamId = currentUser.teamId || '';
-    const snap = await db.collection('field_visits')
-      .where('teamId', '==', teamId)
-      .orderBy('createdAt', 'desc')
-      .limit(20)
-      .get();
+    let snap;
+
+    if (isAdmin) {
+      // 관리자/매니저: 팀 전체 기록 (teamId 필터, 클라이언트 정렬)
+      if (teamId) {
+        snap = await db.collection('field_visits')
+          .where('teamId', '==', teamId)
+          .limit(50)
+          .get();
+      } else {
+        // teamId 없는 최고관리자: 최근 50건
+        snap = await db.collection('field_visits')
+          .limit(50)
+          .get();
+      }
+    } else {
+      // 기사: 본인 기록만 (단일 필드 쿼리 → 복합 인덱스 불필요)
+      snap = await db.collection('field_visits')
+        .where('driverId', '==', currentUser.uid)
+        .orderBy('createdAt', 'desc')
+        .limit(20)
+        .get();
+    }
 
     if (snap.empty) {
       container.innerHTML = '<div class="empty-msg">아직 기록이 없습니다.</div>';
@@ -550,6 +591,14 @@ async function loadFieldVisits() {
 
     const items = [];
     snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
+    // 관리자는 클라이언트에서 날짜 내림차순 정렬
+    if (isAdmin) {
+      items.sort((a, b) => {
+        const ta = a.createdAt ? a.createdAt.toMillis() : 0;
+        const tb = b.createdAt ? b.createdAt.toMillis() : 0;
+        return tb - ta;
+      });
+    }
 
     container.innerHTML = items.map(v => {
       const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '-';
