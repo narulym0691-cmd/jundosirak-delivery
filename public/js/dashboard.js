@@ -687,10 +687,9 @@ window.loadSalesTab = async function() {
   // 입력 폼 렌더
   const area = document.getElementById('salesInputArea');
   const isAdmin = user.role === 'admin' || user.role === 'manager';
-  const hasExistingData = !!window._driverSalesData;
-  // 기존 데이터 있으면 admin/manager만 수정 가능, 없으면 시간 기준 적용
-  const canEdit = isAdmin ? ts.canEdit : (!hasExistingData && ts.canEdit);
-  const lockedByData = hasExistingData && !isAdmin;
+  // admin/manager: 시간 무관 항상 수정 가능 / driver: 13:00 이전이면 수정 가능
+  const canEdit = isAdmin ? true : ts.canEdit;
+  const lockedByTime = !isAdmin && !ts.canEdit;
 
   const rows = SALES_MENUS.map((menu, i) => {
     const key = MENU_KEYS[i];
@@ -713,7 +712,7 @@ window.loadSalesTab = async function() {
       <span>합계</span>
       <span id="salesTotalDisplay">${total}개</span>
     </div>
-    ${lockedByData ? `<div style="text-align:center;padding:10px;background:#fff5f5;border-radius:8px;color:#c53030;font-size:13px;font-weight:600;">🔒 수정은 관리자만 가능합니다</div>` : ''}
+    ${lockedByTime ? `<div style="text-align:center;padding:10px;background:#fff5f5;border-radius:8px;color:#c53030;font-size:13px;font-weight:600;">🔒 수정 마감시간(13:00)이 지났습니다</div>` : ''}
     ${canEdit ? `<button onclick="saveSalesInput()" style="width:100%;padding:13px;background:#1a4731;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>` : ''}
     <div id="salesSaveMsg" style="text-align:center;margin-top:8px;font-size:13px;"></div>
   `;
