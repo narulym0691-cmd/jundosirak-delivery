@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>준도시락 - 업무수행평가</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+      padding-bottom: 20px;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left { display: flex; flex-direction: column; }
+    .header-title { font-size: 17px; font-weight: 700; letter-spacing: 0.3px; }
+    .header-sub { font-size: 11px; opacity: 0.75; margin-top: 2px; }
+
+    .header-right { display: flex; align-items: center; gap: 8px; }
+
+    .btn-back {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.3);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-logout {
+      background: rgba(220,38,38,0.2);
+      border: 1px solid rgba(220,38,38,0.4);
+      color: #fca5a5;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 탭 네비게이션 */
+    .tab-nav {
+      display: flex;
+      background: white;
+      border-bottom: 2px solid #e2e8f0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      position: sticky;
+      top: 57px;
+      z-index: 90;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    }
+
+    .tab-nav::-webkit-scrollbar { display: none; }
+
+    .tab-nav-btn {
+      flex: 1;
+      min-width: 90px;
+      padding: 13px 8px 11px;
+      border: none;
+      border-bottom: 3px solid transparent;
+      background: none;
+      color: #a0aec0;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .tab-nav-btn.active {
+      color: #1a4731;
+      border-bottom-color: #38a169;
+    }
+
+    /* 메인 */
+    .main { padding: 16px; max-width: 760px; margin: 0 auto; }
+
+    /* 탭 패널 */
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 16px;
+      background: #38a169;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* 폼 요소 */
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .form-row.single { grid-template-columns: 1fr; }
+
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+
+    .form-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+
+    .form-label .point-hint {
+      font-size: 11px;
+      font-weight: 400;
+      color: #a0aec0;
+      margin-left: 4px;
+    }
+
+    .form-label .plus { color: #38a169; font-weight: 700; }
+    .form-label .minus { color: #e53e3e; font-weight: 700; }
+
+    .form-input {
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+      width: 100%;
+      background: #fff;
+      transition: border-color 0.15s;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: #38a169;
+      box-shadow: 0 0 0 3px rgba(56,161,105,0.12);
+    }
+
+    /* 버튼 */
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      background: #1a4731;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .btn-primary:hover { background: #276749; }
+    .btn-primary:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .btn-secondary {
+      padding: 8px 16px;
+      background: #edf2f7;
+      color: #4a5568;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn-danger {
+      padding: 5px 12px;
+      background: #fff5f5;
+      color: #c53030;
+      border: 1px solid #fed7d7;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* 메시지 */
+    .msg-area {
+      min-height: 18px;
+      font-size: 12px;
+      text-align: center;
+      margin-top: 10px;
+      color: #276749;
+    }
+
+    /* 섹션 구분선 */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 18px 0;
+    }
+
+    /* 기록 목록 */
+    .record-list { display: flex; flex-direction: column; gap: 8px; }
+
+    .record-item {
+      background: #f7fafc;
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border-left: 3px solid #e2e8f0;
+    }
+
+    .record-item.has-plus { border-left-color: #38a169; }
+    .record-item.has-minus { border-left-color: #e53e3e; }
+
+    .record-info { flex: 1; min-width: 0; }
+
+    .record-date {
+      font-size: 11px;
+      color: #718096;
+      margin-bottom: 4px;
+    }
+
+    .record-driver {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 4px;
+    }
+
+    .record-items {
+      font-size: 12px;
+      color: #4a5568;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .record-tag {
+      background: #edf2f7;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+    }
+
+    .record-tag.negative { background: #fff5f5; color: #c53030; }
+    .record-tag.positive { background: #f0fff4; color: #276749; }
+
+    .record-score {
+      font-size: 15px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .record-score.neg { color: #e53e3e; }
+    .record-score.pos { color: #38a169; }
+    .record-score.zero { color: #718096; }
+
+    .record-memo {
+      font-size: 11px;
+      color: #718096;
+      margin-top: 4px;
+      font-style: italic;
+    }
+
+    /* ── 동료평가 스타일 ── */
+    .driver-eval-card {
+      background: #f7fafc;
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      border: 1.5px solid #e2e8f0;
+      transition: border-color 0.15s;
+    }
+
+    .driver-eval-card.done {
+      border-color: #c6f6d5;
+      background: #f0fff4;
+    }
+
+    .driver-eval-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .driver-eval-name {
+      font-size: 14px;
+      font-weight: 700;
+      color: #2d3748;
+    }
+
+    .done-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: #276749;
+      background: #c6f6d5;
+      padding: 3px 10px;
+      border-radius: 10px;
+    }
+
+    .eval-criteria { display: flex; flex-direction: column; gap: 10px; }
+
+    .eval-criterion {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .criterion-name {
+      font-size: 13px;
+      color: #4a5568;
+      min-width: 80px;
+    }
+
+    /* 별점 UI */
+    .star-row {
+      display: flex;
+      gap: 4px;
+    }
+
+    .star {
+      font-size: 22px;
+      cursor: pointer;
+      color: #e2e8f0;
+      transition: color 0.1s, transform 0.1s;
+      line-height: 1;
+      user-select: none;
+    }
+
+    .star.filled { color: #f6c90e; }
+    .star:hover { transform: scale(1.15); }
+
+    /* ── 월별집계 스타일 ── */
+    .month-filter {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .score-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .score-table th {
+      background: #f0f4f1;
+      padding: 10px 8px;
+      text-align: center;
+      font-weight: 700;
+      color: #4a5568;
+      font-size: 12px;
+    }
+
+    .score-table th:first-child { text-align: left; }
+
+    .score-table td {
+      padding: 10px 8px;
+      text-align: center;
+      border-bottom: 1px solid #f0f4f1;
+      font-size: 13px;
+    }
+
+    .score-table td:first-child { text-align: left; font-weight: 600; }
+
+    .score-table tr:last-child td { border-bottom: none; }
+
+    .rank-badge {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      line-height: 24px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .rank-1 { background: #f6c90e; color: #744210; }
+    .rank-2 { background: #cbd5e0; color: #2d3748; }
+    .rank-3 { background: #c09060; color: #fff; }
+
+    /* 상세 접기/펼치기 */
+    .detail-toggle {
+      font-size: 12px;
+      color: #38a169;
+      cursor: pointer;
+      text-decoration: underline;
+      background: none;
+      border: none;
+      font-family: inherit;
+      padding: 0;
+    }
+
+    .detail-panel {
+      display: none;
+      margin-top: 10px;
+      padding: 12px;
+      background: #f7fafc;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .detail-panel.open { display: block; }
+
+    /* 로딩 */
+    .loading {
+      text-align: center;
+      color: #718096;
+      padding: 30px;
+      font-size: 13px;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #a0aec0;
+      padding: 30px;
+      font-size: 13px;
+    }
+
+    /* 권한 없음 안내 */
+    .access-denied {
+      background: #fff5f5;
+      border: 1px solid #fed7d7;
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+      color: #c53030;
+      font-size: 13px;
+      margin-bottom: 14px;
+    }
+
+    /* 반응형 */
+    @media (max-width: 480px) {
+      .form-row { grid-template-columns: 1fr; }
+      .eval-criterion { flex-wrap: wrap; }
+      .criterion-name { min-width: 70px; font-size: 12px; }
+      .star { font-size: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">📋 업무수행평가</div>
+    <div class="header-sub" id="headerSub">정성평가 관리</div>
+  </div>
+  <div class="header-right">
+    <a class="btn-back" id="backBtn" href="/admin.html">← 뒤로</a>
+    <button class="btn-logout" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<!-- 탭 네비게이션 -->
+<div class="tab-nav" id="tabNav">
+  <button class="tab-nav-btn active" id="tabBtn-quant" onclick="switchTab('quant')">📊 정량 기록</button>
+  <button class="tab-nav-btn" id="tabBtn-peer" onclick="switchTab('peer')">⭐ 동료/팀 평가</button>
+  <button class="tab-nav-btn" id="tabBtn-monthly" onclick="switchTab('monthly')">🏆 월별 집계</button>
+</div>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- 탭1: 정량 기록 (관리자만) -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel active" id="panel-quant">
+
+    <div class="card" id="quantFormCard">
+      <div class="card-title">정량 기록 입력</div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">기사 선택</label>
+          <select class="form-input" id="q-driver" onchange="loadDriverRecords()">
+            <option value="">-- 기사 선택 --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">날짜</label>
+          <input type="date" class="form-input" id="q-date">
+        </div>
+      </div>
+
+      <!-- 감점 항목 -->
+      <div style="font-size:12px;font-weight:700;color:#c53030;margin-bottom:8px;">감점 항목</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">근태 지각 <span class="point-hint minus">-2점/회</span></label>
+          <input type="number" class="form-input" id="q-late" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">지시사항 미이행 <span class="point-hint minus">-3점/건</span></label>
+          <input type="number" class="form-input" id="q-nodir" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">오배송/누락 <span class="point-hint minus">-5점/건</span></label>
+          <input type="number" class="form-input" id="q-wrong" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">신호위반 <span class="point-hint minus">-3점/건</span></label>
+          <input type="number" class="form-input" id="q-signal" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">사고 <span class="point-hint minus">-10점/건</span></label>
+          <input type="number" class="form-input" id="q-accident" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">발열통 미제작 <span class="point-hint minus">-5점/건</span></label>
+          <input type="number" class="form-input" id="q-noheater" min="0" value="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">끊긴 업체 미보고 <span class="point-hint minus">-3점/건</span></label>
+          <input type="number" class="form-input" id="q-lostreport" min="0" value="0">
+        </div>
+      </div>
+
+      <!-- 가점 항목 -->
+      <div style="font-size:12px;font-weight:700;color:#276749;margin-bottom:8px;margin-top:4px;">가점 항목</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">신규 영업 연결 성공 <span class="point-hint plus">+5점/건</span></label>
+          <input type="number" class="form-input" id="q-newsales" min="0" value="0">
+        </div>
+      </div>
+
+      <div class="form-row single">
+        <div class="form-group">
+          <label class="form-label">메모 (선택)</label>
+          <input type="text" class="form-input" id="q-memo" placeholder="메모 내용 입력...">
+        </div>
+      </div>
+
+      <!-- 총점 미리보기 -->
+      <div id="q-preview" style="background:#f0f4f1;border-radius:8px;padding:12px;margin-bottom:14px;text-align:center;font-size:14px;font-weight:700;color:#1a4731;">
+        이번 기록 점수: <span id="q-preview-score">0점</span>
+      </div>
+
+      <button class="btn-primary" onclick="saveQuantRecord()">저장하기</button>
+      <div class="msg-area" id="q-msg"></div>
+    </div>
+
+    <!-- 이번달 기록 목록 -->
+    <div class="card" id="quantRecordsCard" style="display:none;">
+      <div class="card-title" id="quantRecordsTitle">이번달 기록</div>
+      <div id="quantRecordsList" class="record-list">
+        <div class="loading">로딩 중...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- 탭2: 동료/팀 평가 -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-peer">
+
+    <div class="card">
+      <div class="card-title">동료/팀 평가</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:16px;">
+        본인 팀 기사들의 이번달 역량을 평가해주세요. (1~5점)
+      </div>
+
+      <!-- 연월 표시 -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:600;color:#4a5568;">
+          평가 기간: <span id="peerYearMonth" style="color:#1a4731;">-</span>
+        </div>
+        <button class="btn-secondary" onclick="savePeerReviews()">💾 전체 저장</button>
+      </div>
+
+      <div id="peerDriverList">
+        <div class="loading">팀원 목록 로딩 중...</div>
+      </div>
+      <div class="msg-area" id="peer-msg"></div>
+    </div>
+
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- 탭3: 월별 집계 (관리자만) -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="tab-panel" id="panel-monthly">
+
+    <div class="card">
+      <div class="card-title">월별 팀 종합 집계</div>
+
+      <div class="month-filter">
+        <div class="form-group" style="flex:1;min-width:140px;">
+          <label class="form-label">연월 선택</label>
+          <input type="month" class="form-input" id="m-month">
+        </div>
+        <button class="btn-secondary" style="margin-top:22px;" onclick="loadMonthlyAggregation()">🔄 집계</button>
+      </div>
+
+      <div style="font-size:11px;color:#718096;margin-bottom:16px;">
+        정량(50점 기준) + 동료평가(30점 기준) + 차량제출(20점)
+      </div>
+
+      <div id="monthlyContent">
+        <div class="empty-state">연월을 선택하고 집계를 눌러주세요.</div>
+      </div>
+    </div>
+
+    <!-- 시상 기록 저장 -->
+    <div class="card" id="awardSaveCard" style="display:none;">
+      <div class="card-title">시상 기록 저장</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:14px;">
+        집계 결과를 award_history에 저장합니다.
+      </div>
+      <button class="btn-primary" onclick="saveAwardHistory()">🏆 시상 기록 저장</button>
+      <div class="msg-area" id="award-msg"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/evaluation.js"></script>
+
+</body>
+</html>

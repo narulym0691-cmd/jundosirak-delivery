@@ -1,18 +1,22 @@
 // Firebase 설정
 const firebaseConfig = {
-  apiKey: "AIzaSyARaQ_iFPRKBhMOrRcX0fhQtLGlZtC7UHo",
-  authDomain: "jundosirak-delivery.firebaseapp.com",
-  projectId: "jundosirak-delivery",
-  storageBucket: "jundosirak-delivery.firebasestorage.app",
-  messagingSenderId: "570663336725",
-  appId: "1:570663336725:web:16f1a6662196d6ce7c071c"
+  apiKey: "AIzaSyDMji7rccF5c5jHA46S57ww_gY0efuy_M4",
+  authDomain: "jundosirak-delivery2.firebaseapp.com",
+  projectId: "jundosirak-delivery2",
+  storageBucket: "jundosirak-delivery2.firebasestorage.app",
+  messagingSenderId: "627206670087",
+  appId: "1:627206670087:web:a2a3981cd2e093ab1e67a2"
 };
 
-// Firebase 초기화
-firebase.initializeApp(firebaseConfig);
+// Firebase 초기화 (중복 방지)
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 const db = firebase.firestore();
 const auth = firebase.auth();
+let storage = null;
+try { storage = firebase.storage(); } catch(e) {}
 
 // 현재 년월 (YYYY-MM 형식)
 function getCurrentYearMonth() {

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>준도시락 - 차량 점검</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+      padding-bottom: 32px;
+    }
+
+    /* 헤더 */
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left .header-title {
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .header-left .header-sub {
+      font-size: 11px;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    .btn-logout {
+      background: rgba(220,38,38,0.2);
+      border: 1px solid rgba(220,38,38,0.4);
+      color: #fca5a5;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+    }
+
+    /* 메인 */
+    .main {
+      padding: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    /* 카드 */
+    .card {
+      background: white;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .card-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 16px;
+      background: #38a169;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    /* 제출 상태 배너 */
+    .status-banner {
+      border-radius: 12px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .status-banner.submitted {
+      background: #f0fff4;
+      border: 1.5px solid #c6f6d5;
+      color: #276749;
+    }
+
+    .status-banner.draft {
+      background: #fffbeb;
+      border: 1.5px solid #fde68a;
+      color: #92400e;
+    }
+
+    .status-banner.none {
+      background: #f7fafc;
+      border: 1.5px solid #e2e8f0;
+      color: #718096;
+    }
+
+    .status-icon { font-size: 22px; }
+
+    /* 사진 업로드 섹션 */
+    .photo-section {
+      margin-bottom: 18px;
+    }
+
+    .photo-section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .photo-count-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: #718096;
+      background: #edf2f7;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .photo-slot {
+      aspect-ratio: 1;
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+      background: #f7fafc;
+      border: 2px dashed #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .photo-slot:hover { border-color: #38a169; background: #f0fff4; }
+    .photo-slot.has-photo { border: none; background: #000; }
+
+    .photo-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-add-icon {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      color: #a0aec0;
+    }
+
+    .photo-add-icon svg { width: 28px; height: 28px; }
+    .photo-add-icon span { font-size: 11px; font-weight: 600; }
+
+    .photo-del-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      background: rgba(0,0,0,0.65);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+
+    /* 섹션 구분 */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #f0f4f1;
+      margin: 16px 0;
+    }
+
+    /* AI 평가 버튼 */
+    .btn-ai {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #553c9a, #805ad5);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-ai:disabled {
+      background: #cbd5e0;
+      cursor: not-allowed;
+    }
+
+    .btn-ai:not(:disabled):hover { opacity: 0.9; }
+
+    /* AI 결과 카드 */
+    .ai-result {
+      display: none;
+    }
+
+    .ai-result.show { display: block; }
+
+    .score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f4f1;
+    }
+
+    .score-row:last-child { border-bottom: none; }
+
+    .score-label {
+      font-size: 13px;
+      color: #4a5568;
+      font-weight: 600;
+    }
+
+    .score-bar-wrap {
+      flex: 1;
+      margin: 0 12px;
+      height: 8px;
+      background: #edf2f7;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, #38a169, #68d391);
+      transition: width 0.6s ease;
+    }
+
+    .score-value {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1a4731;
+      min-width: 36px;
+      text-align: right;
+    }
+
+    .total-score-box {
+      background: linear-gradient(135deg, #1a4731, #2d6a4f);
+      color: white;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+      margin-top: 14px;
+    }
+
+    .total-score-num {
+      font-size: 36px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .total-score-sub {
+      font-size: 12px;
+      opacity: 0.75;
+      margin-top: 4px;
+    }
+
+    .ai-comment {
+      background: #f7fafc;
+      border-left: 3px solid #38a169;
+      border-radius: 0 8px 8px 0;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #4a5568;
+      margin-top: 14px;
+      line-height: 1.6;
+    }
+
+    /* 제출 버튼 */
+    .btn-submit {
+      width: 100%;
+      padding: 15px;
+      background: #1a4731;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+
+    .btn-submit:hover { background: #276749; }
+    .btn-submit:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    /* 로딩 스피너 */
+    .spinner-wrap {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 20px;
+      color: #718096;
+      font-size: 13px;
+    }
+    .spinner-wrap.show { display: flex; }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #38a169;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* 메시지 */
+    .msg-area {
+      font-size: 13px;
+      text-align: center;
+      min-height: 18px;
+      margin-top: 10px;
+      color: #276749;
+    }
+
+    /* 이미 제출한 경우 사진 미리보기 */
+    .submitted-photos {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
+    .submitted-photos img {
+      width: 100%;
+      aspect-ratio: 1;
+      object-fit: cover;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<!-- 헤더 -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-title">🚗 차량 점검 사진</div>
+    <div class="header-sub" id="headerSub">준도시락 배송관리</div>
+  </div>
+  <button class="btn-logout" onclick="logout()">로그아웃</button>
+</div>
+
+<div class="main">
+
+  <!-- 이번달 상태 -->
+  <div id="statusBanner" class="status-banner none">
+    <span class="status-icon">📋</span>
+    <div>
+      <div id="statusText">이번달 제출 현황 확인 중...</div>
+      <div id="statusSub" style="font-size:11px;opacity:0.7;margin-top:2px;"></div>
+    </div>
+  </div>
+
+  <!-- 사진 업로드 카드 -->
+  <div class="card" id="uploadCard">
+    <div class="card-title">사진 업로드</div>
+
+    <!-- 외부 사진 -->
+    <div class="photo-section">
+      <div class="photo-section-title">
+        🚗 외부 사진
+        <span class="photo-count-badge" id="ext-count">0/2</span>
+      </div>
+      <div class="photo-grid">
+        <div class="photo-slot" id="ext-slot-0" onclick="triggerFileInput('exterior',0)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+        <div class="photo-slot" id="ext-slot-1" onclick="triggerFileInput('exterior',1)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 내부 사진 -->
+    <div class="photo-section">
+      <div class="photo-section-title">
+        🪑 내부 사진
+        <span class="photo-count-badge" id="int-count">0/2</span>
+      </div>
+      <div class="photo-grid">
+        <div class="photo-slot" id="int-slot-0" onclick="triggerFileInput('interior',0)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+        <div class="photo-slot" id="int-slot-1" onclick="triggerFileInput('interior',1)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="section-divider">
+
+    <!-- 차량 점검표 -->
+    <div class="photo-section">
+      <div class="photo-section-title">
+        📋 차량 점검표
+        <span class="photo-count-badge" id="chk-count">0/2</span>
+      </div>
+      <div class="photo-grid">
+        <div class="photo-slot" id="chk-slot-0" onclick="triggerFileInput('checklist',0)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+        <div class="photo-slot" id="chk-slot-1" onclick="triggerFileInput('checklist',1)">
+          <div class="photo-add-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>추가</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 숨겨진 파일 인풋 -->
+    <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" onchange="handleFileSelect(event)">
+
+    <!-- AI 평가 버튼 -->
+    <button class="btn-ai" id="btnAI" onclick="requestAIEval()" disabled>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zm0 4a1 1 0 00-1 1v4H7a1 1 0 000 2h4v4a1 1 0 002 0v-4h4a1 1 0 000-2h-4V7a1 1 0 00-1-1z"/>
+      </svg>
+      AI 평가 요청
+    </button>
+
+    <div class="spinner-wrap" id="aiSpinner">
+      <div class="spinner"></div>
+      AI가 사진을 분석 중입니다...
+    </div>
+  </div>
+
+  <!-- AI 결과 카드 -->
+  <div class="card ai-result" id="aiResultCard">
+    <div class="card-title">AI 평가 결과</div>
+
+    <div class="score-row">
+      <span class="score-label">🚗 외부 청결도</span>
+      <div class="score-bar-wrap">
+        <div class="score-bar-fill" id="bar-exterior" style="width:0%"></div>
+      </div>
+      <span class="score-value"><span id="score-exterior">0</span>/7</span>
+    </div>
+    <div class="score-row">
+      <span class="score-label">🪑 내부 청결도</span>
+      <div class="score-bar-wrap">
+        <div class="score-bar-fill" id="bar-interior" style="width:0%"></div>
+      </div>
+      <span class="score-value"><span id="score-interior">0</span>/7</span>
+    </div>
+    <div class="score-row">
+      <span class="score-label">📋 점검표</span>
+      <div class="score-bar-wrap">
+        <div class="score-bar-fill" id="bar-checklist" style="width:0%"></div>
+      </div>
+      <span class="score-value"><span id="score-checklist">0</span>/6</span>
+    </div>
+
+    <div class="total-score-box">
+      <div class="total-score-sub">총점</div>
+      <div class="total-score-num"><span id="score-total">0</span><span style="font-size:20px;opacity:0.7;">/20</span></div>
+    </div>
+
+    <div class="ai-comment" id="aiComment">AI 코멘트가 여기에 표시됩니다.</div>
+  </div>
+
+  <!-- 제출 카드 -->
+  <div class="card" id="submitCard">
+    <button class="btn-submit" id="btnSubmit" onclick="submitVehicleInspection()" disabled>
+      제출 완료
+    </button>
+    <div class="msg-area" id="submitMsg"></div>
+  </div>
+
+  <!-- 이미 제출된 결과 카드 (제출 완료 후) -->
+  <div class="card" id="submittedResultCard" style="display:none;">
+    <div class="card-title">✅ 이번달 제출 완료</div>
+    <div id="submittedScoreBox"></div>
+    <div id="submittedPhotos"></div>
+  </div>
+
+</div>
+
+<!-- Firebase CDN -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/vehicle.js"></script>
+
+</body>
+</html>
