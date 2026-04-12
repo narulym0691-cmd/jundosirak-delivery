@@ -226,31 +226,71 @@ async function loadDriverDirectives() {
     }
 
     const now = new Date();
-    const html = items.map(d => {
+
+    // 미완료 / 완료 분리 (완료는 최근 3건만)
+    const undone = items.filter(d => {
+      const myComp = d.completions && d.completions[directiveUser.uid];
+      return !(myComp && myComp.done);
+    });
+    const done3 = items
+      .filter(d => {
+        const myComp = d.completions && d.completions[directiveUser.uid];
+        return myComp && myComp.done;
+      })
+      .sort((a, b) => {
+        const tA = a.completions[directiveUser.uid].doneAt?.toMillis?.() || 0;
+        const tB = b.completions[directiveUser.uid].doneAt?.toMillis?.() || 0;
+        return tB - tA;
+      })
+      .slice(0, 3);
+
+    const renderItem = d => {
       const myComp = d.completions && d.completions[directiveUser.uid];
       const done = myComp && myComp.done;
       const deadline = d.deadline ? d.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
       const isOverdue = d.deadline && d.deadline.toDate() < now && !done;
+      const doneAt = done && myComp.doneAt ? myComp.doneAt.toDate().toLocaleDateString('ko-KR') : '';
+      const comment = done && myComp.comment ? myComp.comment : '';
+
       return `
         <div class="driver-directive-item ${done ? 'done' : ''}" id="drdir-${d.id}">
-          <label class="directive-check-wrap">
+          <label class="directive-check-wrap" ${done ? `onclick="toggleDoneDetail('${d.id}'); return false;"` : ''}>
             <input type="checkbox" class="directive-cb" ${done ? 'checked disabled' : ''}
               onchange="driverComplete('${d.id}', this)">
             <span class="directive-content-text ${done ? 'strikethrough' : ''}">${d.content}</span>
+            ${done ? `<span style="margin-left:6px;font-size:12px;color:#718096;">▼</span>` : ''}
           </label>
           <div class="driver-dir-meta">
             <span class="deadline-label ${isOverdue ? 'overdue' : ''}">마감: ${deadline}</span>
             ${done ? `<span class="done-label">✓ 완료</span>` : ''}
           </div>
-          ${!done ? `
+          ${done ? `
+          <div class="done-detail" id="done-detail-${d.id}" style="display:none;margin-top:8px;padding:10px 12px;background:#f0fff4;border-radius:8px;border-left:3px solid #38a169;">
+            <div style="font-size:12px;color:#276749;font-weight:600;margin-bottom:4px;">✅ 완료 내역</div>
+            <div style="font-size:13px;color:#2d3748;margin-bottom:4px;"><b>지시사항:</b> ${d.content}</div>
+            ${comment ? `<div style="font-size:13px;color:#2d3748;margin-bottom:4px;"><b>완료 코멘트:</b> ${comment}</div>` : '<div style="font-size:12px;color:#a0aec0;">코멘트 없음</div>'}
+            ${doneAt ? `<div style="font-size:12px;color:#718096;margin-top:4px;">완료일: ${doneAt}</div>` : ''}
+          </div>
+          ` : `
           <div class="comment-area" id="comment-area-${d.id}" style="display:none">
             <input type="text" class="comment-input" id="comment-${d.id}" placeholder="완료 코멘트 (선택)">
             <button class="btn-confirm-done" onclick="confirmDone('${d.id}')">완료 확인</button>
           </div>
-          ` : ''}
+          `}
         </div>
       `;
-    }).join('');
+    };
+
+    let html = undone.map(renderItem).join('');
+
+    if (done3.length > 0) {
+      html += `
+        <div style="margin-top:16px;padding-top:12px;border-top:1px dashed #e2e8f0;">
+          <div style="font-size:12px;font-weight:600;color:#718096;margin-bottom:8px;">📋 완료한 지시사항 (최근 ${done3.length}건) — 클릭하면 내용 확인</div>
+          ${done3.map(renderItem).join('')}
+        </div>
+      `;
+    }
 
     container.innerHTML = html;
 
@@ -304,5 +344,19 @@ async function confirmDone(directiveId) {
     alert('완료 처리에 실패했습니다.');
     const cb = document.querySelector(`#drdir-${directiveId} .directive-cb`);
     if (cb) { cb.checked = false; cb.disabled = false; }
+  }
+}
+
+// 완료 지시사항 상세 펼치기/접기
+function toggleDoneDetail(directiveId) {
+  const detail = document.getElementById(`done-detail-${directiveId}`);
+  if (!detail) return;
+  const arrow = document.querySelector(`#drdir-${directiveId} .directive-check-wrap span[style*="718096"]`);
+  if (detail.style.display === 'none') {
+    detail.style.display = 'block';
+    if (arrow) arrow.textContent = '▲';
+  } else {
+    detail.style.display = 'none';
+    if (arrow) arrow.textContent = '▼';
   }
 }
