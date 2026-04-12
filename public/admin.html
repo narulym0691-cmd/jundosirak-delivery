@@ -1020,81 +1020,156 @@
     document.getElementById('salesUploadModal').style.display = 'none';
   };
 
+  // ── 양식1 파싱: "결과" 시트, 단순 기사명/합계 구조
+  function parseResultFormat1(rows) {
+    const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처'];
+    const header = rows[0] || [];
+    let colName = 0, colTotal = -1;
+    for (let j = 0; j < header.length; j++) {
+      const h = String(header[j]||'').trim();
+      if (h.includes('기사') || h.includes('이름') || h.includes('성명')) colName = j;
+      if ((h.includes('합계') || h.includes('수량')) && colTotal < 0) colTotal = j;
+    }
+    if (colTotal < 0) colTotal = colName === 0 ? 1 : 0;
+
+    const driverMap = {};
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const name = String(row[colName]||'').trim();
+      if (!name || SKIP_KW.some(k => name.includes(k))) continue;
+      const total = Number(row[colTotal]||0);
+      if (total <= 0) continue;
+      const courseId = DRIVER_COURSE_MAP[name];
+      const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
+      if (!team) continue;
+      if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
+      driverMap[name].total += total;
+    }
+    return { driverRows: Object.values(driverMap), allClients: new Set() };
+  }
+
+  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 13=기사명, 14~21=메뉴)
+  function parseResultFormat2(rows) {
+    // col: 13=기사명, 14=뜨, 15=프, 16=샐, 17=품, 18=덮, 19=샌, 20=세트, 21=유부, 22=밥, 23=국, 24=합계
+    const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처'];
+    const DRIVER_PAT = /^\d+\.\s+/;   // "N. 이름" 기사 summary 행
+    const SECTION_PAT = /^\d+\s*◎/;  // "N ◎ ..." 섹션 헤더 행
+
+    const driverMap = {};
+    const allClients = new Set();
+    let currentDriverName = null;
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const cell = String(row[13]||'').trim();
+      if (!cell) continue;
+      if (SKIP_KW.some(k => cell.includes(k))) continue;
+
+      if (DRIVER_PAT.test(cell)) {
+        // 기사 summary 행: "N. 표창훈"
+        const name = cell.replace(/^\d+\.\s+/, '').trim();
+        const courseId = DRIVER_COURSE_MAP[name];
+        const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
+        if (!team) { currentDriverName = null; continue; }
+        // 수량 합산: 뜨(14)~유부(21), 밥(22)/국(23) 제외
+        let total = 0;
+        for (let j = 14; j <= 21; j++) total += Number(row[j]||0);
+        if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
+        driverMap[name].total += total;
+        currentDriverName = name;
+        continue;
+      }
+
+      if (SECTION_PAT.test(cell)) {
+        // "N ◎ 지역(기사명)배송코스" 섹션 헤더 → currentDriver 유지, 스킵
+        continue;
+      }
+
+      // 거래처 행: currentDriver 있고 위 패턴 아닌 경우
+      if (currentDriverName && driverMap[currentDriverName]) {
+        allClients.add(cell);
+        if (!driverMap[currentDriverName].clients.includes(cell)) {
+          driverMap[currentDriverName].clients.push(cell);
+        }
+      }
+    }
+    return { driverRows: Object.values(driverMap), allClients };
+  }
+
+  // ── 구형 양식 파싱: "붙여넣기" 시트 (거래처별 주문행 구조)
+  function parseLegacyFormat(rows) {
+    let headerRow = -1, colClient = -1, colDriver = -1, colQty = -1, colAmt = -1;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i];
+      for (let j = 0; j < row.length; j++) {
+        const cell = String(row[j]||'').trim();
+        if (cell === 'No.' || cell === 'No') headerRow = i;
+        if (cell.includes('업체명')) colClient = j;
+        if (cell === '담당기사') colDriver = j;
+        if (cell === '수량') colQty = j;
+        if (cell === '금액') colAmt = j;
+      }
+      if (colClient >= 0 && colDriver >= 0) break;
+    }
+    if (colClient < 0) throw new Error("'업체명&현장명' 컬럼을 찾을 수 없습니다. '붙여넣기' 시트를 확인해주세요.");
+    if (colDriver < 0) throw new Error("'담당기사' 컬럼을 찾을 수 없습니다.");
+
+    const driverMap = {};
+    const allClients = new Set();
+    for (let i = (headerRow >= 0 ? headerRow + 1 : 1); i < rows.length; i++) {
+      const row = rows[i];
+      const clientRaw = String(row[colClient]||'').trim();
+      const driverRaw = String(row[colDriver]||'').trim();
+      const qty = Number(row[colQty]||0);
+      const amt = Number(row[colAmt]||0);
+      if (!clientRaw || !driverRaw || qty <= 0) continue;
+      const courseId = DRIVER_COURSE_MAP[driverRaw];
+      const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
+      if (!team) continue;
+      if (!driverMap[driverRaw]) driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: [] };
+      driverMap[driverRaw].total += qty;
+      driverMap[driverRaw].revenue += amt;
+      if (!driverMap[driverRaw].clients.includes(clientRaw)) driverMap[driverRaw].clients.push(clientRaw);
+      allClients.add(clientRaw);
+    }
+    return { driverRows: Object.values(driverMap), allClients };
+  }
+
   window.onSalesFileChange = async (input) => {
     const file = input.files[0];
     if (!file) return;
     document.getElementById('su-filename').textContent = file.name;
     document.getElementById('su-msg').textContent = '파싱 중...';
+    document.getElementById('su-msg').style.color = '#718096';
 
     try {
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
 
-      // ── 일일장부 파싱 (붙여넣기 시트) ──────────────────────────
-      // 컬럼: No.|주문시간|주문일|주문자ID|업체명&현장명|주문배송지|받는사람|연락처|이메일|배송시작일|담당기사|메뉴명|수량|금액|부가세|합계|메모
-      const sheetName = wb.SheetNames.find(s => s === '붙여넣기') || wb.SheetNames[0];
-      const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+      let driverRows = [], allClients = new Set(), parseNote = '';
 
-      // 헤더행 찾기 (No. 또는 업체명 컬럼)
-      let headerRow = -1;
-      let colClient=-1, colDriver=-1, colMenu=-1, colQty=-1, colAmt=-1;
-      for (let i = 0; i < Math.min(rows.length, 10); i++) {
-        const row = rows[i];
-        for (let j = 0; j < row.length; j++) {
-          const cell = String(row[j]||'').trim();
-          if (cell === 'No.' || cell === 'No') headerRow = i;
-          if (cell.includes('업체명')) colClient = j;
-          if (cell === '담당기사') colDriver = j;
-          if (cell === '메뉴명') colMenu = j;
-          if (cell === '수량') colQty = j;
-          if (cell === '금액') colAmt = j;
+      const resultSheetName = wb.SheetNames.find(s => s === '결과');
+      if (resultSheetName) {
+        // "결과" 시트 감지 → 양식1 or 양식2 자동 선택
+        const ws = wb.Sheets[resultSheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+        const firstData = rows[1] || [];
+        const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
+        if (isFormat2) {
+          parseNote = '양식2 (상세 일일장부)';
+          ({ driverRows, allClients } = parseResultFormat2(rows));
+        } else {
+          parseNote = '양식1 (단순 합계)';
+          ({ driverRows, allClients } = parseResultFormat1(rows));
         }
-        if (colClient >= 0 && colDriver >= 0) break;
+      } else {
+        // "붙여넣기" 시트 fallback (구형 양식)
+        parseNote = '구형 양식 (붙여넣기)';
+        const sheetName = wb.SheetNames.find(s => s === '붙여넣기') || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+        ({ driverRows, allClients } = parseLegacyFormat(rows));
       }
-      if (colClient < 0) throw new Error("'업체명&현장명' 컬럼을 찾을 수 없습니다. '붙여넣기' 시트를 확인해주세요.");
-      if (colDriver < 0) throw new Error("'담당기사' 컬럼을 찾을 수 없습니다.");
-
-      // 메뉴 → 단가 매핑
-      const MENU_PRICE = {
-        '뜨끈 한식 도시락': 8250, '프리미엄 도시락': 7700,
-        '뜨끈 일품 도시락': 8250, '뜨끈 덮밥 도시락': 7150,
-        '샐러드 도시락': 7150, '샐러드 도시락(배송당일 주문불가)': 7150,
-        '샌드위치 단품(배송당일 주문불가)': 6600, '샌드위치 세트(배송당일 주문불가)': 6600,
-        '공기밥(단품배송불가)': 0, '건조국(단품배송불가)': 0
-      };
-
-      // 행별 집계
-      const driverMap = {}; // 기사명 → { team, total, revenue, clients:Set }
-      const allClients = new Set(); // 오늘 주문한 거래처 전체
-
-      for (let i = (headerRow >= 0 ? headerRow + 1 : 1); i < rows.length; i++) {
-        const row = rows[i];
-        const clientRaw = String(row[colClient]||'').trim();
-        const driverRaw = String(row[colDriver]||'').trim();
-        const menu      = String(row[colMenu]||'').trim();
-        const qty       = Number(row[colQty]||0);
-        const amt       = Number(row[colAmt]||0);
-
-        if (!clientRaw || !driverRaw || qty <= 0) continue;
-        const courseId = DRIVER_COURSE_MAP[driverRaw];
-        const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
-        if (!team) continue; // 코스 미등록 기사 스킵
-
-        if (!driverMap[driverRaw]) {
-          driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: new Set() };
-        }
-        driverMap[driverRaw].total   += qty;
-        driverMap[driverRaw].revenue += amt;
-        driverMap[driverRaw].clients.add(clientRaw);
-        allClients.add(clientRaw);
-      }
-
-      // driverRows 변환 (clients Set → Array)
-      const driverRows = Object.values(driverMap).map(d => ({
-        name: d.name, team: d.team, total: d.total, revenue: d.revenue,
-        clients: [...d.clients]
-      }));
 
       if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
@@ -1102,9 +1177,9 @@
       const teamTotals = {}, teamDrivers = {}, teamRevenues = {};
       driverRows.forEach(d => {
         teamTotals[d.team]   = (teamTotals[d.team]||0)   + d.total;
-        teamRevenues[d.team] = (teamRevenues[d.team]||0) + d.revenue;
+        teamRevenues[d.team] = (teamRevenues[d.team]||0) + (d.revenue||0);
         if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
-        teamDrivers[d.team].push(d.name+':'+d.total);
+        teamDrivers[d.team].push(d.name + ':' + d.total);
       });
 
       _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients: [...allClients] };
@@ -1113,7 +1188,7 @@
       const tbody = document.getElementById('su-preview-body');
       tbody.innerHTML = Object.keys(TEAM_NAMES).map(tid => {
         const total = teamTotals[tid]||0;
-        const rev = teamRevenues[tid]||0;
+        const rev   = teamRevenues[tid]||0;
         const drivers = (teamDrivers[tid]||[]).join(', ');
         return `<tr>
           <td style="padding:6px 8px;font-weight:600;">${TEAM_NAMES[tid]}</td>
@@ -1125,7 +1200,7 @@
 
       document.getElementById('su-preview').style.display = '';
       document.getElementById('su-save-btn').style.display = '';
-      document.getElementById('su-msg').textContent = `✅ ${driverRows.length}명 파싱 완료`;
+      document.getElementById('su-msg').textContent = `✅ ${parseNote} — ${driverRows.length}명 파싱 완료`;
       document.getElementById('su-msg').style.color = '#276749';
 
     } catch(e) {
