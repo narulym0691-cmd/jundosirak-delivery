@@ -465,12 +465,29 @@ async function saveFieldVisit() {
     const ym = getCurrentYearMonth();
     const photoUrls = [];
 
-    for (const file of fvFiles) {
-      const ts = Date.now();
-      const ref = storage.ref(`field_visits/${ym}/${currentUser.uid}/${ts}_${file.name}`);
-      await ref.put(file);
-      const url = await ref.getDownloadURL();
-      photoUrls.push(url);
+    if (fvFiles.length > 0) {
+      if (!storage) {
+        msg.style.color = '#e53e3e';
+        msg.textContent = '⚠️ 사진 업로드 실패 - Storage 초기화 오류. 사진 없이 저장합니다.';
+        await new Promise(r => setTimeout(r, 1500));
+        msg.textContent = '';
+      } else {
+        for (const file of fvFiles) {
+          try {
+            const ts = Date.now();
+            const ref = storage.ref(`field_visits/${ym}/${currentUser.uid}/${ts}_${file.name}`);
+            await ref.put(file);
+            const url = await ref.getDownloadURL();
+            photoUrls.push(url);
+          } catch (uploadErr) {
+            console.error('사진 업로드 실패:', uploadErr);
+            msg.style.color = '#e53e3e';
+            msg.textContent = `⚠️ 사진 업로드 실패 (${file.name}): ${uploadErr.message}. 사진 없이 저장합니다.`;
+            await new Promise(r => setTimeout(r, 1500));
+            msg.textContent = '';
+          }
+        }
+      }
     }
 
     let isNewSalesConfirmed = false;
@@ -542,6 +559,7 @@ async function loadFieldVisits() {
       const thumb = v.photoUrls && v.photoUrls.length > 0
         ? `<img src="${v.photoUrls[0]}" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex-shrink:0;" onclick="showFieldVisitDetail(${JSON.stringify(v).replace(/"/g, '&quot;')})">`
         : '';
+      const commentBadge = v.adminComment ? `<span style="font-size:11px;">💬</span>` : '';
       return `
         <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="showFieldVisitDetail(${JSON.stringify(v).replace(/"/g, '&quot;')})">
           ${thumb}
@@ -551,6 +569,7 @@ async function loadFieldVisits() {
               <span style="font-size:12px;font-weight:700;color:${isMe ? '#1a4731' : '#4a5568'}">${v.driverName}${isMe ? ' (나)' : ''}</span>
               <span style="font-size:11px;background:#f0fff4;color:#276749;padding:1px 6px;border-radius:10px;">${v.clientName}</span>
               ${badge}
+              ${commentBadge}
             </div>
             <div style="font-size:13px;color:#4a5568;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${preview}</div>
             ${v.photoUrls && v.photoUrls.length > 0 ? `<div style="font-size:11px;color:#a0aec0;margin-top:2px;">📷 ${v.photoUrls.length}장</div>` : ''}
@@ -595,6 +614,7 @@ window.showFieldVisitDetail = function(v) {
       <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.clientName}</div>
       <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content}</div>
       ${photos}
+      ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#276749;"><strong>📌 관리자 메모:</strong> ${v.adminComment}</div>` : ''}
       <button onclick="document.getElementById('fv-detail-modal').remove()" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">닫기</button>
     </div>`;
 };

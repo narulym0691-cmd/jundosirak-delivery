@@ -671,23 +671,34 @@ async function loadAdminFieldVisits() {
     snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
 
     if (teamFilter) items = items.filter(v => v.teamId === teamFilter);
-    if (driverFilter) items = items.filter(v => v.driverName === driverFilter);
+    if (driverFilter) items = items.filter(v => v.driverId === driverFilter);
     if (typeFilter) items = items.filter(v => v.visitType === typeFilter);
-    if (confirmedFilter === 'confirmed') items = items.filter(v => v.isNewSalesConfirmed === true);
-    if (confirmedFilter === 'unconfirmed') items = items.filter(v => v.visitType === 'new_sales' && !v.isNewSalesConfirmed);
+    if (confirmedFilter !== '') {
+      const wantConfirmed = confirmedFilter === 'true';
+      items = items.filter(v => v.visitType === 'new_sales' && !!v.isNewSalesConfirmed === wantConfirmed);
+    }
 
-    // 기사 드롭다운 동적 구성
+    // 기사 드롭다운 동적 구성 (전체 목록 기준)
     const driverSel = document.getElementById('fvm-driver');
     if (driverSel) {
       const allItems = [];
-      snap.forEach(doc => allItems.push(doc.data()));
-      const driverNames = [...new Set(allItems.map(v => v.driverName).filter(Boolean))].sort();
+      snap.forEach(doc => allItems.push({ id: doc.id, ...doc.data() }));
+      const driverMap = {};
+      allItems.forEach(v => { if (v.driverId && v.driverName) driverMap[v.driverId] = v.driverName; });
       const currentVal = driverSel.value;
-      driverSel.innerHTML = '<option value="">전체 기사</option>' + driverNames.map(n => `<option value="${n}" ${n===currentVal?'selected':''}>${n}</option>`).join('');
+      driverSel.innerHTML = '<option value="">전체 기사</option>';
+      Object.entries(driverMap).forEach(([id, name]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = name;
+        if (id === currentVal) opt.selected = true;
+        driverSel.appendChild(opt);
+      });
     }
 
     if (!items.length) {
       container.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">기록이 없습니다.</div>';
+      renderFvmStat([]);
       return;
     }
 
@@ -702,6 +713,7 @@ async function loadAdminFieldVisits() {
               <th style="padding:8px 6px;text-align:left;border-bottom:2px solid #e2e8f0;white-space:nowrap;">거래처</th>
               <th style="padding:8px 6px;text-align:left;border-bottom:2px solid #e2e8f0;">내용</th>
               <th style="padding:8px 6px;text-align:center;border-bottom:2px solid #e2e8f0;white-space:nowrap;">사진</th>
+              <th style="padding:8px 6px;text-align:center;border-bottom:2px solid #e2e8f0;white-space:nowrap;">코멘트</th>
               <th style="padding:8px 6px;text-align:center;border-bottom:2px solid #e2e8f0;"></th>
             </tr>
           </thead>
@@ -710,19 +722,27 @@ async function loadAdminFieldVisits() {
               const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', {month:'numeric',day:'numeric'}) : '-';
               const preview = v.content && v.content.length > 30 ? v.content.slice(0,30)+'…' : (v.content||'');
               const photoCnt = (v.photoUrls||[]).length;
-              const commentBadge = v.adminComment ? '<span style="font-size:10px;margin-left:3px;">💬</span>' : '';
-              const typeBadge = v.visitType === 'new_sales'
-                ? (v.isNewSalesConfirmed ? '<span style="font-size:10px;background:#3182ce;color:#fff;padding:1px 5px;border-radius:8px;">신규✓</span>' : '<span style="font-size:10px;background:#63b3ed;color:#fff;padding:1px 5px;border-radius:8px;">신규</span>')
-                : '<span style="font-size:10px;background:#38a169;color:#fff;padding:1px 5px;border-radius:8px;">관리</span>';
+              let typeBadge = '';
+              if (v.visitType === 'new_sales') {
+                typeBadge = v.isNewSalesConfirmed
+                  ? '<span style="font-size:10px;background:#3182ce;color:#fff;padding:1px 5px;border-radius:8px;">신규✓</span>'
+                  : '<span style="font-size:10px;background:#63b3ed;color:#fff;padding:1px 5px;border-radius:8px;">신규</span>';
+              } else if (v.visitType === 'customer_care') {
+                typeBadge = '<span style="font-size:10px;background:#38a169;color:#fff;padding:1px 5px;border-radius:8px;">관리</span>';
+              }
+              const commentBadge = v.adminComment ? '<span style="font-size:12px;">💬</span>' : '';
               return `<tr style="border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="showAdminFvDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})">
                 <td style="padding:8px 6px;white-space:nowrap;color:#718096;font-size:12px;">${dt}</td>
                 <td style="padding:8px 6px;font-weight:600;white-space:nowrap;">${v.driverName||'-'}${commentBadge}</td>
                 <td style="padding:8px 6px;white-space:nowrap;color:#4a5568;">${v.teamName||'-'}</td>
-                <td style="padding:8px 6px;white-space:nowrap;">${typeBadge} <span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.clientName||'-'}</span></td>
+                <td style="padding:8px 6px;white-space:nowrap;"><span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.clientName||'-'}</span> ${typeBadge}</td>
                 <td style="padding:8px 6px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${preview}</td>
                 <td style="padding:8px 6px;text-align:center;color:#718096;">${photoCnt > 0 ? '📷'+photoCnt : '-'}</td>
                 <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">
-                  <button onclick="openFvComment('${v.id}', '${(v.adminComment||'').replace(/'/g,'\\'+'\'')}')" style="padding:3px 8px;background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;margin-right:3px;">💬</button>
+                  <button onclick="openFvCommentModal('${v.id}', ${JSON.stringify(v.adminComment||'').replace(/"/g,'&quot;')})" style="padding:3px 8px;background:#f0fff4;color:#276749;border:1px solid #c6f6d5;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;">💬 코멘트</button>
+                  ${commentBadge}
+                </td>
+                <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">
                   <button onclick="deleteFieldVisit('${v.id}', ${JSON.stringify(v.photoUrls||[]).replace(/"/g,'&quot;')})" style="padding:3px 8px;background:#fff5f5;color:#e53e3e;border:1px solid #fed7d7;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;">삭제</button>
                 </td>
               </tr>`;
@@ -738,6 +758,45 @@ async function loadAdminFieldVisits() {
   } catch (e) {
     console.error('현장기록 로드 실패:', e);
     container.innerHTML = '<div style="color:#e53e3e;text-align:center;padding:16px;font-size:13px;">로드 실패: ' + e.message + '</div>';
+  }
+}
+
+// ── 현장기록 코멘트 모달 ──
+function openFvCommentModal(docId, existingComment) {
+  let modal = document.getElementById('fv-comment-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'fv-comment-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:22px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="font-size:15px;font-weight:800;margin-bottom:14px;">💬 관리자 코멘트</div>
+      <textarea id="fv-comment-text" rows="4" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;">${existingComment||''}</textarea>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="saveFvComment('${docId}')" style="flex:1;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
+        <button onclick="document.getElementById('fv-comment-modal').remove()" style="padding:10px 16px;background:#edf2f7;border:none;border-radius:8px;font-size:14px;cursor:pointer;">취소</button>
+      </div>
+      <div id="fv-comment-msg" style="margin-top:8px;font-size:12px;text-align:center;"></div>
+    </div>`;
+}
+
+async function saveFvComment(docId) {
+  const text = (document.getElementById('fv-comment-text').value || '').trim();
+  const msgEl = document.getElementById('fv-comment-msg');
+  try {
+    await db.collection('field_visits').doc(docId).update({ adminComment: text });
+    msgEl.style.color = '#276749';
+    msgEl.textContent = '✅ 저장 완료!';
+    setTimeout(() => {
+      document.getElementById('fv-comment-modal').remove();
+      loadAdminFieldVisits();
+    }, 800);
+  } catch (e) {
+    msgEl.style.color = '#e53e3e';
+    msgEl.textContent = '❌ 저장 실패: ' + e.message;
   }
 }
 

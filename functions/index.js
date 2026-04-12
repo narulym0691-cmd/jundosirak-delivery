@@ -996,4 +996,91 @@ exports.onClaimCreated = functions
     return null;
   });
 
+// ─── 매일 오후 3시 현장기록 일괄 문자 ───────────────────────────────
+exports.scheduledFieldVisitSms = functions
+  .region('us-central1')
+  .pubsub.schedule('0 6 * * *')  // UTC 06:00 = KST 15:00
+  .timeZone('UTC')
+  .onRun(async () => {
+    try {
+      // KST 기준 오늘 00:00 ~ 14:59:59
+      const nowKst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+      const yyyy = nowKst.getUTCFullYear();
+      const mm = String(nowKst.getUTCMonth() + 1).padStart(2, '0');
+      const dd = String(nowKst.getUTCDate()).padStart(2, '0');
+      const dateLabel = `${mm}월 ${dd}일`;
+
+      const dayStartUtc = new Date(`${yyyy}-${mm}-${dd}T00:00:00+09:00`); // KST 00:00
+      const dayEndUtc   = new Date(`${yyyy}-${mm}-${dd}T15:00:00+09:00`); // KST 15:00
+
+      const snap = await db.collection('field_visits')
+        .where('createdAt', '>=', dayStartUtc)
+        .where('createdAt', '<',  dayEndUtc)
+        .get();
+
+      if (snap.empty) {
+        console.log('현장기록 없음 → 문자 미발송');
+        return null;
+      }
+
+      const visits = [];
+      snap.forEach(doc => visits.push(doc.data()));
+
+      const newSales = visits.filter(v => v.visitType === 'new_sales');
+      const newSalesConfirmed = newSales.filter(v => v.isNewSalesConfirmed);
+      const newSalesUnconf    = newSales.filter(v => !v.isNewSalesConfirmed);
+      const careCnt = visits.filter(v => v.visitType === 'customer_care').length;
+
+      // 관리방문: 기사별 집계
+      const careByDriver = {};
+      visits.filter(v => v.visitType === 'customer_care').forEach(v => {
+        const name = v.driverName || '?';
+        careByDriver[name] = (careByDriver[name] || 0) + 1;
+      });
+
+      const lines = [];
+      lines.push(`[준도시락 현장기록] ${dateLabel}`);
+      lines.push(`총 ${visits.length}건 (신규영업 ${newSales.length}건 / 관리방문 ${careCnt}건)`);
+      lines.push('');
+
+      if (newSalesConfirmed.length > 0) {
+        const items = newSalesConfirmed.map(v => `${v.driverName||'?'}-${v.clientName||'?'}`).join(', ');
+        lines.push(`📍신규영업✓: ${items}`);
+      }
+      if (newSalesUnconf.length > 0) {
+        const items = newSalesUnconf.map(v => `${v.driverName||'?'}-${v.clientName||'?'}`).join(', ');
+        lines.push(`📍신규영업: ${items}`);
+      }
+      if (Object.keys(careByDriver).length > 0) {
+        const items = Object.entries(careByDriver).map(([n, c]) => `${n}(${c}건)`).join(', ');
+        lines.push(`📍관리방문: ${items}`);
+      }
+
+      const text = lines.join('\n');
+      const toPhone = '01058804433';
+
+      const result = await sendOneSms(toPhone, text);
+
+      await db.collection('sms_logs').add({
+        type: 'field_visit_daily_summary',
+        date: `${yyyy}-${mm}-${dd}`,
+        phone: toPhone,
+        text,
+        totalCount: visits.length,
+        newSalesCount: newSales.length,
+        careCount: careCnt,
+        sent: result.ok ? 1 : 0,
+        failed: result.ok ? 0 : 1,
+        error: result.ok ? null : (result.error || null),
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      console.log(result.ok
+        ? `✅ 현장기록 일괄문자 발송: ${visits.length}건`
+        : `❌ 현장기록 일괄문자 실패: ${result.error}`);
+    } catch (e) {
+      console.error('scheduledFieldVisitSms 오류:', e);
+    }
+    return null;
+  });
 
