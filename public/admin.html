@@ -1418,7 +1418,7 @@
           let smsSent = 0, smsFailed = 0;
           for (const t of smsTargets) {
             try {
-              const res = await fetch('https://us-central1-jundosirak-delivery.cloudfunctions.net/sendSms', {
+              const res = await fetch('https://us-central1-jundosirak-delivery2.cloudfunctions.net/sendSms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2384,7 +2384,7 @@ async function sendSms() {
 
   try {
     // Cloud Function을 통해 발송
-    const res = await fetch('https://us-central1-jundosirak-delivery.cloudfunctions.net/sendSms', {
+    const res = await fetch('https://us-central1-jundosirak-delivery2.cloudfunctions.net/sendSms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targets: targets.map(d => ({ name: d.name, phone: d.phone })), text, from: SOLAPI_FROM })
