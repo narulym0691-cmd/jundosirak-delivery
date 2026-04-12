@@ -664,12 +664,12 @@ function getTodayKey() {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
 
-window._salesData2 = null; // 현재 내 저장 데이터
+window._driverSalesData = null; // 현재 내 저장 데이터
 
 window.loadSalesTab = async function() {
   const today = getTodayKey();
   const ts = getSalesTimeStatus();
-  const user = window._dashUser;
+  const user = currentUser;
   if (!user) return;
 
   // 상태 배지
@@ -685,8 +685,8 @@ window.loadSalesTab = async function() {
   // 내 데이터 로드
   const docId = `${today}_${user.uid}`;
   const doc = await db.collection('driver_sales').doc(docId).get();
-  window._salesData2 = doc.exists ? doc.data() : null;
-  const qty = window._salesData2 ? window._salesData2.quantities : {};
+  window._driverSalesData = doc.exists ? doc.data() : null;
+  const qty = window._driverSalesData ? window._driverSalesData.quantities : {};
 
   // 입력 폼 렌더
   const area = document.getElementById('salesInputArea');
@@ -739,7 +739,7 @@ function updateSalesTotal() {
 }
 
 window.saveSalesInput = async function() {
-  const user = window._dashUser;
+  const user = currentUser;
   if (!user) return;
   const today = getTodayKey();
   const btn = document.querySelector('#salesInputArea button');
@@ -759,11 +759,11 @@ window.saveSalesInput = async function() {
     await db.collection('driver_sales').doc(docId).set({
       date: today, driverId: user.uid, driverName: user.name,
       teamId: user.teamId || '', quantities, total,
-      savedAt: window._salesData2 ? window._salesData2.savedAt : firebase.firestore.FieldValue.serverTimestamp(),
+      savedAt: window._driverSalesData ? window._driverSalesData.savedAt : firebase.firestore.FieldValue.serverTimestamp(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    window._salesData2 = { quantities, total };
+    window._driverSalesData = { quantities, total };
     if (msgEl) { msgEl.style.color='#276749'; msgEl.textContent='✅ 저장 완료!'; setTimeout(()=>msgEl.textContent='',3000); }
     updateSalesTotal();
     await loadSalesTeamSummary(today);

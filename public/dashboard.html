@@ -820,10 +820,17 @@
   window.showTab = function(tabName) {
     // 권한에 따른 평가 탭 노출 제어
     applyEvalTabVisibility();
-    origShowTab(tabName);
+    // 탭 버튼 활성화 + 섹션 표시/숨김
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
+    document.querySelectorAll('.tab-section').forEach(sec => {
+      sec.style.display = sec.dataset.tab === tabName ? 'block' : 'none';
+    });
     if (tabName === 'myinfo') renderMyInfo();
     if (tabName === 'directive') loadAllDirectives();
     if (tabName === 'evaluation') initEvaluationTab();
+    if (tabName === 'sales') loadSalesTab();
   };
 
   function applyEvalTabVisibility() {
