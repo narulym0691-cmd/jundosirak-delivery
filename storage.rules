@@ -5,6 +5,10 @@ service firebase.storage {
     match /vehicle-photos/{allPaths=**} {
       allow read, write: if request.auth != null;
     }
+    // 차량 점검 사진 (vehicle.js 업로드 경로)
+    match /vehicle/{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
     // 현장기록 사진: 인증된 사용자만 읽기/쓰기 가능
     match /field_visits/{allPaths=**} {
       allow read, write: if request.auth != null;
