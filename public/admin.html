@@ -1222,15 +1222,23 @@
     return count;
   }
 
+  // ── 거래처명 정규화 (띄어쓰기/특수문자/괄호 제거 후 소문자 비교) ──
+  function normClient(name) {
+    return String(name||'')
+      .replace(/\(주\)|\(주식회사\)|주식회사|\(유\)|\(합\)/gi, '')  // 법인 접두어 제거
+      .replace(/[\s\-_\.\(\)（）【】\[\]]/g, '')  // 공백/특수문자 제거
+      .toLowerCase();
+  }
+
   // ── 1순위 업체 주문 감지 → sms_schedule 적재 ──
   async function checkPriorityClientsAndScheduleSms(date, driverRows) {
-    // 오늘 주문한 거래처 목록
-    const ordered = new Set();
+    // 오늘 주문한 거래처 목록 (정규화된 이름으로 저장)
+    const orderedNorm = new Set();
     if (_salesData && _salesData.orderedClients) {
-      _salesData.orderedClients.forEach(c => ordered.add(c));
+      _salesData.orderedClients.forEach(c => orderedNorm.add(normClient(c)));
     } else {
       driverRows.forEach(d => {
-        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => ordered.add(c));
+        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => orderedNorm.add(normClient(c)));
       });
     }
 
@@ -1243,7 +1251,7 @@
       const { clientName, courseId, teamId, dailyAvgOrder, isPriority } = client;
       const isP = isPriority || (dailyAvgOrder || 0) >= 8;
       if (!isP) continue;
-      if (!ordered.has(clientName)) continue; // 오늘 주문 없으면 스킵
+      if (!orderedNorm.has(normClient(clientName))) continue; // 오늘 주문 없으면 스킵 (정규화 비교)
 
       // 중복 체크
       const existing = await db.collection('sms_schedule')
@@ -1288,14 +1296,14 @@
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1;  // 0=월 1=화 ... 4=금
 
-    // 오늘 주문한 거래처 목록 (일일장부 파싱 시 orderedClients로 전달)
-    const ordered = new Set();
+    // 오늘 주문한 거래처 목록 (정규화된 이름으로 저장)
+    const orderedNorm = new Set();
     if (_salesData && _salesData.orderedClients) {
-      _salesData.orderedClients.forEach(c => ordered.add(c));
+      _salesData.orderedClients.forEach(c => orderedNorm.add(normClient(c)));
     } else {
       // fallback: driverRows.clients 배열
       driverRows.forEach(d => {
-        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => ordered.add(c));
+        if (d.clients && Array.isArray(d.clients)) d.clients.forEach(c => orderedNorm.add(normClient(c)));
       });
     }
 
@@ -1316,8 +1324,8 @@
       const shouldOrder = orderDays.includes(dowIndex);
       if (!shouldOrder) continue;
 
-      // 실제 주문했는가?
-      const didOrder = ordered.has(clientName);
+      // 실제 주문했는가? (정규화 비교)
+      const didOrder = orderedNorm.has(normClient(clientName));
       if (didOrder) continue;
 
       // 중복 체크: 이미 같은 날짜에 경보가 있으면 생성하지 않음
