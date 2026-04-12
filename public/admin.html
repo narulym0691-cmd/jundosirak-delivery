@@ -397,7 +397,11 @@
     <div class="header-title">준도시락 관리자</div>
     <div class="header-sub">배송기사 통합 관리 시스템</div>
   </div>
-  <div class="header-right">
+  <div class="header-right" style="display:flex;align-items:center;gap:10px;">
+    <button id="salesAlarmBtn" onclick="showSalesAlarmModal()" style="position:relative;background:none;border:none;cursor:pointer;padding:4px;">
+      <svg viewBox="0 0 24 24" fill="#1a4731" width="24" height="24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+      <span id="salesAlarmBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:#e53e3e;color:#fff;border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;"></span>
+    </button>
     <span class="admin-badge" id="adminName">관리자</span>
   </div>
 </div>
@@ -975,6 +979,7 @@
 <script src="/js/admin.js?v=6d0f1cf"></script>
 <script>
   initAdmin();
+  initSalesAlarm();
 
   // ── 판매 업로드 모달 ──
   const DRIVER_TEAM = {
@@ -2827,6 +2832,130 @@ async function resolveAlert(alertId) {
     alert('해제 오류: ' + e.message);
   }
 }
+
+// ══════════════════════════════════════════════════════
+// 판매수량 미입력 알람 기능
+// ══════════════════════════════════════════════════════
+const SALES_TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+
+function getTodaySalesKey() {
+  const d = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+async function initSalesAlarm() {
+  // 09:00 이후에만 알람 활성화
+  const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const mins = now.getHours()*60+now.getMinutes();
+  if (mins < 9*60) return; // 9시 전엔 알람 없음
+
+  try {
+    const today = getTodaySalesKey();
+    const [salesSnap, usersSnap] = await Promise.all([
+      db.collection('driver_sales').where('date','==',today).get(),
+      db.collection('users').get()
+    ]);
+
+    const submittedUids = new Set();
+    salesSnap.forEach(d => submittedUids.add(d.data().driverId));
+
+    const missing = [];
+    usersSnap.forEach(doc => {
+      const u = doc.data();
+      if ((u.role==='driver'||u.role==='leader') && u.active!==false && !submittedUids.has(doc.id)) {
+        missing.push({ name: u.name, teamId: u.teamId });
+      }
+    });
+
+    window._salesMissingDrivers = missing;
+
+    const badge = document.getElementById('salesAlarmBadge');
+    const btn = document.getElementById('salesAlarmBtn');
+    if (missing.length > 0 && badge) {
+      badge.style.display = 'flex';
+      badge.textContent = missing.length;
+      if (btn) btn.style.position = 'relative';
+    }
+
+    // 14:00 이후 미입력 → 솔라피 문자 발송 (1회만)
+    if (mins >= 14*60 && missing.length > 0) {
+      const sentKey = `sales_alarm_sent_${today}`;
+      if (!localStorage.getItem(sentKey)) {
+        await sendSalesMissingAlarm(today, missing);
+        localStorage.setItem(sentKey, '1');
+      }
+    }
+  } catch(e) {
+    console.warn('판매수량 알람 초기화 실패:', e.message);
+  }
+}
+
+async function sendSalesMissingAlarm(date, missing) {
+  try {
+    const lines = [`[준도시락] ${date} 판매수량 미입력 알림`, ``];
+    const byTeam = {};
+    missing.forEach(d => {
+      if (!byTeam[d.teamId]) byTeam[d.teamId] = [];
+      byTeam[d.teamId].push(d.name);
+    });
+    Object.entries(byTeam).forEach(([tid, names]) => {
+      lines.push(`${SALES_TEAM_NAMES[tid]||tid}: ${names.join(', ')}`);
+    });
+    lines.push(``);
+    lines.push(`총 ${missing.length}명 미입력`);
+
+    await fetch('https://us-central1-jundosirak-delivery2.cloudfunctions.net/sendSms', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        targets: [{ name:'이영민', phone:'01058804433' }],
+        text: lines.join('\n'), from:'01024763473'
+      })
+    });
+    console.log('미입력 알람 문자 발송 완료');
+  } catch(e) {
+    console.warn('미입력 알람 문자 실패:', e.message);
+  }
+}
+
+window.showSalesAlarmModal = function() {
+  const missing = window._salesMissingDrivers || [];
+  const existing = document.getElementById('salesAlarmModal');
+  if (existing) existing.remove();
+
+  const byTeam = {};
+  missing.forEach(d => {
+    if (!byTeam[d.teamId]) byTeam[d.teamId] = [];
+    byTeam[d.teamId].push(d.name);
+  });
+
+  const itemsHtml = missing.length === 0
+    ? '<div style="text-align:center;padding:20px;color:#38a169;font-weight:700;">✅ 전원 입력 완료!</div>'
+    : Object.entries(byTeam).map(([tid, names]) => `
+        <div style="padding:10px 0;border-bottom:1px solid #f0f0f0;">
+          <div style="font-size:12px;font-weight:700;color:#718096;margin-bottom:4px;">${SALES_TEAM_NAMES[tid]||tid}</div>
+          ${names.map(n=>`<span style="display:inline-block;background:#fff5f5;color:#c53030;border-radius:16px;padding:3px 10px;font-size:13px;font-weight:600;margin:2px;">⏳ ${n}</span>`).join('')}
+        </div>`).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'salesAlarmModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+        <div style="font-size:16px;font-weight:700;color:#c53030;">🔔 판매수량 미입력 현황 (${missing.length}명)</div>
+        <button onclick="document.getElementById('salesAlarmModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#718096;">×</button>
+      </div>
+      <div style="padding:16px 20px;max-height:60vh;overflow-y:auto;">${itemsHtml}</div>
+      <div style="padding:12px 20px;border-top:1px solid #e2e8f0;">
+        <button onclick="initSalesAlarm();document.getElementById('salesAlarmModal').remove();" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">🔄 새로고침</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
+};
 </script>
 </body>
 </html>

@@ -631,3 +631,209 @@ function showTab(tabName) {
     sec.style.display = sec.dataset.tab === tabName ? 'block' : 'none';
   });
 }
+
+// ══════════════════════════════════════════════════════
+// 판매수량 입력 기능
+// ══════════════════════════════════════════════════════
+const SALES_MENUS = ['뜨끈','프리미엄','샐러드','일품','덮밥','샌드(단)','샌드(세)','유부'];
+const MENU_KEYS   = ['dduk','premium','salad','ilpoom','deopbap','sand_dan','sand_se','ubu'];
+
+// 현재 시간대 상태 판별 (KST 기준)
+function getSalesTimeStatus() {
+  const now = new Date();
+  const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+  const h = kst.getHours(), m = kst.getMinutes();
+  const mins = h * 60 + m;
+  // 0~540(09:00): 1차 입력 가능
+  if (mins <= 9 * 60)       return { status: 'open1',  label: '⏰ 09:00까지 입력해주세요', canEdit: true };
+  // 540~690(11:30): 잠금
+  if (mins < 11 * 60 + 30)  return { status: 'locked1', label: '🔒 11:30부터 수정 가능합니다', canEdit: false };
+  // 690~840(14:00): 2차 수정 가능
+  if (mins <= 14 * 60)      return { status: 'open2',  label: '✏️ 14:00까지 수정 가능합니다', canEdit: true };
+  // 840~: 마감
+  return { status: 'closed', label: '🔒 오늘 입력이 마감되었습니다', canEdit: false };
+}
+
+function getTodayKST() {
+  return new Date().toLocaleDateString('ko-KR', { timeZone:'Asia/Seoul', year:'numeric', month:'2-digit', day:'2-digit' })
+    .replace(/\. /g,'-').replace('.',''). trim();
+}
+
+function getTodayKey() {
+  const d = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+window._salesData2 = null; // 현재 내 저장 데이터
+
+window.loadSalesTab = async function() {
+  const today = getTodayKey();
+  const ts = getSalesTimeStatus();
+  const user = window._dashUser;
+  if (!user) return;
+
+  // 상태 배지
+  const badge = document.getElementById('salesStatusBadge');
+  const dateLabel = document.getElementById('salesDateLabel');
+  if (badge) {
+    badge.textContent = ts.label;
+    badge.style.background = ts.canEdit ? '#e6fffa' : '#fff5f5';
+    badge.style.color = ts.canEdit ? '#276749' : '#c53030';
+  }
+  if (dateLabel) dateLabel.textContent = today;
+
+  // 내 데이터 로드
+  const docId = `${today}_${user.uid}`;
+  const doc = await db.collection('driver_sales').doc(docId).get();
+  window._salesData2 = doc.exists ? doc.data() : null;
+  const qty = window._salesData2 ? window._salesData2.quantities : {};
+
+  // 입력 폼 렌더
+  const area = document.getElementById('salesInputArea');
+  const isAdmin = user.role === 'admin' || user.role === 'manager';
+  const canEdit = ts.canEdit || isAdmin;
+
+  const rows = SALES_MENUS.map((menu, i) => {
+    const key = MENU_KEYS[i];
+    const val = qty[key] !== undefined ? qty[key] : '';
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="font-size:14px;font-weight:600;color:#2d3748;width:80px;">${menu}</span>
+        <input type="number" id="sq_${key}" value="${val}" min="0"
+          ${canEdit ? '' : 'disabled'}
+          style="width:100px;padding:8px 12px;border:1px solid ${canEdit?'#cbd5e0':'#e2e8f0'};border-radius:8px;font-size:15px;text-align:center;font-family:inherit;background:${canEdit?'#fff':'#f7fafc'};">
+        <span style="font-size:12px;color:#a0aec0;width:20px;">개</span>
+      </div>`;
+  }).join('');
+
+  const total = Object.values(qty).reduce((s,v)=>s+(v||0),0);
+
+  area.innerHTML = `
+    <div style="margin-bottom:4px;">${rows}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:15px;font-weight:700;color:#1a4731;">
+      <span>합계</span>
+      <span id="salesTotalDisplay">${total}개</span>
+    </div>
+    ${canEdit ? `<button onclick="saveSalesInput()" style="width:100%;padding:13px;background:#1a4731;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>` : ''}
+    <div id="salesSaveMsg" style="text-align:center;margin-top:8px;font-size:13px;"></div>
+  `;
+
+  // 합계 실시간 계산
+  MENU_KEYS.forEach(key => {
+    const el = document.getElementById(`sq_${key}`);
+    if (el) el.addEventListener('input', updateSalesTotal);
+  });
+
+  // 팀별 현황 로드
+  await loadSalesTeamSummary(today);
+};
+
+function updateSalesTotal() {
+  let total = 0;
+  MENU_KEYS.forEach(key => {
+    const el = document.getElementById(`sq_${key}`);
+    if (el) total += Number(el.value) || 0;
+  });
+  const el = document.getElementById('salesTotalDisplay');
+  if (el) el.textContent = total + '개';
+}
+
+window.saveSalesInput = async function() {
+  const user = window._dashUser;
+  if (!user) return;
+  const today = getTodayKey();
+  const btn = document.querySelector('#salesInputArea button');
+  const msgEl = document.getElementById('salesSaveMsg');
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+
+  try {
+    const quantities = {};
+    let total = 0;
+    MENU_KEYS.forEach(key => {
+      const v = Number(document.getElementById(`sq_${key}`)?.value) || 0;
+      quantities[key] = v;
+      total += v;
+    });
+
+    const docId = `${today}_${user.uid}`;
+    await db.collection('driver_sales').doc(docId).set({
+      date: today, driverId: user.uid, driverName: user.name,
+      teamId: user.teamId || '', quantities, total,
+      savedAt: window._salesData2 ? window._salesData2.savedAt : firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    window._salesData2 = { quantities, total };
+    if (msgEl) { msgEl.style.color='#276749'; msgEl.textContent='✅ 저장 완료!'; setTimeout(()=>msgEl.textContent='',3000); }
+    updateSalesTotal();
+    await loadSalesTeamSummary(today);
+  } catch(e) {
+    if (msgEl) { msgEl.style.color='#c53030'; msgEl.textContent='❌ 저장 실패: '+e.message; }
+  } finally {
+    if (btn) { btn.disabled=false; btn.textContent='저장하기'; }
+  }
+};
+
+// 팀별 현황
+async function loadSalesTeamSummary(today) {
+  const container = document.getElementById('salesTeamSummary');
+  if (!container) return;
+
+  try {
+    const [salesSnap, usersSnap] = await Promise.all([
+      db.collection('driver_sales').where('date','==',today).get(),
+      db.collection('users').where('active','!=',false).get()
+    ]);
+
+    const salesMap = {}; // uid → data
+    salesSnap.forEach(d => { salesMap[d.data().driverId] = d.data(); });
+
+    // 팀 구성
+    const TEAM_NAMES = {
+      team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+      team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+    };
+    const teams = {};
+    Object.keys(TEAM_NAMES).forEach(tid => { teams[tid] = { name: TEAM_NAMES[tid], drivers: [] }; });
+
+    usersSnap.forEach(doc => {
+      const u = doc.data();
+      if (u.role !== 'driver' && u.role !== 'leader') return;
+      if (!teams[u.teamId]) return;
+      const s = salesMap[doc.id];
+      teams[u.teamId].drivers.push({ name: u.name, total: s ? s.total : null });
+    });
+
+    const html = Object.entries(teams).map(([tid, team]) => {
+      const teamTotal = team.drivers.reduce((s,d)=>s+(d.total||0),0);
+      const allDone = team.drivers.length > 0 && team.drivers.every(d=>d.total !== null);
+      const statusIcon = allDone ? '✅' : '⏳';
+      const driverHtml = team.drivers.map(d =>
+        `<span style="font-size:12px;color:${d.total!==null?'#2d3748':'#a0aec0'};">
+          ${d.name} <b>${d.total!==null?d.total+'개':'-'}</b>
+        </span>`
+      ).join('<span style="color:#e2e8f0;margin:0 4px;">|</span>');
+
+      return `
+        <div style="padding:12px;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:13px;font-weight:700;color:#2d3748;">${team.name}</span>
+            <span style="font-size:13px;font-weight:700;color:#1a4731;">${statusIcon} ${allDone?teamTotal+'개':'미입력 있음'}</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;">${driverHtml}</div>
+        </div>`;
+    }).join('');
+
+    const grandTotal = Object.values(teams).reduce((s,t)=>s+t.drivers.reduce((ss,d)=>ss+(d.total||0),0),0);
+    container.innerHTML = html + `<div style="text-align:right;font-size:14px;font-weight:700;color:#1a4731;margin-top:8px;">전체 합계: ${grandTotal}개</div>`;
+  } catch(e) {
+    container.innerHTML = '<div class="empty-msg">로드 실패</div>';
+  }
+}
+
+// 판매수량 탭 전환 시 자동 로드
+const _origShowTab = window.showTab || function(){};
+window.showTab = function(tabName) {
+  _origShowTab(tabName);
+  if (tabName === 'sales') loadSalesTab();
+};
