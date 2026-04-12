@@ -644,13 +644,9 @@ function getSalesTimeStatus() {
   const kst = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
   const h = kst.getHours(), m = kst.getMinutes();
   const mins = h * 60 + m;
-  // 0~540(09:00): 1차 입력 가능
-  if (mins <= 9 * 60)       return { status: 'open1',  label: '⏰ 09:00까지 입력해주세요', canEdit: true };
-  // 540~690(11:30): 잠금
-  if (mins < 11 * 60 + 30)  return { status: 'locked1', label: '🔒 11:30부터 수정 가능합니다', canEdit: false };
-  // 690~840(14:00): 2차 수정 가능
-  if (mins <= 14 * 60)      return { status: 'open2',  label: '✏️ 14:00까지 수정 가능합니다', canEdit: true };
-  // 840~: 마감
+  // 0~780(13:00): 입력 가능
+  if (mins < 13 * 60) return { status: 'open', label: '⏰ 13:00까지 입력해주세요', canEdit: true };
+  // 13:00 이후: 마감
   return { status: 'closed', label: '🔒 오늘 입력이 마감되었습니다', canEdit: false };
 }
 
@@ -691,7 +687,10 @@ window.loadSalesTab = async function() {
   // 입력 폼 렌더
   const area = document.getElementById('salesInputArea');
   const isAdmin = user.role === 'admin' || user.role === 'manager';
-  const canEdit = ts.canEdit || isAdmin;
+  const hasExistingData = !!window._driverSalesData;
+  // 기존 데이터 있으면 admin/manager만 수정 가능, 없으면 시간 기준 적용
+  const canEdit = isAdmin ? ts.canEdit : (!hasExistingData && ts.canEdit);
+  const lockedByData = hasExistingData && !isAdmin;
 
   const rows = SALES_MENUS.map((menu, i) => {
     const key = MENU_KEYS[i];
@@ -714,6 +713,7 @@ window.loadSalesTab = async function() {
       <span>합계</span>
       <span id="salesTotalDisplay">${total}개</span>
     </div>
+    ${lockedByData ? `<div style="text-align:center;padding:10px;background:#fff5f5;border-radius:8px;color:#c53030;font-size:13px;font-weight:600;">🔒 수정은 관리자만 가능합니다</div>` : ''}
     ${canEdit ? `<button onclick="saveSalesInput()" style="width:100%;padding:13px;background:#1a4731;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;">저장하기</button>` : ''}
     <div id="salesSaveMsg" style="text-align:center;margin-top:8px;font-size:13px;"></div>
   `;
@@ -830,6 +830,84 @@ async function loadSalesTeamSummary(today) {
     container.innerHTML = '<div class="empty-msg">로드 실패</div>';
   }
 }
+
+// 날짜별 내 수량 조회
+window.querySalesByDate = async function() {
+  const dateVal = document.getElementById('salesQueryDate').value;
+  const resultEl = document.getElementById('salesQueryResult');
+  if (!dateVal) { resultEl.innerHTML = '<div style="color:#c53030;font-size:13px;">날짜를 선택해주세요.</div>'; return; }
+  const user = currentUser;
+  if (!user) return;
+  resultEl.innerHTML = '<div style="color:#718096;font-size:13px;">조회 중...</div>';
+  try {
+    const docId = `${dateVal}_${user.uid}`;
+    const doc = await db.collection('driver_sales').doc(docId).get();
+    if (!doc.exists) {
+      resultEl.innerHTML = `<div style="color:#a0aec0;font-size:13px;">${dateVal} 입력 데이터 없음</div>`;
+      return;
+    }
+    const d = doc.data();
+    const qty = d.quantities || {};
+    const rows = SALES_MENUS.map((menu, i) => {
+      const key = MENU_KEYS[i];
+      const v = qty[key] || 0;
+      return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+        <span style="color:#2d3748;">${menu}</span>
+        <span style="font-weight:700;color:#1a4731;">${v}개</span>
+      </div>`;
+    }).join('');
+    resultEl.innerHTML = `
+      <div style="font-size:12px;color:#718096;margin-bottom:8px;">${dateVal} 수량</div>
+      ${rows}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:700;color:#1a4731;border-top:2px solid #e2e8f0;margin-top:4px;">
+        <span>합계</span><span>${d.total || 0}개</span>
+      </div>`;
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:#c53030;font-size:13px;">조회 실패: ${e.message}</div>`;
+  }
+};
+
+// 기간별 내 수량 조회
+window.querySalesByRange = async function() {
+  const startVal = document.getElementById('salesRangeStart').value;
+  const endVal   = document.getElementById('salesRangeEnd').value;
+  const resultEl = document.getElementById('salesRangeResult');
+  if (!startVal || !endVal) { resultEl.innerHTML = '<div style="color:#c53030;font-size:13px;">시작일과 종료일을 선택해주세요.</div>'; return; }
+  if (startVal > endVal) { resultEl.innerHTML = '<div style="color:#c53030;font-size:13px;">시작일이 종료일보다 늦습니다.</div>'; return; }
+  const user = currentUser;
+  if (!user) return;
+  resultEl.innerHTML = '<div style="color:#718096;font-size:13px;">조회 중...</div>';
+  try {
+    const snap = await db.collection('driver_sales')
+      .where('driverId', '==', user.uid)
+      .where('date', '>=', startVal)
+      .where('date', '<=', endVal)
+      .orderBy('date', 'asc')
+      .get();
+    if (snap.empty) {
+      resultEl.innerHTML = `<div style="color:#a0aec0;font-size:13px;">${startVal} ~ ${endVal} 데이터 없음</div>`;
+      return;
+    }
+    let grandTotal = 0;
+    const rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      grandTotal += d.total || 0;
+      rows.push(`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+        <span style="color:#2d3748;">${d.date}</span>
+        <span style="font-weight:700;color:#1a4731;">${d.total || 0}개</span>
+      </div>`);
+    });
+    resultEl.innerHTML = `
+      <div style="font-size:12px;color:#718096;margin-bottom:8px;">${startVal} ~ ${endVal} (${rows.length}일)</div>
+      ${rows.join('')}
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:700;color:#1a4731;border-top:2px solid #e2e8f0;margin-top:4px;">
+        <span>기간 합계</span><span>${grandTotal}개</span>
+      </div>`;
+  } catch(e) {
+    resultEl.innerHTML = `<div style="color:#c53030;font-size:13px;">조회 실패: ${e.message}</div>`;
+  }
+};
 
 // 판매수량 탭 전환 시 자동 로드
 const _origShowTab = window.showTab || function(){};
