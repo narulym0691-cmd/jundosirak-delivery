@@ -657,6 +657,9 @@ async function loadAdminFieldVisits() {
   initFvmFilters();
   const ym = document.getElementById('fvm-month').value;
   const teamFilter = document.getElementById('fvm-team').value;
+  const driverFilter = document.getElementById('fvm-driver') ? document.getElementById('fvm-driver').value : '';
+  const typeFilter = document.getElementById('fvm-type') ? document.getElementById('fvm-type').value : '';
+  const confirmedFilter = document.getElementById('fvm-confirmed') ? document.getElementById('fvm-confirmed').value : '';
   const container = document.getElementById('fvm-list');
   container.innerHTML = '<div style="text-align:center;color:#718096;padding:16px;font-size:13px;">로딩 중...</div>';
 
@@ -668,6 +671,20 @@ async function loadAdminFieldVisits() {
     snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
 
     if (teamFilter) items = items.filter(v => v.teamId === teamFilter);
+    if (driverFilter) items = items.filter(v => v.driverName === driverFilter);
+    if (typeFilter) items = items.filter(v => v.visitType === typeFilter);
+    if (confirmedFilter === 'confirmed') items = items.filter(v => v.isNewSalesConfirmed === true);
+    if (confirmedFilter === 'unconfirmed') items = items.filter(v => v.visitType === 'new_sales' && !v.isNewSalesConfirmed);
+
+    // 기사 드롭다운 동적 구성
+    const driverSel = document.getElementById('fvm-driver');
+    if (driverSel) {
+      const allItems = [];
+      snap.forEach(doc => allItems.push(doc.data()));
+      const driverNames = [...new Set(allItems.map(v => v.driverName).filter(Boolean))].sort();
+      const currentVal = driverSel.value;
+      driverSel.innerHTML = '<option value="">전체 기사</option>' + driverNames.map(n => `<option value="${n}" ${n===currentVal?'selected':''}>${n}</option>`).join('');
+    }
 
     if (!items.length) {
       container.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">기록이 없습니다.</div>';
@@ -693,14 +710,19 @@ async function loadAdminFieldVisits() {
               const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', {month:'numeric',day:'numeric'}) : '-';
               const preview = v.content && v.content.length > 30 ? v.content.slice(0,30)+'…' : (v.content||'');
               const photoCnt = (v.photoUrls||[]).length;
-              return `<tr style="border-bottom:1px solid #f0f0f0;" onclick="showAdminFvDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})" style="cursor:pointer;">
+              const commentBadge = v.adminComment ? '<span style="font-size:10px;margin-left:3px;">💬</span>' : '';
+              const typeBadge = v.visitType === 'new_sales'
+                ? (v.isNewSalesConfirmed ? '<span style="font-size:10px;background:#3182ce;color:#fff;padding:1px 5px;border-radius:8px;">신규✓</span>' : '<span style="font-size:10px;background:#63b3ed;color:#fff;padding:1px 5px;border-radius:8px;">신규</span>')
+                : '<span style="font-size:10px;background:#38a169;color:#fff;padding:1px 5px;border-radius:8px;">관리</span>';
+              return `<tr style="border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="showAdminFvDetail(${JSON.stringify(v).replace(/"/g,'&quot;')})">
                 <td style="padding:8px 6px;white-space:nowrap;color:#718096;font-size:12px;">${dt}</td>
-                <td style="padding:8px 6px;font-weight:600;white-space:nowrap;">${v.driverName||'-'}</td>
+                <td style="padding:8px 6px;font-weight:600;white-space:nowrap;">${v.driverName||'-'}${commentBadge}</td>
                 <td style="padding:8px 6px;white-space:nowrap;color:#4a5568;">${v.teamName||'-'}</td>
-                <td style="padding:8px 6px;white-space:nowrap;"><span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.clientName||'-'}</span></td>
+                <td style="padding:8px 6px;white-space:nowrap;">${typeBadge} <span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.clientName||'-'}</span></td>
                 <td style="padding:8px 6px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${preview}</td>
                 <td style="padding:8px 6px;text-align:center;color:#718096;">${photoCnt > 0 ? '📷'+photoCnt : '-'}</td>
                 <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">
+                  <button onclick="openFvComment('${v.id}', '${(v.adminComment||'').replace(/'/g,'\\'+'\'')}')" style="padding:3px 8px;background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;margin-right:3px;">💬</button>
                   <button onclick="deleteFieldVisit('${v.id}', ${JSON.stringify(v.photoUrls||[]).replace(/"/g,'&quot;')})" style="padding:3px 8px;background:#fff5f5;color:#e53e3e;border:1px solid #fed7d7;border-radius:5px;font-size:11px;cursor:pointer;font-weight:600;">삭제</button>
                 </td>
               </tr>`;
@@ -772,6 +794,45 @@ async function deleteFieldVisit(docId, photoUrls) {
   }
 }
 
+// 코멘트 모달
+window.openFvComment = function(docId, currentComment) {
+  let modal = document.getElementById('fv-comment-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'fv-comment-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    modal.onclick = e => { if (e.target === modal) modal.remove(); };
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="font-size:15px;font-weight:800;margin-bottom:12px;">💬 관리자 코멘트</div>
+      <textarea id="fv-comment-text" style="width:100%;height:100px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;resize:vertical;box-sizing:border-box;" placeholder="기사에게 전달할 코멘트를 입력하세요...">${currentComment||''}</textarea>
+      <div id="fv-comment-msg" style="font-size:12px;margin-top:6px;min-height:16px;"></div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="document.getElementById('fv-comment-modal').remove()" style="flex:1;padding:10px;background:#edf2f7;border:none;border-radius:8px;font-size:13px;cursor:pointer;">취소</button>
+        <button onclick="saveFvComment('${docId}')" style="flex:2;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">저장하기</button>
+      </div>
+    </div>`;
+};
+
+window.saveFvComment = async function(docId) {
+  const text = document.getElementById('fv-comment-text').value.trim();
+  const msg = document.getElementById('fv-comment-msg');
+  try {
+    await db.collection('field_visits').doc(docId).update({ adminComment: text });
+    msg.style.color = '#276749';
+    msg.textContent = '✅ 저장됐습니다!';
+    setTimeout(() => {
+      document.getElementById('fv-comment-modal').remove();
+      loadAdminFieldVisits();
+    }, 800);
+  } catch(e) {
+    msg.style.color = '#e53e3e';
+    msg.textContent = '❌ 저장 실패: ' + e.message;
+  }
+};
+
 window.showAdminFvDetail = function(v) {
   if (typeof v === 'string') v = JSON.parse(v);
   const dt = v.createdAt && v.createdAt.toDate ? v.createdAt.toDate().toLocaleString('ko-KR') : '-';
@@ -795,7 +856,11 @@ window.showAdminFvDetail = function(v) {
       <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.clientName||'-'}</div>
       <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content||''}</div>
       ${photos}
-      <button onclick="document.getElementById('admin-fv-detail-modal').remove()" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;">닫기</button>
+      ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px;margin-top:8px;font-size:13px;color:#276749;">📌 관리자 메모: ${v.adminComment}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="openFvComment('${v.id}','${(v.adminComment||'').replace(/'/g,'\\\'')}')" style="flex:1;padding:10px;background:#ebf8ff;color:#2b6cb0;border:1px solid #bee3f8;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">💬 코멘트</button>
+        <button onclick="document.getElementById('admin-fv-detail-modal').remove()" style="flex:1;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">닫기</button>
+      </div>
     </div>`;
 };
 

@@ -933,6 +933,19 @@
     <select id="fvm-team" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()">
       <option value="">전체 팀</option>
     </select>
+    <select id="fvm-driver" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()">
+      <option value="">전체 기사</option>
+    </select>
+    <select id="fvm-type" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()">
+      <option value="">전체 유형</option>
+      <option value="new_sales">신규영업</option>
+      <option value="customer_care">관리방문</option>
+    </select>
+    <select id="fvm-confirmed" style="padding:7px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;font-family:inherit;" onchange="loadAdminFieldVisits()">
+      <option value="">전체</option>
+      <option value="confirmed">신규영업 인정</option>
+      <option value="unconfirmed">신규영업 미인정</option>
+    </select>
     <button onclick="loadAdminFieldVisits()" style="padding:7px 14px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 조회</button>
   </div>
 
