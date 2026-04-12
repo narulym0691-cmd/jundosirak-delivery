@@ -981,17 +981,28 @@
   initAdmin();
   initSalesAlarm();
 
-  // ── 판매 업로드 모달 ──
-  const DRIVER_TEAM = {
-    '유상하':'team1','이진우':'team1','박인수':'team1',
-    '표창훈':'team2','안준수':'team2','이근일':'team2',
-    '오철석':'team3','전태영':'team3',
-    '김민기':'team4','최용혁':'team4','이창목':'team4',
-    '김종호':'team5','최준은':'team5','금정':'team5',
-    '조홍철':'team6','김창연':'team6',
-    '류대현':'team7','이호주':'team7','김동완':'team7',
-    '송정':'team1' // 박인수 별칭
+  // ── 코스 기준 팀 매핑 ──
+  const DRIVER_COURSE_MAP = {
+    '표창훈':'코스1','박인수':'코스6','안준수':'코스7','김민기':'코스3',
+    '최용혁':'코스8','이창목':'코스13','오철석':'코스4','전태영':'코스15',
+    '이진우':'코스5','송정':'코스6','유상하':'코스9','금정':'코스10',
+    '김종호':'코스16','최준은':'코스18','이호주':'코스11','김창연':'코스12',
+    '조홍철':'코스19','김동완':'코스14','류대현':'코스17',
   };
+  const COURSE_TEAM = {
+    '코스1':{teamId:'team2',teamName:'해운대'},'코스2':{teamId:'team2',teamName:'해운대'},
+    '코스3':{teamId:'team4',teamName:'연수남'},'코스4':{teamId:'team3',teamName:'공오일(051)'},
+    '코스5':{teamId:'team1',teamName:'준고'},'코스6':{teamId:'team1',teamName:'준고'},
+    '코스7':{teamId:'team2',teamName:'해운대'},'코스8':{teamId:'team4',teamName:'연수남'},
+    '코스9':{teamId:'team1',teamName:'준고'},'코스10':{teamId:'team5',teamName:'아가리'},
+    '코스11':{teamId:'team7',teamName:'강서영'},'코스12':{teamId:'team6',teamName:'도세마'},
+    '코스13':{teamId:'team4',teamName:'연수남'},'코스14':{teamId:'team7',teamName:'강서영'},
+    '코스15':{teamId:'team3',teamName:'공오일(051)'},'코스16':{teamId:'team5',teamName:'아가리'},
+    '코스17':{teamId:'team7',teamName:'강서영'},'코스18':{teamId:'team5',teamName:'아가리'},
+    '코스19':{teamId:'team6',teamName:'도세마'},
+  };
+
+  // ── 판매 업로드 모달 ──
 
   let _salesData = null;
 
@@ -1068,8 +1079,9 @@
         const amt       = Number(row[colAmt]||0);
 
         if (!clientRaw || !driverRaw || qty <= 0) continue;
-        const team = DRIVER_TEAM[driverRaw];
-        if (!team) continue; // 시스템에 없는 기사 스킵
+        const courseId = DRIVER_COURSE_MAP[driverRaw];
+        const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
+        if (!team) continue; // 코스 미등록 기사 스킵
 
         if (!driverMap[driverRaw]) {
           driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: new Set() };
@@ -1128,26 +1140,6 @@
   // 구글시트 신규업체 시트에서 해당 날짜 신규업체 체크 후 sms_schedule 적재
   const SHEET_ID = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
   const NEW_CLIENT_GID = '1000247276';
-
-  const DRIVER_COURSE_MAP = {
-    '표창훈':'코스1','박인수':'코스6','안준수':'코스7','김민기':'코스3',
-    '최용혁':'코스8','이창목':'코스13','오철석':'코스4','전태영':'코스15',
-    '이진우':'코스5','송정':'코스6','유상하':'코스9','금정':'코스10',
-    '김종호':'코스16','최준은':'코스18','이호주':'코스11','김창연':'코스12',
-    '조홍철':'코스19','김동완':'코스14','류대현':'코스17',
-  };
-  const COURSE_TEAM = {
-    '코스1':{teamId:'team2',teamName:'해운대'},'코스2':{teamId:'team2',teamName:'해운대'},
-    '코스3':{teamId:'team4',teamName:'연수남'},'코스4':{teamId:'team3',teamName:'공오일(051)'},
-    '코스5':{teamId:'team1',teamName:'준고'},'코스6':{teamId:'team1',teamName:'준고'},
-    '코스7':{teamId:'team2',teamName:'해운대'},'코스8':{teamId:'team4',teamName:'연수남'},
-    '코스9':{teamId:'team1',teamName:'준고'},'코스10':{teamId:'team5',teamName:'아가리'},
-    '코스11':{teamId:'team7',teamName:'강서영'},'코스12':{teamId:'team6',teamName:'도세마'},
-    '코스13':{teamId:'team4',teamName:'연수남'},'코스14':{teamId:'team7',teamName:'강서영'},
-    '코스15':{teamId:'team3',teamName:'공오일(051)'},'코스16':{teamId:'team5',teamName:'아가리'},
-    '코스17':{teamId:'team7',teamName:'강서영'},'코스18':{teamId:'team5',teamName:'아가리'},
-    '코스19':{teamId:'team6',teamName:'도세마'},
-  };
 
   async function checkNewClientsAndScheduleSms(date, driverRows) {
     // 구글시트 CSV 가져오기
