@@ -1,17 +1,17 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // 차량 사진: 인증된 사용자만 읽기/쓰기 가능
+    // 차량 사진 (Firebase Auth 미사용으로 전체 허용)
     match /vehicle-photos/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
     // 차량 점검 사진 (vehicle.js 업로드 경로)
     match /vehicle/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
-    // 현장기록 사진: 인증된 사용자만 읽기/쓰기 가능
+    // 현장기록 사진
     match /field_visits/{allPaths=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
     // 그 외 경로: 기본 차단
     match /{allPaths=**} {
