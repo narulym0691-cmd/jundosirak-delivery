@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "field_visits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "yearMonth", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "alerts",
       "queryScope": "COLLECTION",
       "fields": [
