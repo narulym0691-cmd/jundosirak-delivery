@@ -978,9 +978,6 @@
 <script src="/js/auth.js"></script>
 <script src="/js/admin.js?v=202604130803"></script>
 <script>
-  initAdmin();
-  initSalesAlarm();
-
   // ── 코스 기준 팀 매핑 ──
   const DRIVER_COURSE_MAP = {
     '표창훈':'코스1','박인수':'코스6','안준수':'코스7','김민기':'코스3',
@@ -2948,6 +2945,9 @@ window.showSalesAlarmModal = function() {
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
+
+initAdmin();
+initSalesAlarm();
 </script>
 </body>
 </html>
