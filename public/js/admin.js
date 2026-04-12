@@ -274,10 +274,39 @@ async function loadAdminDirectives() {
         }
       });
     });
-    const progressHtml = Object.values(teamProgress).map(tp => {
+    // 팀별 지시사항 상세 데이터 저장 (클릭 시 사용)
+    const teamDirectiveMap = {};
+    allTeamsData.forEach(t => { teamDirectiveMap[t.id] = { name: t.name, items: [] }; });
+    directives.forEach(d => {
+      const targetTeams = d.targetTeams&&d.targetTeams.length>0 ? d.targetTeams : allTeamsData.map(t=>t.id);
+      targetTeams.forEach(tid => {
+        if (!teamDirectiveMap[tid]) return;
+        const teamUsers = Object.keys(userTeamMap).filter(uid=>userTeamMap[uid]===tid);
+        const doneUsers = teamUsers.filter(uid=>d.completions&&d.completions[uid]&&d.completions[uid].done);
+        const comments = doneUsers.map(uid=>{
+          const c = d.completions[uid];
+          const uName = Object.keys(userTeamMap).find(k=>k===uid);
+          return { uid, comment: c.comment||'', doneAt: c.doneAt };
+        }).filter(x=>x.comment);
+        teamDirectiveMap[tid].items.push({
+          content: d.content,
+          deadline: d.deadline,
+          total: teamUsers.length,
+          done: doneUsers.length,
+          comments
+        });
+      });
+    });
+    window._teamDirectiveMap = teamDirectiveMap;
+
+    const progressHtml = Object.entries(teamProgress).map(([tid, tp]) => {
       const pct = tp.total>0?Math.round((tp.done/tp.total)*100):0;
       const barColor = pct>=80?'#38a169':pct>=50?'#ecc94b':'#fc8181';
-      return `<div class="progress-item"><div class="progress-header"><span class="progress-team">${tp.name}</span><span class="progress-pct" style="color:${barColor}">${pct}%</span></div><div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%;background:${barColor}"></div></div><div class="progress-sub">${tp.done}/${tp.total} 완료</div></div>`;
+      return `<div class="progress-item" onclick="showTeamDirectiveDetail('${tid}')" style="cursor:pointer;" title="클릭하면 상세 보기">
+        <div class="progress-header"><span class="progress-team">${tp.name}</span><span class="progress-pct" style="color:${barColor}">${pct}%</span></div>
+        <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="progress-sub">${tp.done}/${tp.total} 완료 <span style="color:#a0aec0;font-size:11px;">▼ 상세보기</span></div>
+      </div>`;
     }).join('');
     container.innerHTML = progressHtml||'<div class="empty-msg">데이터가 없습니다.</div>';
     feedbackContainer.innerHTML = '<div class="empty-msg">피드백 기능 준비 중입니다.</div>';
@@ -1003,6 +1032,59 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
       <div style="margin-top:20px;display:flex;gap:10px;">
         <button onclick="sendAlertSms('${id}','${clientName}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
         <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+};
+
+// ── 지시사항 이행률 팀별 상세 모달 ──
+window.showTeamDirectiveDetail = function(teamId) {
+  const data = window._teamDirectiveMap && window._teamDirectiveMap[teamId];
+  if (!data) return;
+
+  const existing = document.getElementById('teamDirectiveModal');
+  if (existing) existing.remove();
+
+  const items = data.items || [];
+  const itemsHtml = items.length === 0
+    ? '<div style="color:#a0aec0;text-align:center;padding:16px;">지시사항이 없습니다.</div>'
+    : items.map((item, idx) => {
+        const pct = item.total > 0 ? Math.round((item.done / item.total) * 100) : 0;
+        const pctColor = pct >= 80 ? '#38a169' : pct >= 50 ? '#ecc94b' : '#fc8181';
+        const deadline = item.deadline ? item.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
+        const commentsHtml = item.comments && item.comments.length > 0
+          ? item.comments.map(c => `
+              <div style="margin-top:6px;padding:6px 10px;background:#f7fafc;border-radius:6px;font-size:12px;color:#4a5568;">
+                💬 ${c.comment}
+                ${c.doneAt ? `<span style="color:#a0aec0;margin-left:6px;">${c.doneAt.toDate().toLocaleDateString('ko-KR')}</span>` : ''}
+              </div>`).join('')
+          : '';
+        return `
+          <div style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;">
+              <div style="font-size:13px;font-weight:600;color:#2d3748;flex:1;margin-right:8px;">${idx+1}. ${item.content}</div>
+              <span style="font-size:13px;font-weight:700;color:${pctColor};white-space:nowrap;">${pct}%</span>
+            </div>
+            <div style="font-size:11px;color:#718096;margin-bottom:6px;">마감: ${deadline} | ${item.done}/${item.total}명 완료</div>
+            <div style="background:#edf2f7;border-radius:4px;height:6px;margin-bottom:6px;">
+              <div style="width:${pct}%;background:${pctColor};height:6px;border-radius:4px;"></div>
+            </div>
+            ${commentsHtml}
+          </div>`;
+      }).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'teamDirectiveModal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:12px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;background:#fff;z-index:1;">
+        <div style="font-size:16px;font-weight:700;color:#1a4731;">📋 ${data.name} 지시사항 상세</div>
+        <button onclick="document.getElementById('teamDirectiveModal').remove()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#718096;">×</button>
+      </div>
+      <div style="padding:16px 20px;">
+        ${itemsHtml}
       </div>
     </div>`;
   document.body.appendChild(modal);
