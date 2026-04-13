@@ -64,15 +64,15 @@ async function loadTeamData() {
 // 카드 1: 인센티브 게이지
 function renderIncentiveGauge() {
   const container = document.getElementById('gaugeCard');
-  if (!myTeam || !myTeamStats) {
+  if (!myTeam) {
     container.innerHTML = '<div class="empty-msg">팀 데이터가 없습니다.</div>';
     return;
   }
 
-  const s = myTeamStats;
+  const s = myTeamStats || {};
   const t = myTeam;
   const cumul = s.cumulativeTotal || 0;
-  const baseline = s.baselineCumulative || t.baselineDailyAvg;
+  const baseline = s.baselineCumulative || t.baselineDailyAvg || 0;
   const diff = cumul - baseline;
   const diffStr = diff >= 0 ? `+${numFormat(diff)}` : numFormat(diff);
   const grade = s.grade || calcGrade(cumul, t);
@@ -140,7 +140,7 @@ function renderTeamRanking() {
   // 일평균 기준 정렬
   const ranked = allTeams.map(t => {
     const s = allStats[t.id] || {};
-    const bizDays = s.bizDays || 1;
+    const bizDays = s.bizDays || 0;
     const cumTotal = s.cumulativeTotal || 0;
     const dailyAvg = s.dailyAvg || (bizDays > 0 ? Math.round(cumTotal / bizDays) : 0);
     const dailyAvgDiff = s.dailyAvgDiff || 0;
