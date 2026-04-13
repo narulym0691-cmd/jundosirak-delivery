@@ -1085,9 +1085,9 @@
     return { driverRows: Object.values(driverMap), allClients: new Set() };
   }
 
-  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 13=기사명, 14~21=메뉴)
+  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 14=기사명, 15~22=메뉴)
   function parseResultFormat2(rows) {
-    // col: 13=기사명, 14=뜨, 15=프, 16=샐, 17=품, 18=덮, 19=샌, 20=세트, 21=유부, 22=밥, 23=국, 24=합계
+    // col: 14=기사명, 15=뜨, 16=프, 17=샐, 18=품, 19=덮, 20=샌, 21=세트, 22=유부, 23=밥, 24=국
     const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처'];
     const DRIVER_PAT = /^\d+\.\s+/;   // "N. 이름" 기사 summary 행
     const SECTION_PAT = /^\d+\s*◎/;  // "N ◎ ..." 섹션 헤더 행
@@ -1098,19 +1098,19 @@
 
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const cell = String(row[13]||'').trim();
+      const cell = String(row[14]||'').trim();
       if (!cell) continue;
       if (SKIP_KW.some(k => cell.includes(k))) continue;
 
       if (DRIVER_PAT.test(cell)) {
         // 기사 summary 행: "N. 표창훈"
-        const name = cell.replace(/^\d+\.\s+/, '').trim();
+        const name = cell.replace(/^\d+\.\s*/, '').trim();
         const courseId = DRIVER_COURSE_MAP[name];
         const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
         if (!team) { currentDriverName = null; continue; }
-        // 수량 합산: 뜨(14)~유부(21), 밥(22)/국(23) 제외
+        // 수량 합산: 뜨(15)~유부(22), 밥(23)/국(24) 제외
         let total = 0;
-        for (let j = 14; j <= 21; j++) total += Number(row[j]||0);
+        for (let j = 15; j <= 22; j++) total += Number(row[j]||0);
         if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
         driverMap[name].total += total;
         currentDriverName = name;
@@ -1132,10 +1132,10 @@
     }
 
     // 새 양식 전용: 행42 이후 거래처별 상세 섹션에서 orderedClients 수집
-    // (col14~23 중 하나라도 > 0인 거래처만, 중복 제거)
+    // (col15~24 중 하나라도 > 0인 거래처만, 중복 제거)
     let detailStart = -1;
     for (let i = 40; i < rows.length; i++) {
-      if (SECTION_PAT.test(String(rows[i][13]||'').trim())) {
+      if (SECTION_PAT.test(String(rows[i][14]||'').trim())) {
         detailStart = i + 2; // 섹션헤더(i) + 컬럼헤더(i+1) 스킵
         break;
       }
@@ -1143,12 +1143,12 @@
     if (detailStart >= 0) {
       for (let i = detailStart; i < rows.length; i++) {
         const row = rows[i];
-        const cell = String(row[13]||'').trim();
+        const cell = String(row[14]||'').trim();
         if (!cell) continue;
         if (SKIP_KW.some(k => cell.includes(k))) continue;
         if (SECTION_PAT.test(cell)) { i += 1; continue; } // 다음 코스 섹션헤더+컬럼헤더 스킵
         let hasQty = false;
-        for (let j = 14; j <= 23; j++) {
+        for (let j = 15; j <= 24; j++) {
           if (Number(row[j]||0) > 0) { hasQty = true; break; }
         }
         if (hasQty) allClients.add(cell);
