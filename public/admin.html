@@ -1623,6 +1623,13 @@
     if (!date) { alert('날짜를 선택해주세요.'); return; }
     if (!_salesData) { alert('파일을 먼저 선택해주세요.'); return; }
 
+    // 저장 전 거래처 파싱 검증
+    if (!_salesData.orderedClients || _salesData.orderedClients.length === 0) {
+      document.getElementById('su-msg').textContent = '❌ 거래처 파싱 실패: 지원하지 않는 파일 형식입니다. 파일을 확인해주세요.';
+      document.getElementById('su-msg').style.color = '#c53030';
+      return;
+    }
+
     const btn = document.getElementById('su-save-btn');
     btn.disabled = true; btn.textContent = '저장 중...';
 
