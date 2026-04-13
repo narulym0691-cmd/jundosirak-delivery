@@ -69,8 +69,9 @@ function renderSummaryCards() {
   let totalBaseline = 0;
   allTeamsData.forEach(t => {
     const s = allStatsData[t.id] || {};
-    totalCumul += s.cumulativeTotal || 0;
-    totalBaseline += s.baselineCumulative || 0;
+    const hasStats = Object.keys(s).length > 0;
+    totalCumul += hasStats ? (s.cumulativeTotal || 0) : 0;
+    totalBaseline += hasStats ? (s.baselineCumulative || 0) : 0;
   });
   const totalDiff = totalCumul - totalBaseline;
   const totalDiffStr = totalDiff >= 0 ? `+${numFormat(totalDiff)}` : numFormat(totalDiff);
@@ -86,8 +87,9 @@ function renderSummaryCards() {
 
   allTeamsData.forEach(t => {
     const s = allStatsData[t.id] || {};
-    const grade = s.grade || '기준미달';
-    const dailyAvgDiff = s.dailyAvgDiff || 0;
+    const hasStats = Object.keys(s).length > 0;
+    const grade = hasStats ? (s.grade || '기준미달') : '기준미달';
+    const dailyAvgDiff = hasStats ? (s.dailyAvgDiff || 0) : 0;
     if (grade === 'B' || grade === 'A') {
       bReached++;
     } else {
@@ -131,11 +133,12 @@ function renderAdminTeamRanking() {
 
   const ranked = allTeamsData.map(t => {
     const s = allStatsData[t.id] || {};
-    const cumul = s.cumulativeTotal || 0;
-    const bizDays = s.bizDays || 1;
-    const dailyAvg = s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0);
-    const dailyAvgDiff = Math.round(s.dailyAvgDiff || 0);
-    const grade = s.grade || calcGrade(cumul, t);
+    const hasStats = Object.keys(s).length > 0;
+    const bizDays = hasStats ? (s.bizDays || 0) : 0;
+    const cumul = hasStats ? (s.cumulativeTotal || 0) : 0;
+    const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0)) : 0;
+    const dailyAvgDiff = hasStats ? Math.round(s.dailyAvgDiff || 0) : 0;
+    const grade = hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t);
     const baseline = t.baselineDailyAvg || 0;
     return { ...t, cumul, dailyAvg, dailyAvgDiff, grade, bizDays, baseline };
   }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
