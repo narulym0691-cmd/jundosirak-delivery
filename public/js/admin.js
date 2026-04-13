@@ -362,7 +362,64 @@ const COURSE_TEAM_MAP = {
 };
 const DAY_MAP = { '월':0,'화':1,'수':2,'목':3,'금':4 };
 
-function showClientUpload() { document.getElementById('clientUploadModal').style.display='block'; }
+function showClientUpload() {
+  document.getElementById('clientUploadModal').style.display='block';
+  switchCuTab('upload');
+}
+
+function switchCuTab(tab) {
+  document.getElementById('cuPanel-upload').style.display = tab==='upload' ? '' : 'none';
+  document.getElementById('cuPanel-add').style.display = tab==='add' ? '' : 'none';
+  document.getElementById('cuTab1').style.background = tab==='upload' ? '#1a4731' : '#f7fafc';
+  document.getElementById('cuTab1').style.color = tab==='upload' ? '#fff' : '#4a5568';
+  document.getElementById('cuTab2').style.background = tab==='add' ? '#1a4731' : '#f7fafc';
+  document.getElementById('cuTab2').style.color = tab==='add' ? '#fff' : '#4a5568';
+}
+
+async function saveNewClient() {
+  const COURSE_TEAM = {
+    '코스1':'team2','코스2':'team2','코스7':'team2',
+    '코스3':'team4','코스8':'team4','코스13':'team4',
+    '코스4':'team3','코스15':'team3',
+    '코스5':'team1','코스6':'team1','코스9':'team1',
+    '코스10':'team5','코스16':'team5','코스18':'team5',
+    '코스11':'team7','코스14':'team7','코스17':'team7',
+    '코스12':'team6','코스19':'team6',
+  };
+  const name = document.getElementById('ca-name').value.trim();
+  const course = document.getElementById('ca-course').value;
+  const avg = parseInt(document.getElementById('ca-avg').value)||0;
+  const note = document.getElementById('ca-note').value.trim();
+  const orderDays = [];
+  ['mon','tue','wed','thu','fri'].forEach((d,i) => {
+    if(document.getElementById('ca-'+d).checked) orderDays.push(i);
+  });
+  const msg = document.getElementById('ca-msg');
+  if(!name) { msg.textContent='❌ 거래처명을 입력해주세요.'; msg.style.color='#c53030'; return; }
+  if(!course) { msg.textContent='❌ 코스번호를 선택해주세요.'; msg.style.color='#c53030'; return; }
+  if(!orderDays.length) { msg.textContent='❌ 주문 요일을 하나 이상 선택해주세요.'; msg.style.color='#c53030'; return; }
+  const teamId = COURSE_TEAM[course] || '';
+  msg.textContent='저장 중...'; msg.style.color='#4a5568';
+  try {
+    const existing = await db.collection('clients').where('clientName','==',name).limit(1).get();
+    if(!existing.empty) {
+      await existing.docs[0].ref.update({ courseId:course, teamId, dailyAvgOrder:avg, isPriority:avg>=8, orderDays, note, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
+      msg.textContent='✅ 기존 거래처 업데이트 완료: '+name; msg.style.color='#276749';
+    } else {
+      await db.collection('clients').add({ clientName:name, courseId:course, teamId, dailyAvgOrder:avg, isPriority:avg>=8, orderDays, note, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
+      msg.textContent='✅ 신규 거래처 추가 완료: '+name; msg.style.color='#276749';
+    }
+    // 입력 초기화
+    document.getElementById('ca-name').value='';
+    document.getElementById('ca-course').value='';
+    document.getElementById('ca-avg').value='';
+    document.getElementById('ca-note').value='';
+    ['mon','tue','wed','thu','fri'].forEach(d => document.getElementById('ca-'+d).checked=false);
+  } catch(e) {
+    msg.textContent='❌ 저장 실패: '+e.message; msg.style.color='#c53030';
+  }
+}
+
 function closeClientUpload() {
   document.getElementById('clientUploadModal').style.display='none';
   document.getElementById('cu-filename').textContent='선택 안 됨';

@@ -586,11 +586,19 @@
 <!-- 거래처 업로드 모달 -->
 <div id="clientUploadModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
   <div style="background:#fff;max-width:600px;margin:40px auto;border-radius:12px;padding:24px;position:relative;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-      <div style="font-size:18px;font-weight:700;color:#1a4731;">🏢 거래처 주문요일 업로드</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">🏢 거래처 관리</div>
       <button onclick="closeClientUpload()" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
     </div>
 
+    <!-- 탭 -->
+    <div style="display:flex;gap:0;margin-bottom:16px;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;">
+      <button id="cuTab1" onclick="switchCuTab('upload')" style="flex:1;padding:9px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#1a4731;color:#fff;">📂 파일 업로드</button>
+      <button id="cuTab2" onclick="switchCuTab('add')" style="flex:1;padding:9px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#f7fafc;color:#4a5568;">➕ 신규 직접 추가</button>
+    </div>
+
+    <!-- 파일 업로드 탭 -->
+    <div id="cuPanel-upload">
     <div style="background:#f0fff4;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px;color:#276749;">
       💡 기사들에게 배포한 <b>거래처_주문요일_[기사이름].xlsx</b> 파일을 업로드하세요.<br>
       신규 거래처는 추가, 기존 거래처는 주문요일/1순위 정보가 업데이트됩니다.
@@ -628,6 +636,64 @@
 
     <div id="cu-msg" style="font-size:12px;text-align:center;margin-bottom:8px;"></div>
     <button id="cu-save-btn" onclick="saveClientData()" style="display:none;width:100%;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ Firestore에 저장</button>
+    </div><!-- /cuPanel-upload -->
+
+    <!-- 신규 직접 추가 탭 -->
+    <div id="cuPanel-add" style="display:none;">
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">거래처명 *</label>
+          <input id="ca-name" type="text" placeholder="예: 삼성전자 서면사업소" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">코스번호 *</label>
+            <select id="ca-course" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+              <option value="">선택</option>
+              <option value="코스1">코스1 (센텀시티)</option>
+              <option value="코스2">코스2 (마린시티)</option>
+              <option value="코스3">코스3 (연제·서면)</option>
+              <option value="코스4">코스4 (서면)</option>
+              <option value="코스5">코스5 (기장·일광)</option>
+              <option value="코스6">코스6 (송정)</option>
+              <option value="코스7">코스7 (해운대)</option>
+              <option value="코스8">코스8 (남구·동구)</option>
+              <option value="코스9">코스9 (정관)</option>
+              <option value="코스10">코스10 (동래·금정)</option>
+              <option value="코스11">코스11 (영도·사하)</option>
+              <option value="코스12">코스12 (북구)</option>
+              <option value="코스13">코스13 (수영구)</option>
+              <option value="코스14">코스14 (중구·영도)</option>
+              <option value="코스15">코스15 (서면2)</option>
+              <option value="코스16">코스16 (수영·동래)</option>
+              <option value="코스17">코스17 (강서·사상)</option>
+              <option value="코스18">코스18 (금정·양산)</option>
+              <option value="코스19">코스19 (사상·개금)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">일평균 주문수</label>
+            <input id="ca-avg" type="number" min="1" placeholder="예: 10" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:6px;">주문 요일 *</label>
+          <div style="display:flex;gap:8px;">
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="ca-mon" value="0"> 월</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="ca-tue" value="1"> 화</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="ca-wed" value="2"> 수</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="ca-thu" value="3"> 목</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="ca-fri" value="4"> 금</label>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">비고</label>
+          <input id="ca-note" type="text" placeholder="특이사항 (선택)" style="width:100%;padding:9px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+        </div>
+        <div id="ca-msg" style="font-size:12px;text-align:center;"></div>
+        <button onclick="saveNewClient()" style="width:100%;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ 거래처 추가</button>
+      </div>
+    </div><!-- /cuPanel-add -->
   </div>
 </div>
 
@@ -1572,12 +1638,15 @@
 
       let grade, consecutiveDays;
       if (isPriority) {
+        // 1순위: 이틀 연속 미주문부터 즉시경보
+        consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
+        if (consecutiveDays < 2) continue; // 1일째는 경보 없음
         grade = 'urgent';
-        consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
       } else {
+        // 일반: 3일 연속 미주문부터 경보
         consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
-        if (!prev && consecutiveDays < 2) continue; // 신규 1일째는 경보 없음
-        grade = consecutiveDays >= 3 ? 'check' : 'watch';
+        if (consecutiveDays < 3) continue; // 1~2일째는 경보 없음
+        grade = 'alert';
       }
 
       if (prev) {
