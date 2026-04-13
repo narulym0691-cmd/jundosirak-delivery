@@ -56,12 +56,12 @@ tr:hover td { background: #f7fafc; }
 </div>
 
 <div class="content">
-  <!-- 월 선택 -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;background:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
-    <span style="font-size:13px;font-weight:600;color:#4a5568;">📆 조회 월 선택</span>
-    <select id="month-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;">
-    </select>
-    <span style="font-size:11px;color:#718096;">월을 선택한 뒤 기간 버튼을 누르세요</span>
+  <!-- 년도/월 선택 -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;background:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);flex-wrap:wrap;">
+    <span style="font-size:13px;font-weight:600;color:#4a5568;">📆 조회 기간 선택</span>
+    <select id="year-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;"></select>
+    <select id="mon-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;"></select>
+    <span style="font-size:11px;color:#718096;">년도와 월을 선택한 뒤 기간 버튼을 누르세요</span>
   </div>
 
   <!-- 기간 선택 버튼 -->
@@ -200,30 +200,37 @@ function getPeriods(ym) {
 
 function initMonthSelect() {
   const now = new Date();
-  const sel = document.getElementById('month-select');
-  sel.innerHTML = '';
-  // 서비스 시작: 2026년 4월부터 현재 월까지
-  const startYear = 2026, startMonth = 4;
-  const endYear = now.getFullYear(), endMonth = now.getMonth() + 1;
-  for (let y = startYear; y <= endYear; y++) {
-    const mStart = (y === startYear) ? startMonth : 1;
-    const mEnd = (y === endYear) ? endMonth : 12;
-    for (let m = mStart; m <= mEnd; m++) {
-      const ym = `${y}-${String(m).padStart(2,'0')}`;
-      const opt = document.createElement('option');
-      opt.value = ym;
-      opt.textContent = `${y}년 ${m}월`;
-      sel.appendChild(opt);
-    }
+  const ySel = document.getElementById('year-select');
+  const mSel = document.getElementById('mon-select');
+
+  // 년도: 2026부터 현재+2년까지
+  ySel.innerHTML = '';
+  for (let y = 2026; y <= now.getFullYear() + 2; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = `${y}년`;
+    ySel.appendChild(opt);
   }
-  // 가장 최근 월 선택
-  sel.selectedIndex = sel.options.length - 1;
-  currentYm = sel.value;
+  ySel.value = now.getFullYear();
+
+  // 월: 1~12월
+  mSel.innerHTML = '';
+  for (let m = 1; m <= 12; m++) {
+    const opt = document.createElement('option');
+    opt.value = String(m).padStart(2,'0');
+    opt.textContent = `${m}월`;
+    mSel.appendChild(opt);
+  }
+  mSel.value = String(now.getMonth()+1).padStart(2,'0');
+
+  currentYm = `${ySel.value}-${mSel.value}`;
   updateBtnTitles();
 }
 
 function onMonthChange() {
-  currentYm = document.getElementById('month-select').value;
+  const y = document.getElementById('year-select').value;
+  const m = document.getElementById('mon-select').value;
+  currentYm = `${y}-${m}`;
   updateBtnTitles();
   // 기간 버튼 active 초기화
   [1,2,3,4].forEach(i => document.getElementById('btn-p'+i).classList.remove('active'));
