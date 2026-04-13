@@ -1216,21 +1216,8 @@
       12:'team6', 19:'team6',
     };
 
-    // Step1: 코스 섹션 헤더(row[13])에서 기사명→팀 매핑 (코스번호 기반)
-    const driverTeamMap = {};
-    for (let i = 40; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row) continue;
-      const cell = String(row[13]||'').trim(); // XLSX.js index13 = col14
-      if (!SECTION_PAT.test(cell)) continue;
-      const courseNum = parseInt(cell.match(/^(\d+)/)[1]);
-      const team = COURSE_NUM_TEAM[courseNum];
-      const dm = cell.match(/\(([^)]+)\)/);
-      const driverName = dm ? dm[1].trim() : null;
-      if (driverName && team) driverTeamMap[driverName] = team;
-    }
-
-    // Step2: 기사 summary 행(행2~25)에서 수량 합산 + 팀 결정
+    // Step1+2: 기사 summary 행(행2~25)에서 코스번호로 직접 팀 결정
+    // ※ 기사는 언제든지 바뀔 수 있으므로 기사 이름이 아닌 행의 코스번호(앞 숫자)로 팀을 결정
     const driverMap = {};
     const teamTotalsMap = {};
     for (let i = 1; i < 26; i++) {
@@ -1239,9 +1226,11 @@
       const cell = String(row[13]||'').trim(); // XLSX.js index13 = 기사명
       if (!cell || SKIP_KW.some(k => cell.includes(k))) continue;
       if (!DRIVER_PAT.test(cell)) continue;
+      // 코스번호: "2. 김창연" → 2
+      const courseNum = parseInt(cell.match(/^(\d+)/)[1]);
+      const team = COURSE_NUM_TEAM[courseNum];
+      if (!team) continue; // 조식배송(20번 이상) 등 팀 미배정 코스는 제외
       const name = cell.replace(/^\d+\.\s+/, '').trim();
-      const team = driverTeamMap[name];
-      if (!team) continue;
       // index14~20 = 뜨/프/샐/품/덮/샌/세트
       let total = 0;
       for (let j = 14; j <= 20; j++) total += Number(row[j]||0);
