@@ -56,23 +56,31 @@ tr:hover td { background: #f7fafc; }
 </div>
 
 <div class="content">
+  <!-- 월 선택 -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;background:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);">
+    <span style="font-size:13px;font-weight:600;color:#4a5568;">📆 조회 월 선택</span>
+    <select id="month-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;">
+    </select>
+    <span style="font-size:11px;color:#718096;">월을 선택한 뒤 기간 버튼을 누르세요</span>
+  </div>
+
   <!-- 기간 선택 버튼 -->
   <div class="period-buttons">
     <button class="period-btn" id="btn-p1" onclick="selectPeriod(1)">
-      <div class="btn-title">📅 4월 1일~10일</div>
-      <div class="btn-desc">1구간 영업일 기준 미주문 업체 조회</div>
+      <div class="btn-title" id="btn-p1-title">📅 1일~10일</div>
+      <div class="btn-desc">1구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
     </button>
     <button class="period-btn" id="btn-p2" onclick="selectPeriod(2)">
-      <div class="btn-title">📅 4월 11일~20일</div>
-      <div class="btn-desc">2구간 영업일 기준 미주문 업체 조회</div>
+      <div class="btn-title" id="btn-p2-title">📅 11일~20일</div>
+      <div class="btn-desc">2구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
     </button>
     <button class="period-btn" id="btn-p3" onclick="selectPeriod(3)">
-      <div class="btn-title">📅 4월 21일~30일</div>
-      <div class="btn-desc">3구간 영업일 기준 미주문 업체 조회</div>
+      <div class="btn-title" id="btn-p3-title">📅 21일~말일</div>
+      <div class="btn-desc">3구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
     </button>
     <button class="period-btn" id="btn-p4" onclick="selectPeriod(4)">
-      <div class="btn-title">📊 4월 전체</div>
-      <div class="btn-desc">4월 한 달 전체 미주문 업체 조회</div>
+      <div class="btn-title" id="btn-p4-title">📊 월 전체</div>
+      <div class="btn-desc">선택한 달 전체 미주문 업체 조회</div>
     </button>
   </div>
 
@@ -161,16 +169,11 @@ const TEAM_NAMES = {
 };
 const DOW_NAMES = ['월','화','수','목','금'];
 
-// 기간 정의
-const PERIODS = {
-  1: { label: '4월 1일~10일', start: '2026-04-01', end: '2026-04-10' },
-  2: { label: '4월 11일~20일', start: '2026-04-11', end: '2026-04-20' },
-  3: { label: '4월 21일~30일', start: '2026-04-21', end: '2026-04-30' },
-  4: { label: '4월 전체', start: '2026-04-01', end: '2026-04-30' },
-};
+// PERIODS는 동적으로 getPeriods(ym) 으로 생성
 
 let currentData = [];
 let currentPeriod = null;
+let currentYm = '';
 
 function normName(n) { return String(n||'').replace(/\s/g,''); }
 function isOrdered(clientName, orderedSet) {
@@ -180,7 +183,63 @@ function isOrdered(clientName, orderedSet) {
   return false;
 }
 
+function getLastDay(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m, 0).getDate();
+}
+
+function getPeriods(ym) {
+  const last = getLastDay(ym);
+  return {
+    1: { label: `${ym.replace('-','년 ')}월 1일~10일`, start: `${ym}-01`, end: `${ym}-10` },
+    2: { label: `${ym.replace('-','년 ')}월 11일~20일`, start: `${ym}-11`, end: `${ym}-20` },
+    3: { label: `${ym.replace('-','년 ')}월 21일~${last}일`, start: `${ym}-21`, end: `${ym}-${String(last).padStart(2,'0')}` },
+    4: { label: `${ym.replace('-','년 ')}월 전체`, start: `${ym}-01`, end: `${ym}-${String(last).padStart(2,'0')}` },
+  };
+}
+
+function initMonthSelect() {
+  const now = new Date();
+  const sel = document.getElementById('month-select');
+  sel.innerHTML = '';
+  // 최근 6개월 옵션 생성
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const label = `${d.getFullYear()}년 ${d.getMonth()+1}월`;
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = label;
+    sel.appendChild(opt);
+  }
+  currentYm = sel.value;
+  updateBtnTitles();
+}
+
+function onMonthChange() {
+  currentYm = document.getElementById('month-select').value;
+  updateBtnTitles();
+  // 기간 버튼 active 초기화
+  [1,2,3,4].forEach(i => document.getElementById('btn-p'+i).classList.remove('active'));
+  document.getElementById('result-content').style.display = 'none';
+  document.getElementById('result-empty').style.display = 'block';
+  currentData = [];
+  currentPeriod = null;
+}
+
+function updateBtnTitles() {
+  if (!currentYm) return;
+  const periods = getPeriods(currentYm);
+  const last = getLastDay(currentYm);
+  const m = parseInt(currentYm.split('-')[1]);
+  document.getElementById('btn-p1-title').textContent = `📅 ${m}월 1일~10일`;
+  document.getElementById('btn-p2-title').textContent = `📅 ${m}월 11일~20일`;
+  document.getElementById('btn-p3-title').textContent = `📅 ${m}월 21일~${last}일`;
+  document.getElementById('btn-p4-title').textContent = `📊 ${m}월 전체`;
+}
+
 async function selectPeriod(p) {
+  if (!currentYm) return;
   // 버튼 active 처리
   [1,2,3,4].forEach(i => {
     document.getElementById('btn-p'+i).classList.toggle('active', i===p);
@@ -190,7 +249,8 @@ async function selectPeriod(p) {
   document.getElementById('result-loading').style.display = 'block';
   document.getElementById('result-content').style.display = 'none';
 
-  const { label, start, end } = PERIODS[p];
+  const periods = getPeriods(currentYm);
+  const { label, start, end } = periods[p];
 
   // daily_sales 조회
   const salesSnap = await db.collection('daily_sales')
@@ -296,7 +356,7 @@ function renderTable() {
 
 function downloadExcel() {
   if (!currentData.length || !currentPeriod) return;
-  const { label } = PERIODS[currentPeriod];
+  const { label } = getPeriods(currentYm)[currentPeriod];
   const teamFilter = document.getElementById('filter-team').value;
   const priorityFilter = document.getElementById('filter-priority').value;
   const searchFilter = document.getElementById('filter-search').value.trim().toLowerCase();
@@ -334,13 +394,14 @@ function downloadExcel() {
   XLSX.writeFile(wb, `미주문업체_${label.replace(/\s/g,'_')}.xlsx`);
 }
 
-// 인증 체크
+// 인증 체크 + 초기화
 window.addEventListener('DOMContentLoaded', () => {
   const user = JSON.parse(localStorage.getItem('jundosirak_user')||'null');
   if (!user || user.role !== 'admin') {
     location.href = '/index.html';
     return;
   }
+  initMonthSelect();
 });
 </script>
 </body>
