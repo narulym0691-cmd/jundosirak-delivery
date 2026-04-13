@@ -1153,8 +1153,7 @@
     }
 
     const driverRows = Object.values(driverMap);
-    driverRows._teamTotals = teamTotalsMap;
-    return { driverRows, allClients };
+    return { driverRows, allClients, teamTotalsOverride: teamTotalsMap };
   }
 
   // ── 구형 양식 파싱: "붙여넣기" 시트 (거래처별 주문행 구조)
@@ -1259,7 +1258,11 @@
           const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
-            ({ driverRows, allClients } = parseResultFormat2(rows));
+            let fmt2Result = parseResultFormat2(rows);
+            driverRows = fmt2Result.driverRows;
+            allClients = fmt2Result.allClients;
+            if (fmt2Result.teamTotalsOverride) window._fmt2TeamTotals = fmt2Result.teamTotalsOverride;
+            else window._fmt2TeamTotals = null;
           } else {
             parseNote = '양식1 (단순 합계)';
             ({ driverRows, allClients } = parseResultFormat1(rows));
@@ -1281,11 +1284,11 @@
 
       if (!driverRows.length && allClients.size === 0) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
-      // 팀별 집계 (코스섹션 기반 _teamTotals 우선 사용)
-      const teamTotals = Object.assign({}, driverRows._teamTotals || {});
+      // 팀별 집계 (코스섹션 기반 teamTotalsOverride 우선 사용)
+      const teamTotals = window._fmt2TeamTotals ? Object.assign({}, window._fmt2TeamTotals) : {};
       const teamDrivers = {}, teamRevenues = {};
       driverRows.forEach(d => {
-        if (!driverRows._teamTotals) teamTotals[d.team] = (teamTotals[d.team]||0) + d.total;
+        if (!window._fmt2TeamTotals) teamTotals[d.team] = (teamTotals[d.team]||0) + d.total;
         teamRevenues[d.team] = (teamRevenues[d.team]||0) + (d.revenue||0);
         if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
         teamDrivers[d.team].push(d.name + ':' + d.total);
