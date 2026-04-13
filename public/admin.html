@@ -1087,75 +1087,73 @@
 
   // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 13=기사명, 14~21=메뉴)
   function parseResultFormat2(rows) {
-    // col: 13=기사명, 14=뜨, 15=프, 16=샐, 17=품, 18=덮, 19=샌, 20=세트, 21=유부, 22=밥, 23=국, 24=합계
-    const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처'];
-    const DRIVER_PAT = /^\d+\.\s+/;   // "N. 이름" 기사 summary 행
-    const SECTION_PAT = /^\d+\s*◎/;  // "N ◎ ..." 섹션 헤더 행
+    // 파일 구조:
+    // - 행2~25: 기사 summary (col15=기사명, col16~22=뜨/프/샐/품/덮/샌/세트)
+    // - 행43~: 코스 섹션 헤더 "N ◎ 지역(기사명)배송코스" + 거래처 목록 (col6=거래처명)
+    // 팀 결정: 코스 섹션 헤더의 코스번호 기준 (기사명 무관, 지역 고정)
+    const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처','번호','이름','순서'];
+    const DRIVER_PAT = /^\d+\.\s+/;
+    const SECTION_PAT = /^\d+\s*◎/;
 
-    const driverMap = {};
-    const allClients = new Set();
-    let currentDriverName = null;
+    // 코스번호 → 팀 매핑 (지역 기준 고정)
+    const COURSE_NUM_TEAM = {
+      1:'team2', 2:'team2', 7:'team2',
+      3:'team4', 8:'team4', 13:'team4',
+      4:'team3', 15:'team3',
+      5:'team1', 6:'team1', 9:'team1',
+      10:'team5', 16:'team5', 18:'team5',
+      11:'team7', 14:'team7', 17:'team7',
+      12:'team6', 19:'team6',
+    };
 
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const cell = String(row[13]||'').trim();
-      if (!cell) continue;
-      if (SKIP_KW.some(k => cell.includes(k))) continue;
-
-      if (DRIVER_PAT.test(cell)) {
-        // 기사 summary 행: "N. 표창훈"
-        const name = cell.replace(/^\d+\.\s+/, '').trim();
-        const courseId = DRIVER_COURSE_MAP[name];
-        const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
-        if (!team) { currentDriverName = null; continue; }
-        // 수량 합산: 뜨(14)~유부(21), 밥(22)/국(23) 제외
-        let total = 0;
-        for (let j = 14; j <= 21; j++) total += Number(row[j]||0);
-        if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
-        driverMap[name].total += total;
-        currentDriverName = name;
-        continue;
-      }
-
-      if (SECTION_PAT.test(cell)) {
-        // "N ◎ 지역(기사명)배송코스" 섹션 헤더 → currentDriver 유지, 스킵
-        continue;
-      }
-
-      // 거래처 행: currentDriver 있고 위 패턴 아닌 경우
-      if (currentDriverName && driverMap[currentDriverName]) {
-        allClients.add(cell);
-        if (!driverMap[currentDriverName].clients.includes(cell)) {
-          driverMap[currentDriverName].clients.push(cell);
-        }
-      }
-    }
-
-    // 새 양식 전용: 행42 이후 거래처별 상세 섹션에서 orderedClients 수집
-    // (col14~23 중 하나라도 > 0인 거래처만, 중복 제거)
-    let detailStart = -1;
+    // Step1: 코스 섹션 헤더에서 기사명→팀 매핑 (코스번호 기반)
+    const driverTeamMap = {};
     for (let i = 40; i < rows.length; i++) {
-      if (SECTION_PAT.test(String(rows[i][13]||'').trim())) {
-        detailStart = i + 2; // 섹션헤더(i) + 컬럼헤더(i+1) 스킵
-        break;
-      }
-    }
-    if (detailStart >= 0) {
-      for (let i = detailStart; i < rows.length; i++) {
-        const row = rows[i];
-        const cell = String(row[13]||'').trim();
-        if (!cell) continue;
-        if (SKIP_KW.some(k => cell.includes(k))) continue;
-        if (SECTION_PAT.test(cell)) { i += 1; continue; } // 다음 코스 섹션헤더+컬럼헤더 스킵
-        let hasQty = false;
-        for (let j = 14; j <= 23; j++) {
-          if (Number(row[j]||0) > 0) { hasQty = true; break; }
-        }
-        if (hasQty) allClients.add(cell);
-      }
+      const row = rows[i];
+      if (!row) continue;
+      const cell = String(row[14]||'').trim(); // col15(index14) = 섹션헤더
+      if (!SECTION_PAT.test(cell)) continue;
+      const courseNum = parseInt(cell.match(/^(\d+)/)[1]);
+      const team = COURSE_NUM_TEAM[courseNum];
+      const dm = cell.match(/\(([^)]+)\)/);
+      const driverName = dm ? dm[1].trim() : null;
+      if (driverName && team) driverTeamMap[driverName] = team;
     }
 
-    return { driverRows: Object.values(driverMap), allClients };
+    // Step2: 기사 summary 행(행2~25)에서 수량 합산 + 팀 결정
+    const driverMap = {};
+    const teamTotalsMap = {};
+    for (let i = 1; i < 26; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      const cell = String(row[14]||'').trim(); // col15(index14) = 기사명
+      if (!cell || SKIP_KW.some(k => cell.includes(k))) continue;
+      if (!DRIVER_PAT.test(cell)) continue;
+      const name = cell.replace(/^\d+\.\s+/, '').trim();
+      const team = driverTeamMap[name];
+      if (!team) continue;
+      // col16~22(index15~21) = 뜨/프/샐/품/덮/샌/세트
+      let total = 0;
+      for (let j = 15; j <= 21; j++) total += Number(row[j]||0);
+      if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
+      driverMap[name].total += total;
+      teamTotalsMap[team] = (teamTotalsMap[team]||0) + total;
+    }
+
+    // Step3: 거래처 목록 수집 (col6(index5) = 거래처명)
+    const allClients = new Set();
+    for (let i = 44; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      const clientName = String(row[5]||'').trim(); // col6(index5)
+      if (!clientName || SKIP_KW.some(k => clientName.includes(k))) continue;
+      if (/^\d+$/.test(clientName)) continue; // 순수 숫자 제외
+      allClients.add(clientName);
+    }
+
+    const driverRows = Object.values(driverMap);
+    driverRows._teamTotals = teamTotalsMap;
+    return { driverRows, allClients };
   }
 
   // ── 구형 양식 파싱: "붙여넣기" 시트 (거래처별 주문행 구조)
@@ -1257,7 +1255,7 @@
           const ws = wb.Sheets[resultSheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const firstData = rows[1] || [];
-          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
+          const isFormat2 = firstData.length > 14 && /^\d+\.\s+/.test(String(firstData[14]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
             ({ driverRows, allClients } = parseResultFormat2(rows));
@@ -1282,10 +1280,13 @@
 
       if (!driverRows.length && allClients.size === 0) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
-      // 팀별 집계
-      const teamTotals = {}, teamDrivers = {}, teamRevenues = {};
+      // 팀별 집계 (코스섹션 기반 _teamTotals 우선, 없으면 driverRows 합산)
+      const teamTotals = Object.assign({}, driverRows._teamTotals || {});
+      const teamDrivers = {}, teamRevenues = {};
       driverRows.forEach(d => {
-        teamTotals[d.team]   = (teamTotals[d.team]||0)   + d.total;
+        if (!driverRows._teamTotals) {
+          teamTotals[d.team] = (teamTotals[d.team]||0) + d.total;
+        }
         teamRevenues[d.team] = (teamRevenues[d.team]||0) + (d.revenue||0);
         if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
         teamDrivers[d.team].push(d.name + ':' + d.total);
