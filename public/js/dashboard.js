@@ -667,6 +667,12 @@ window.showFieldVisitDetail = function(v) {
       <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content}</div>
       ${photos}
       ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#276749;"><strong>📌 관리자 메모:</strong> ${v.adminComment}</div>` : ''}
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        ${(v.driverId === currentUser.uid || currentUser.role === 'admin') ? `
+          <button onclick="editFieldVisit(${JSON.stringify(v).replace(/"/g, '&quot;')})" style="flex:1;padding:10px;background:#2b6cb0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✏️ 수정</button>
+          <button onclick="deleteFieldVisit('${v.id}')" style="flex:1;padding:10px;background:#e53e3e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">🗑️ 삭제</button>
+        ` : ''}
+      </div>
       <button onclick="document.getElementById('fv-detail-modal').remove()" style="width:100%;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">닫기</button>
     </div>`;
 };
@@ -711,6 +717,60 @@ function getTodayKey() {
   const d = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 }
+
+// 현장기록 삭제
+window.deleteFieldVisit = async function(docId) {
+  if (!confirm('이 기록을 삭제하시겠습니까?')) return;
+  try {
+    await db.collection('field_visits').doc(docId).delete();
+    document.getElementById('fv-detail-modal')?.remove();
+    loadFieldVisits();
+    alert('삭제되었습니다.');
+  } catch(e) {
+    alert('삭제 실패: ' + e.message);
+  }
+};
+
+// 현장기록 수정 (내용만 수정, 사진은 유지)
+window.editFieldVisit = function(v) {
+  if (typeof v === 'string') v = JSON.parse(v);
+  document.getElementById('fv-detail-modal')?.remove();
+
+  let editModal = document.getElementById('fv-edit-modal');
+  if (!editModal) {
+    editModal = document.createElement('div');
+    editModal.id = 'fv-edit-modal';
+    editModal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;';
+    editModal.onclick = e => { if (e.target === editModal) editModal.remove(); };
+    document.body.appendChild(editModal);
+  }
+  editModal.innerHTML = `
+    <div style="background:#fff;border-radius:16px;padding:20px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div style="font-size:15px;font-weight:800;">✏️ 기록 수정</div>
+        <button onclick="document.getElementById('fv-edit-modal').remove()" style="background:none;border:none;font-size:20px;color:#718096;cursor:pointer;">✕</button>
+      </div>
+      <div style="font-size:12px;color:#718096;margin-bottom:8px;">${v.clientName} · ${v.driverName}</div>
+      <textarea id="fv-edit-content" style="width:100%;height:120px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;resize:none;box-sizing:border-box;">${v.content}</textarea>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="document.getElementById('fv-edit-modal').remove()" style="flex:1;padding:10px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">취소</button>
+        <button onclick="saveFieldVisitEdit('${v.id}')" style="flex:1;padding:10px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">저장</button>
+      </div>
+    </div>`;
+};
+
+window.saveFieldVisitEdit = async function(docId) {
+  const content = document.getElementById('fv-edit-content')?.value?.trim();
+  if (!content) { alert('내용을 입력해주세요.'); return; }
+  try {
+    await db.collection('field_visits').doc(docId).update({ content, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    document.getElementById('fv-edit-modal')?.remove();
+    loadFieldVisits();
+    alert('수정되었습니다.');
+  } catch(e) {
+    alert('수정 실패: ' + e.message);
+  }
+};
 
 window._driverSalesData = null; // 현재 내 저장 데이터
 
