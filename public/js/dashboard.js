@@ -929,25 +929,27 @@ window.querySalesByRange = async function() {
   if (!user) return;
   resultEl.innerHTML = '<div style="color:#718096;font-size:13px;">조회 중...</div>';
   try {
+    // 복합 인덱스 없이: driverId만으로 조회 후 클라이언트에서 날짜 필터
     const snap = await db.collection('driver_sales')
       .where('driverId', '==', user.uid)
-      .where('date', '>=', startVal)
-      .where('date', '<=', endVal)
-      .orderBy('date', 'asc')
       .get();
-    if (snap.empty) {
+    const docs = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (d.date >= startVal && d.date <= endVal) docs.push(d);
+    });
+    docs.sort((a,b) => a.date > b.date ? 1 : -1);
+    if (!docs.length) {
       resultEl.innerHTML = `<div style="color:#a0aec0;font-size:13px;">${startVal} ~ ${endVal} 데이터 없음</div>`;
       return;
     }
     let grandTotal = 0;
-    const rows = [];
-    snap.forEach(doc => {
-      const d = doc.data();
+    const rows = docs.map(d => {
       grandTotal += d.total || 0;
-      rows.push(`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+      return `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
         <span style="color:#2d3748;">${d.date}</span>
         <span style="font-weight:700;color:#1a4731;">${d.total || 0}개</span>
-      </div>`);
+      </div>`;
     });
     resultEl.innerHTML = `
       <div style="font-size:12px;color:#718096;margin-bottom:8px;">${startVal} ~ ${endVal} (${rows.length}일)</div>
