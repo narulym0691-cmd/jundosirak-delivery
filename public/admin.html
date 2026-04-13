@@ -1085,17 +1085,17 @@
     return { driverRows: Object.values(driverMap), allClients: new Set() };
   }
 
-  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 13=기사명, 14~21=메뉴)
+  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 14=기사명, 15~22=메뉴)
   function parseResultFormat2(rows) {
     // 파일 구조:
-    // - 행2~25: 기사 summary (col15=기사명, col16~22=뜨/프/샐/품/덮/샌/세트)
-    // - 행43~: 코스 섹션 헤더 "N ◎ 지역(기사명)배송코스" + 거래처 목록 (col6=거래처명)
+    // - 행2~25: 기사 summary (col15(index14)=기사명, col16~22(index15~21)=뜨/프/샐/품/덮/샌/세트)
+    // - 행43~: 코스 섹션 헤더 "N ◎ 지역(기사명)배송코스" + 거래처 목록 (col6(index5)=거래처명)
     // 팀 결정: 코스 섹션 헤더의 코스번호 기준 (기사명 무관, 지역 고정)
     const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처','번호','이름','순서'];
     const DRIVER_PAT = /^\d+\.\s+/;
     const SECTION_PAT = /^\d+\s*◎/;
 
-    // 코스번호 → 팀 매핑 (지역 기준 고정)
+    // 코스번호 → 팀 매핑 (지역 기준 고정, 기사 무관)
     const COURSE_NUM_TEAM = {
       1:'team2', 2:'team2', 7:'team2',
       3:'team4', 8:'team4', 13:'team4',
@@ -1147,7 +1147,7 @@
       if (!row) continue;
       const clientName = String(row[5]||'').trim(); // col6(index5)
       if (!clientName || SKIP_KW.some(k => clientName.includes(k))) continue;
-      if (/^\d+$/.test(clientName)) continue; // 순수 숫자 제외
+      if (/^\d+$/.test(clientName)) continue;
       allClients.add(clientName);
     }
 
@@ -1255,7 +1255,7 @@
           const ws = wb.Sheets[resultSheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const firstData = rows[1] || [];
-          const isFormat2 = firstData.length > 14 && /^\d+\.\s+/.test(String(firstData[14]||'').trim());
+          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
             ({ driverRows, allClients } = parseResultFormat2(rows));
@@ -1280,13 +1280,11 @@
 
       if (!driverRows.length && allClients.size === 0) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
-      // 팀별 집계 (코스섹션 기반 _teamTotals 우선, 없으면 driverRows 합산)
+      // 팀별 집계 (코스섹션 기반 _teamTotals 우선 사용)
       const teamTotals = Object.assign({}, driverRows._teamTotals || {});
       const teamDrivers = {}, teamRevenues = {};
       driverRows.forEach(d => {
-        if (!driverRows._teamTotals) {
-          teamTotals[d.team] = (teamTotals[d.team]||0) + d.total;
-        }
+        if (!driverRows._teamTotals) teamTotals[d.team] = (teamTotals[d.team]||0) + d.total;
         teamRevenues[d.team] = (teamRevenues[d.team]||0) + (d.revenue||0);
         if (!teamDrivers[d.team]) teamDrivers[d.team] = [];
         teamDrivers[d.team].push(d.name + ':' + d.total);
@@ -2650,6 +2648,11 @@ async function sendSms() {
     <span>📋</span> 정성평가
   </button>
   <div class="dropup-divider"></div>
+  <div class="dropup-divider"></div>
+  <button class="dropup-item" style="color:#c53030;" onclick="closeDropup(); resetAllSalesData();">
+    <span>🗑️</span> 데이터 초기화
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item logout-item" onclick="closeDropup(); logout();">
     <span>🚪</span> 로그아웃
   </button>
@@ -3211,6 +3214,33 @@ window.showSalesAlarmModal = function() {
 
 initAdmin();
 initSalesAlarm();
+
+window.resetAllSalesData = async function() {
+  if (!confirm('daily_sales, monthly_stats 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) return;
+  try {
+    const [dailySnap, monthlySnap] = await Promise.all([
+      db.collection('daily_sales').get(),
+      db.collection('monthly_stats').get()
+    ]);
+    const batch = db.batch();
+    let count = 0;
+    dailySnap.forEach(doc => { batch.delete(doc.ref); count++; });
+    monthlySnap.forEach(doc => { batch.delete(doc.ref); count++; });
+    if (count === 0) { alert('삭제할 데이터가 없습니다.'); return; }
+    // batch 500개 제한 처리
+    if (count <= 500) {
+      await batch.commit();
+    } else {
+      // 500개 초과 시 개별 삭제
+      for (const doc of dailySnap.docs) await doc.ref.delete();
+      for (const doc of monthlySnap.docs) await doc.ref.delete();
+    }
+    alert(`✅ 초기화 완료 (daily_sales ${dailySnap.size}건, monthly_stats ${monthlySnap.size}건 삭제)`);
+    location.reload();
+  } catch(e) {
+    alert('초기화 실패: ' + e.message);
+  }
+};
 </script>
 </body>
 </html>
