@@ -140,6 +140,11 @@ function renderTeamRanking() {
   }
 
   // 일평균 기준 정렬
+  // monthly_stats 없으면 빈 상태 표시
+  if (!allStats || Object.keys(allStats).length === 0) {
+    container.innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
+    return;
+  }
   const ranked = allTeams.map(t => {
     const s = allStats[t.id] || {};
     const hasStats = Object.keys(s).length > 0;
