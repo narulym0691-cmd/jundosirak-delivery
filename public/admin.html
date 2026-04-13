@@ -1093,6 +1093,31 @@
         }
       }
     }
+
+    // 새 양식 전용: 행42 이후 거래처별 상세 섹션에서 orderedClients 수집
+    // (col14~23 중 하나라도 > 0인 거래처만, 중복 제거)
+    let detailStart = -1;
+    for (let i = 40; i < rows.length; i++) {
+      if (SECTION_PAT.test(String(rows[i][13]||'').trim())) {
+        detailStart = i + 2; // 섹션헤더(i) + 컬럼헤더(i+1) 스킵
+        break;
+      }
+    }
+    if (detailStart >= 0) {
+      for (let i = detailStart; i < rows.length; i++) {
+        const row = rows[i];
+        const cell = String(row[13]||'').trim();
+        if (!cell) continue;
+        if (SKIP_KW.some(k => cell.includes(k))) continue;
+        if (SECTION_PAT.test(cell)) { i += 1; continue; } // 다음 코스 섹션헤더+컬럼헤더 스킵
+        let hasQty = false;
+        for (let j = 14; j <= 23; j++) {
+          if (Number(row[j]||0) > 0) { hasQty = true; break; }
+        }
+        if (hasQty) allClients.add(cell);
+      }
+    }
+
     return { driverRows: Object.values(driverMap), allClients };
   }
 
