@@ -19,7 +19,8 @@ async function initDashboard() {
   await Promise.all([
     loadTeamData(),
     loadDirectives(),
-    loadAlerts()
+    loadAlerts(),
+    loadAlertReport()
   ]);
 }
 
@@ -965,3 +966,114 @@ window.showTab = function(tabName) {
   _origShowTab(tabName);
   if (tabName === 'sales') loadSalesTab();
 };
+
+// ── 확인보고 카드 (기사 대시보드 홈) ──
+const COURSE_DRIVER_ALERT = {
+  '코스1':'표창훈','코스2':'이근일','코스3':'김민기','코스4':'오철석',
+  '코스5':'이진우','코스6':'박인수','코스7':'안준수','코스8':'최용혁',
+  '코스9':'유상하','코스10':'금정','코스11':'이호주','코스12':'김창연',
+  '코스13':'이창목','코스14':'김동완','코스15':'전태영','코스16':'김종호',
+  '코스17':'류대현','코스18':'최준은','코스19':'조홍철'
+};
+
+async function loadAlertReport() {
+  const card = document.getElementById('alertReportCard');
+  if (!card) return;
+  if (!currentUser || currentUser.role === 'admin') return;
+
+  try {
+    // 이 기사 담당 코스 찾기
+    const myName = currentUser.name;
+    const myCourses = Object.entries(COURSE_DRIVER_ALERT)
+      .filter(([c,d]) => d === myName).map(([c]) => c);
+
+    let snap;
+    if (myCourses.length > 0) {
+      // 담당 코스 기준으로 미답변 즉시경보 조회
+      snap = await db.collection('alerts')
+        .where('resolved','==',false)
+        .where('grade','==','urgent')
+        .get();
+    } else {
+      // 코스 없으면 팀 기준
+      snap = await db.collection('alerts')
+        .where('teamId','==',currentUser.teamId)
+        .where('resolved','==',false)
+        .where('grade','==','urgent')
+        .get();
+    }
+
+    const myAlerts = [];
+    snap.forEach(d => {
+      const a = { id: d.id, ...d.data() };
+      if (a.actionStatus === 'done') return;
+      // 내 코스 경보만 필터
+      if (myCourses.length > 0 && !myCourses.includes(a.courseId)) return;
+      myAlerts.push(a);
+    });
+
+    if (!myAlerts.length) { card.style.display = 'none'; return; }
+
+    card.style.display = 'block';
+    document.getElementById('alertReportBadge').textContent = myAlerts.length + '건';
+
+    const list = document.getElementById('alertReportList');
+    list.innerHTML = myAlerts.map(a => `
+      <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid #fed7d7;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <div style="font-size:14px;font-weight:700;color:#2d3748;">${a.clientName}</div>
+          <span style="font-size:11px;color:#c53030;font-weight:600;">${a.consecutiveDays}일째 미주문 · 일평균 ${a.dailyAvgOrder}개</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button onclick="submitAlertAction('${a.id}','contacted')" style="padding:6px 10px;background:#ebf8ff;color:#2b6cb0;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">📞 연락완료</button>
+          <button onclick="submitAlertAction('${a.id}','closed')" style="padding:6px 10px;background:#fff5f5;color:#c53030;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">🚫 폐업</button>
+          <button onclick="submitAlertAction('${a.id}','holiday')" style="padding:6px 10px;background:#fffff0;color:#975a16;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">🏖️ 일시휴무</button>
+          <button onclick="submitAlertAction('${a.id}','scheduled')" style="padding:6px 10px;background:#f0fff4;color:#276749;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">📅 주문예정</button>
+          <button onclick="submitAlertActionEtc('${a.id}')" style="padding:6px 10px;background:#f7fafc;color:#4a5568;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">📝 기타</button>
+        </div>
+        <div id="action-result-${a.id}" style="font-size:12px;margin-top:6px;color:#38a169;display:none;"></div>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.warn('확인보고 로드 실패:', e.message);
+  }
+}
+
+async function submitAlertAction(alertId, result) {
+  const resultLabels = { contacted:'연락완료', closed:'폐업', holiday:'일시휴무', scheduled:'주문예정' };
+  try {
+    await db.collection('alerts').doc(alertId).update({
+      actionStatus: 'done',
+      actionResult: result,
+      actionAt: firebase.firestore.FieldValue.serverTimestamp(),
+      actionBy: currentUser.uid || currentUser.name
+    });
+    const el = document.getElementById('action-result-'+alertId);
+    if (el) { el.textContent = `✅ ${resultLabels[result]} 처리됨`; el.style.display='block'; }
+    // 카드 버튼 비활성화
+    const btns = el?.closest('[style*="border:1px solid"]')?.querySelectorAll('button');
+    btns?.forEach(b => { b.disabled=true; b.style.opacity='0.5'; });
+    setTimeout(() => loadAlertReport(), 1500);
+  } catch(e) {
+    alert('저장 실패: ' + e.message);
+  }
+}
+
+async function submitAlertActionEtc(alertId) {
+  const memo = prompt('처리 내용을 입력해주세요:');
+  if (!memo) return;
+  try {
+    await db.collection('alerts').doc(alertId).update({
+      actionStatus: 'done',
+      actionResult: 'etc',
+      actionMemo: memo,
+      actionAt: firebase.firestore.FieldValue.serverTimestamp(),
+      actionBy: currentUser.uid || currentUser.name
+    });
+    const el = document.getElementById('action-result-'+alertId);
+    if (el) { el.textContent = `✅ 기타: ${memo}`; el.style.display='block'; }
+    setTimeout(() => loadAlertReport(), 1500);
+  } catch(e) {
+    alert('저장 실패: ' + e.message);
+  }
+}

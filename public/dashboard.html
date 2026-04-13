@@ -566,6 +566,15 @@
   <!-- 홈 섹션 -->
   <div class="tab-section" data-tab="home">
 
+    <!-- 확인보고 카드 (미답변 즉시경보 있을 때 표시) -->
+    <div class="card" id="alertReportCard" style="display:none;border:2px solid #fc8181;background:#fff5f5;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div class="card-title" style="color:#c53030;margin-bottom:0;">🔴 미주문 업체 확인 요청</div>
+        <span id="alertReportBadge" style="background:#c53030;color:#fff;border-radius:10px;padding:2px 8px;font-size:12px;font-weight:700;"></span>
+      </div>
+      <div id="alertReportList"></div>
+    </div>
+
     <!-- CS 알림 카드 (driver 전용, 상함/이물 미완료 시 표시) -->
     <div class="card" id="csAlertCard" style="display:none;border:2px solid #FFC107;background:#FFF8E1;">
       <div class="card-title" style="color:#E65100;">⚠️ CS 필요 업체</div>
