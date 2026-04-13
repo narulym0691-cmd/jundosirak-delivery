@@ -1255,7 +1255,7 @@
           const ws = wb.Sheets[resultSheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const firstData = rows[1] || [];
-          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
+          const isFormat2 = firstData.length > 14 && /^\d+\.\s+/.test(String(firstData[14]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
             ({ driverRows, allClients } = parseResultFormat2(rows));
