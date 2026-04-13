@@ -202,16 +202,22 @@ function initMonthSelect() {
   const now = new Date();
   const sel = document.getElementById('month-select');
   sel.innerHTML = '';
-  // 최근 6개월 옵션 생성
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const ym = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    const label = `${d.getFullYear()}년 ${d.getMonth()+1}월`;
-    const opt = document.createElement('option');
-    opt.value = ym;
-    opt.textContent = label;
-    sel.appendChild(opt);
+  // 서비스 시작: 2026년 4월부터 현재 월까지
+  const startYear = 2026, startMonth = 4;
+  const endYear = now.getFullYear(), endMonth = now.getMonth() + 1;
+  for (let y = startYear; y <= endYear; y++) {
+    const mStart = (y === startYear) ? startMonth : 1;
+    const mEnd = (y === endYear) ? endMonth : 12;
+    for (let m = mStart; m <= mEnd; m++) {
+      const ym = `${y}-${String(m).padStart(2,'0')}`;
+      const opt = document.createElement('option');
+      opt.value = ym;
+      opt.textContent = `${y}년 ${m}월`;
+      sel.appendChild(opt);
+    }
   }
+  // 가장 최근 월 선택
+  sel.selectedIndex = sel.options.length - 1;
   currentYm = sel.value;
   updateBtnTitles();
 }
