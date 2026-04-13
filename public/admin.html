@@ -1141,12 +1141,12 @@
       teamTotalsMap[team] = (teamTotalsMap[team]||0) + total;
     }
 
-    // Step3: 거래처 목록 수집 (index5 = 거래처명, 행44 이후)
+    // Step3: 거래처 목록 수집 (index4 = 거래처명, 행44 이후)
     const allClients = new Set();
     for (let i = 44; i < rows.length; i++) {
       const row = rows[i];
       if (!row) continue;
-      const clientName = String(row[5]||'').trim();
+      const clientName = String(row[4]||'').trim();
       if (!clientName || SKIP_KW.some(k => clientName.includes(k))) continue;
       if (/^\d+$/.test(clientName)) continue;
       allClients.add(clientName);
