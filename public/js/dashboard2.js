@@ -46,7 +46,17 @@ async function loadTeamData() {
 
     // 월간 통계 불러오기
     const statsDoc = await db.collection('monthly_stats').doc(ym).get();
-    allStats = statsDoc.exists ? statsDoc.data() : {};
+    
+    // monthly_stats 없으면 빈 화면 표시 (teams 데이터로 계산하지 않음)
+    if (!statsDoc.exists) {
+      allStats = {};
+      myTeamStats = null;
+      document.getElementById('gaugeCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
+      document.getElementById('rankingCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
+      return;
+    }
+    
+    allStats = statsDoc.data() || {};
 
     if (currentUser.teamId) {
       myTeamStats = allStats[currentUser.teamId] || null;
