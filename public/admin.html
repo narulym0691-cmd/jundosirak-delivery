@@ -1087,10 +1087,11 @@
 
   // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 14=기사명, 15~22=메뉴)
   function parseResultFormat2(rows) {
+    // ※ XLSX.js sheet_to_json 0-based index 기준
     // 파일 구조:
-    // - 행2~25: 기사 summary (col15(index14)=기사명, col16~22(index15~21)=뜨/프/샐/품/덮/샌/세트)
-    // - 행43~: 코스 섹션 헤더 "N ◎ 지역(기사명)배송코스" + 거래처 목록 (col6(index5)=거래처명)
-    // 팀 결정: 코스 섹션 헤더의 코스번호 기준 (기사명 무관, 지역 고정)
+    // - 행2~25: 기사 summary → row[13]=기사명, row[14]~row[20]=뜨/프/샐/품/덮/샌/세트
+    // - 행43~: 코스 섹션 헤더 "N ◎ 지역(기사명)배송코스" → row[13]
+    // - 거래처: row[5]=거래처명 (행44 이후)
     const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처','번호','이름','순서'];
     const DRIVER_PAT = /^\d+\.\s+/;
     const SECTION_PAT = /^\d+\s*◎/;
@@ -1106,12 +1107,12 @@
       12:'team6', 19:'team6',
     };
 
-    // Step1: 코스 섹션 헤더에서 기사명→팀 매핑 (코스번호 기반)
+    // Step1: 코스 섹션 헤더(row[13])에서 기사명→팀 매핑 (코스번호 기반)
     const driverTeamMap = {};
     for (let i = 40; i < rows.length; i++) {
       const row = rows[i];
       if (!row) continue;
-      const cell = String(row[14]||'').trim(); // col15(index14) = 섹션헤더
+      const cell = String(row[13]||'').trim(); // XLSX.js index13 = col14
       if (!SECTION_PAT.test(cell)) continue;
       const courseNum = parseInt(cell.match(/^(\d+)/)[1]);
       const team = COURSE_NUM_TEAM[courseNum];
@@ -1126,26 +1127,26 @@
     for (let i = 1; i < 26; i++) {
       const row = rows[i];
       if (!row) continue;
-      const cell = String(row[14]||'').trim(); // col15(index14) = 기사명
+      const cell = String(row[13]||'').trim(); // XLSX.js index13 = 기사명
       if (!cell || SKIP_KW.some(k => cell.includes(k))) continue;
       if (!DRIVER_PAT.test(cell)) continue;
       const name = cell.replace(/^\d+\.\s+/, '').trim();
       const team = driverTeamMap[name];
       if (!team) continue;
-      // col16~22(index15~21) = 뜨/프/샐/품/덮/샌/세트
+      // index14~20 = 뜨/프/샐/품/덮/샌/세트
       let total = 0;
-      for (let j = 15; j <= 21; j++) total += Number(row[j]||0);
+      for (let j = 14; j <= 20; j++) total += Number(row[j]||0);
       if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
       driverMap[name].total += total;
       teamTotalsMap[team] = (teamTotalsMap[team]||0) + total;
     }
 
-    // Step3: 거래처 목록 수집 (col6(index5) = 거래처명)
+    // Step3: 거래처 목록 수집 (index5 = 거래처명, 행44 이후)
     const allClients = new Set();
     for (let i = 44; i < rows.length; i++) {
       const row = rows[i];
       if (!row) continue;
-      const clientName = String(row[5]||'').trim(); // col6(index5)
+      const clientName = String(row[5]||'').trim();
       if (!clientName || SKIP_KW.some(k => clientName.includes(k))) continue;
       if (/^\d+$/.test(clientName)) continue;
       allClients.add(clientName);
@@ -1255,7 +1256,7 @@
           const ws = wb.Sheets[resultSheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const firstData = rows[1] || [];
-          const isFormat2 = firstData.length > 14 && /^\d+\.\s+/.test(String(firstData[14]||'').trim());
+          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
             ({ driverRows, allClients } = parseResultFormat2(rows));
