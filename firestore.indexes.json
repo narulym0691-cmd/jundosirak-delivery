@@ -41,7 +41,16 @@
         { "fieldPath": "date", "order": "ASCENDING" },
         { "fieldPath": "resolved", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "driver_sales",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
     }
+  ],
   ],
   "fieldOverrides": []
 }
