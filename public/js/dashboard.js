@@ -46,7 +46,12 @@ async function loadTeamData() {
 
     // 월간 통계 불러오기
     const statsDoc = await db.collection('monthly_stats').doc(ym).get();
-    allStats = statsDoc.exists ? statsDoc.data() : {};
+    if (!statsDoc.exists) {
+      document.getElementById('gaugeCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.</div>';
+      document.getElementById('rankingCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.</div>';
+      return;
+    }
+    allStats = statsDoc.data();
 
     if (currentUser.teamId) {
       myTeamStats = allStats[currentUser.teamId] || null;
@@ -69,15 +74,9 @@ function renderIncentiveGauge() {
     return;
   }
 
-  // monthly_stats 데이터가 없으면 0 표시 (teams 컬렉션으로 계산하지 않음)
+  // monthly_stats 데이터가 없으면 빈 상태 표시
   if (!myTeamStats || Object.keys(myTeamStats).length === 0) {
-    container.innerHTML = `
-      <div class="gauge-header">
-        <span class="gauge-team">${myTeam.name}</span>
-        <span class="grade-badge" style="background:#a0aec0">-</span>
-      </div>
-      <div class="empty-msg" style="padding:16px 0;">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>
-    `;
+    container.innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.</div>';
     return;
   }
 
