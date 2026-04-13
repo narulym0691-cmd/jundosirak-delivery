@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>현장 활동 대시보드 — 준도시락</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; }
+body { background: #f0f4f8; min-height: 100vh; }
+.header { background: #1a4731; color: #fff; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+.header-title { font-size: 16px; font-weight: 700; }
+.header-back { color: #fff; text-decoration: none; font-size: 13px; opacity: 0.8; }
+.main { padding: 14px; max-width: 900px; margin: 0 auto; }
+.card { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.card-title { font-size: 14px; font-weight: 700; color: #1a4731; margin-bottom: 12px; }
+
+/* 기간 선택 */
+.period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.period-btn { padding: 7px 14px; border: 1px solid #e2e8f0; border-radius: 20px; font-size: 13px; font-weight: 600; cursor: pointer; background: #fff; color: #4a5568; }
+.period-btn.active { background: #1a4731; color: #fff; border-color: #1a4731; }
+.date-range { display: flex; gap: 6px; align-items: center; }
+.date-range input { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; }
+.date-range button { padding: 6px 12px; background: #1a4731; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+/* 지표 카드 */
+.kpi-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.kpi-card { background: #fff; border-radius: 12px; padding: 14px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); cursor: pointer; transition: transform 0.1s; border: 2px solid transparent; }
+.kpi-card:hover { transform: translateY(-2px); }
+.kpi-card.active { border-color: #1a4731; }
+.kpi-num { font-size: 28px; font-weight: 800; color: #1a4731; }
+.kpi-label { font-size: 11px; color: #718096; margin-top: 3px; }
+.kpi-sub { font-size: 11px; color: #a0aec0; margin-top: 2px; }
+
+/* 팀 선택 버튼 */
+.team-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.team-btn { padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 16px; font-size: 12px; font-weight: 600; cursor: pointer; background: #fff; color: #4a5568; }
+.team-btn.active { background: #1a4731; color: #fff; border-color: #1a4731; }
+
+/* 목록 */
+.visit-item { padding: 12px; border-radius: 8px; background: #f7fafc; margin-bottom: 8px; }
+.visit-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom:6px; }
+.visit-client { font-size: 14px; font-weight: 700; color: #2d3748; }
+.visit-meta { font-size: 11px; color: #718096; text-align: right; }
+.visit-content { font-size: 13px; color: #4a5568; margin-bottom: 6px; line-height: 1.5; }
+.visit-footer { display: flex; justify-content: space-between; align-items: center; }
+.badge { padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.badge-new { background: #e6fffa; color: #276749; }
+.badge-manage { background: #ebf8ff; color: #2b6cb0; }
+.badge-contract { background: #f0fff4; color: #276749; }
+.badge-pending { background: #fffff0; color: #975a16; }
+.badge-reject { background: #fff5f5; color: #c53030; }
+.photo-thumb { width: 48px; height: 48px; border-radius: 6px; object-fit: cover; cursor: pointer; }
+
+/* 라이트박스 */
+#lightbox { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; align-items:center; justify-content:center; }
+#lightbox img { max-width: 92%; max-height: 92vh; border-radius: 8px; }
+#lightbox.show { display: flex; }
+
+.empty-msg { text-align: center; color: #a0aec0; font-size: 13px; padding: 30px 0; }
+.loading-msg { text-align: center; color: #718096; font-size: 13px; padding: 20px 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="/admin.html" class="header-back">← 관리자</a>
+  <div class="header-title">📍 현장 활동 대시보드</div>
+  <div style="width:50px;"></div>
+</div>
+
+<div class="main">
+  <!-- 기간 선택 -->
+  <div class="card">
+    <div class="period-bar">
+      <button class="period-btn active" id="pb-week" onclick="setPeriod('week')">이번 주</button>
+      <button class="period-btn" id="pb-month" onclick="setPeriod('month')">이번 달</button>
+      <div class="date-range">
+        <input type="date" id="dateStart">
+        <span style="font-size:12px;color:#718096;">~</span>
+        <input type="date" id="dateEnd">
+        <button onclick="setPeriod('custom')">조회</button>
+      </div>
+    </div>
+    <div id="period-label" style="font-size:12px;color:#718096;margin-top:8px;"></div>
+  </div>
+
+  <!-- KPI 카드 -->
+  <div class="kpi-grid">
+    <div class="kpi-card" id="kpi-new" onclick="filterList('new_biz')">
+      <div class="kpi-num" id="kpi-new-num">0</div>
+      <div class="kpi-label">📍 신규영업</div>
+      <div class="kpi-sub">클릭 시 목록 표시</div>
+    </div>
+    <div class="kpi-card" id="kpi-manage" onclick="filterList('client_manage')">
+      <div class="kpi-num" id="kpi-manage-num">0</div>
+      <div class="kpi-label">🔄 고객관리</div>
+      <div class="kpi-sub">클릭 시 목록 표시</div>
+    </div>
+    <div class="kpi-card" id="kpi-contract" onclick="filterList('contract')">
+      <div class="kpi-num" id="kpi-contract-num">0</div>
+      <div class="kpi-label">✅ 계약 성사</div>
+      <div class="kpi-sub">구글시트 자동 매핑</div>
+    </div>
+    <div class="kpi-card" id="kpi-total" onclick="filterList('all')">
+      <div class="kpi-num" id="kpi-total-num">0</div>
+      <div class="kpi-label">📊 전체 활동</div>
+      <div class="kpi-sub">클릭 시 전체 목록</div>
+    </div>
+  </div>
+
+  <!-- 팀별 막대 그래프 -->
+  <div class="card">
+    <div class="card-title">팀별 활동량</div>
+    <canvas id="teamChart" height="180"></canvas>
+  </div>
+
+  <!-- 날짜별 추이 -->
+  <div class="card">
+    <div class="card-title">날짜별 방문 추이</div>
+    <canvas id="trendChart" height="160"></canvas>
+  </div>
+
+  <!-- 상세 목록 -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="card-title" style="margin:0;" id="list-title">전체 방문 목록</div>
+      <span id="list-count" style="font-size:12px;color:#718096;"></span>
+    </div>
+    <!-- 팀 선택 -->
+    <div class="team-btns" id="team-btns">
+      <button class="team-btn active" onclick="filterTeam('all')">전체</button>
+      <button class="team-btn" onclick="filterTeam('team1')">1팀 준고</button>
+      <button class="team-btn" onclick="filterTeam('team2')">2팀 해운대</button>
+      <button class="team-btn" onclick="filterTeam('team3')">3팀 공오일</button>
+      <button class="team-btn" onclick="filterTeam('team4')">4팀 연수남</button>
+      <button class="team-btn" onclick="filterTeam('team5')">5팀 아가리</button>
+      <button class="team-btn" onclick="filterTeam('team6')">6팀 도세마</button>
+      <button class="team-btn" onclick="filterTeam('team7')">7팀 강서영</button>
+    </div>
+    <div id="visit-list"><div class="loading-msg">로딩 중...</div></div>
+  </div>
+</div>
+
+<!-- 라이트박스 -->
+<div id="lightbox" onclick="this.classList.remove('show')">
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyARaQ_iFPRKBhMOrRcX0fhQtLGlZtC7UHo",
+  authDomain: "jundosirak-delivery2.firebaseapp.com",
+  projectId: "jundosirak-delivery2",
+  storageBucket: "jundosirak-delivery2.firebasestorage.app",
+  messagingSenderId: "570663336725",
+  appId: "1:570663336725:web:16f1a6662196d6ce7c071c"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// 구글시트 신규업체
+const SHEET_ID = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
+const SHEET_GID = '1000247276';
+
+const TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+const TEAM_COLORS = {
+  team1:'#38a169', team2:'#3182ce', team3:'#d69e2e',
+  team4:'#805ad5', team5:'#e53e3e', team6:'#dd6b20', team7:'#319795'
+};
+
+let allData = [];
+let filteredData = [];
+let currentTypeFilter = 'all';
+let currentTeamFilter = 'all';
+let contractedClients = [];
+let teamChart = null;
+let trendChart = null;
+
+function getWeekRange() {
+  const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const day = now.getDay();
+  const mon = new Date(now); mon.setDate(now.getDate() - (day===0?6:day-1));
+  const sun = new Date(mon); sun.setDate(mon.getDate()+6);
+  return { start: fmtDate(mon), end: fmtDate(sun) };
+}
+function getMonthRange() {
+  const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const y = now.getFullYear(), m = String(now.getMonth()+1).padStart(2,'0');
+  const last = new Date(y, now.getMonth()+1, 0).getDate();
+  return { start:`${y}-${m}-01`, end:`${y}-${m}-${String(last).padStart(2,'0')}` };
+}
+function fmtDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+function setPeriod(type) {
+  let start, end;
+  ['week','month'].forEach(t => document.getElementById('pb-'+t).classList.remove('active'));
+  if (type==='week') { const r=getWeekRange(); start=r.start; end=r.end; document.getElementById('pb-week').classList.add('active'); }
+  else if (type==='month') { const r=getMonthRange(); start=r.start; end=r.end; document.getElementById('pb-month').classList.add('active'); }
+  else { start=document.getElementById('dateStart').value; end=document.getElementById('dateEnd').value; if(!start||!end){alert('날짜를 선택해주세요.');return;} }
+  document.getElementById('period-label').textContent = `조회 기간: ${start} ~ ${end}`;
+  loadData(start, end);
+}
+
+async function loadContractedClients() {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${SHEET_GID}`;
+    const res = await fetch(url);
+    const text = await res.text();
+    contractedClients = text.split('\n').map(r => r.split(',')[0].replace(/"/g,'').replace(/\s/g,'').toLowerCase()).filter(Boolean);
+  } catch(e) {
+    contractedClients = [];
+  }
+}
+
+function isContracted(clientName) {
+  const cn = (clientName||'').replace(/\s/g,'').toLowerCase();
+  return contractedClients.some(c => c && (cn.includes(c) || c.includes(cn)));
+}
+
+async function loadData(start, end) {
+  document.getElementById('visit-list').innerHTML = '<div class="loading-msg">로딩 중...</div>';
+  try {
+    const snap = await db.collection('field_visits')
+      .where('date','>=',start).where('date','<=',end).get();
+    allData = [];
+    snap.forEach(d => allData.push({ id:d.id, ...d.data() }));
+    allData.sort((a,b) => b.date > a.date ? 1 : -1);
+    // 계약 자동 매핑
+    allData.forEach(d => {
+      if (d.visitType === 'new_biz') d._contracted = isContracted(d.clientName);
+    });
+    applyFilters();
+    renderKPI();
+    renderTeamChart();
+    renderTrendChart(start, end);
+  } catch(e) {
+    document.getElementById('visit-list').innerHTML = `<div class="empty-msg">로드 실패: ${e.message}</div>`;
+  }
+}
+
+function applyFilters() {
+  filteredData = allData.filter(d => {
+    if (currentTypeFilter==='new_biz' && d.visitType!=='new_biz') return false;
+    if (currentTypeFilter==='client_manage' && d.visitType!=='client_manage') return false;
+    if (currentTypeFilter==='contract' && !d._contracted) return false;
+    if (currentTeamFilter!=='all' && d.teamId!==currentTeamFilter) return false;
+    return true;
+  });
+  renderList();
+}
+
+function filterList(type) {
+  currentTypeFilter = type;
+  ['new','manage','contract','total'].forEach(k => document.getElementById('kpi-'+k).classList.remove('active'));
+  const map = {new_biz:'new',client_manage:'manage',contract:'contract',all:'total'};
+  if (map[type]) document.getElementById('kpi-'+map[type]).classList.add('active');
+  const titles = {new_biz:'신규영업 목록',client_manage:'고객관리 목록',contract:'계약 성사 목록',all:'전체 방문 목록'};
+  document.getElementById('list-title').textContent = titles[type]||'전체 방문 목록';
+  applyFilters();
+}
+
+function filterTeam(teamId) {
+  currentTeamFilter = teamId;
+  document.querySelectorAll('.team-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  applyFilters();
+}
+
+function renderKPI() {
+  const newBiz = allData.filter(d=>d.visitType==='new_biz').length;
+  const manage = allData.filter(d=>d.visitType==='client_manage').length;
+  const contract = allData.filter(d=>d._contracted).length;
+  document.getElementById('kpi-new-num').textContent = newBiz;
+  document.getElementById('kpi-manage-num').textContent = manage;
+  document.getElementById('kpi-contract-num').textContent = contract;
+  document.getElementById('kpi-total-num').textContent = allData.length;
+}
+
+function renderTeamChart() {
+  const teams = ['team1','team2','team3','team4','team5','team6','team7'];
+  const newData = teams.map(t => allData.filter(d=>d.teamId===t&&d.visitType==='new_biz').length);
+  const manData = teams.map(t => allData.filter(d=>d.teamId===t&&d.visitType==='client_manage').length);
+  const labels = teams.map(t => TEAM_NAMES[t].replace('팀 ','팀\n'));
+  if (teamChart) teamChart.destroy();
+  teamChart = new Chart(document.getElementById('teamChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label:'신규영업', data:newData, backgroundColor:'#38a169', borderRadius:4 },
+        { label:'고객관리', data:manData, backgroundColor:'#3182ce', borderRadius:4 }
+      ]
+    },
+    options: {
+      responsive:true, plugins:{ legend:{position:'top'} },
+      scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true, ticks:{stepSize:1}} }
+    }
+  });
+}
+
+function renderTrendChart(start, end) {
+  const dates = [];
+  const s = new Date(start), e = new Date(end);
+  for (let d=new Date(s); d<=e; d.setDate(d.getDate()+1)) dates.push(fmtDate(new Date(d)));
+  const newLine = dates.map(dt => allData.filter(d=>d.date===dt&&d.visitType==='new_biz').length);
+  const manLine = dates.map(dt => allData.filter(d=>d.date===dt&&d.visitType==='client_manage').length);
+  const shortDates = dates.map(d => d.slice(5));
+  if (trendChart) trendChart.destroy();
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: shortDates,
+      datasets: [
+        { label:'신규영업', data:newLine, borderColor:'#38a169', backgroundColor:'rgba(56,161,105,0.1)', tension:0.3, fill:true, pointRadius:3 },
+        { label:'고객관리', data:manLine, borderColor:'#3182ce', backgroundColor:'rgba(49,130,206,0.1)', tension:0.3, fill:true, pointRadius:3 }
+      ]
+    },
+    options: {
+      responsive:true, plugins:{legend:{position:'top'}},
+      scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} }
+    }
+  });
+}
+
+function renderList() {
+  const el = document.getElementById('visit-list');
+  document.getElementById('list-count').textContent = `${filteredData.length}건`;
+  if (!filteredData.length) { el.innerHTML = '<div class="empty-msg">해당 기간 기록이 없습니다.</div>'; return; }
+  el.innerHTML = filteredData.map(d => {
+    const isNew = d.visitType === 'new_biz';
+    const typeBadge = isNew
+      ? '<span class="badge badge-new">📍 신규영업</span>'
+      : '<span class="badge badge-manage">🔄 고객관리</span>';
+    let resultBadge = '';
+    if (isNew) {
+      resultBadge = d._contracted
+        ? '<span class="badge badge-contract">✅ 계약됨</span>'
+        : '<span class="badge badge-pending">🔄 진행중</span>';
+    }
+    const photo = d.photoUrl
+      ? `<img src="${d.photoUrl}" class="photo-thumb" onclick="openLightbox('${d.photoUrl}')" alt="방문사진">`
+      : '';
+    const teamName = TEAM_NAMES[d.teamId] || d.teamId || '';
+    return `
+      <div class="visit-item">
+        <div class="visit-header">
+          <div class="visit-client">${d.clientName||'(업체명 없음)'}</div>
+          <div class="visit-meta">${d.date}<br>${d.driverName||''} · ${teamName}</div>
+        </div>
+        <div class="visit-content">${(d.content||'').replace(/\n/g,'<br>')}</div>
+        <div class="visit-footer">
+          <div style="display:flex;gap:6px;align-items:center;">${typeBadge}${resultBadge}</div>
+          ${photo}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openLightbox(url) {
+  document.getElementById('lightbox-img').src = url;
+  document.getElementById('lightbox').classList.add('show');
+}
+
+// 초기화
+window.addEventListener('DOMContentLoaded', async () => {
+  const user = JSON.parse(localStorage.getItem('jundosirak_user')||'null');
+  if (!user || user.role !== 'admin') { location.href='/index.html'; return; }
+  await loadContractedClients();
+  setPeriod('month');
+});
+</script>
+</body>
+</html>
