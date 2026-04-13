@@ -2649,6 +2649,11 @@ async function sendSms() {
     <span>📋</span> 정성평가
   </button>
   <div class="dropup-divider"></div>
+  <div class="dropup-divider"></div>
+  <button class="dropup-item" style="color:#c53030;" onclick="closeDropup(); resetAllSalesData();">
+    <span>🗑️</span> 데이터 초기화
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item logout-item" onclick="closeDropup(); logout();">
     <span>🚪</span> 로그아웃
   </button>
@@ -3210,6 +3215,33 @@ window.showSalesAlarmModal = function() {
 
 initAdmin();
 initSalesAlarm();
+
+window.resetAllSalesData = async function() {
+  if (!confirm('daily_sales, monthly_stats 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) return;
+  try {
+    const [dailySnap, monthlySnap] = await Promise.all([
+      db.collection('daily_sales').get(),
+      db.collection('monthly_stats').get()
+    ]);
+    const batch = db.batch();
+    let count = 0;
+    dailySnap.forEach(doc => { batch.delete(doc.ref); count++; });
+    monthlySnap.forEach(doc => { batch.delete(doc.ref); count++; });
+    if (count === 0) { alert('삭제할 데이터가 없습니다.'); return; }
+    // batch 500개 제한 처리
+    if (count <= 500) {
+      await batch.commit();
+    } else {
+      // 500개 초과 시 개별 삭제
+      for (const doc of dailySnap.docs) await doc.ref.delete();
+      for (const doc of monthlySnap.docs) await doc.ref.delete();
+    }
+    alert(`✅ 초기화 완료 (daily_sales ${dailySnap.size}건, monthly_stats ${monthlySnap.size}건 삭제)`);
+    location.reload();
+  } catch(e) {
+    alert('초기화 실패: ' + e.message);
+  }
+};
 </script>
 </body>
 </html>
