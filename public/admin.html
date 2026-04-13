@@ -1085,77 +1085,57 @@
     return { driverRows: Object.values(driverMap), allClients: new Set() };
   }
 
-  // ── 양식2 파싱: "결과" 시트, 상세 일일장부 (index 14=기사명, 15~22=메뉴)
+  // ── 양식2 파싱: "결과" 시트, 코스 섹션 헤더 기반
+  // 행43+: "N ◎ 지역(기사명)배송코스" → 코스번호 → COURSE_TEAM → teamId
+  // 거래처 수량: col7 합산 (기사 summary 행은 teamTotals 계산에서 제외)
   function parseResultFormat2(rows) {
-    // col: 14=기사명, 15=뜨, 16=프, 17=샐, 18=품, 19=덮, 20=샌, 21=세트, 22=유부, 23=밥, 24=국
-    const SKIP_KW = ['합계','총합계','소계','공란','미배정','조식배송','거래처'];
-    const DRIVER_PAT = /^\d+\.\s+/;   // "N. 이름" 기사 summary 행
-    const SECTION_PAT = /^\d+\s*◎/;  // "N ◎ ..." 섹션 헤더 행
+    const SKIP_KW    = ['합계','총합계','소계','공란','미배정','조식배송'];
+    const SECTION_PAT = /^(\d+)\s*◎/;  // "N ◎ ..." 코스 섹션 헤더
+    const COL_NAME   = 14;  // 거래처명 / 섹션헤더 컬럼
+    const COL_QTY    = 7;   // 거래처 수량 컬럼
 
-    const driverMap = {};
+    const teamAccum  = {};  // teamId → { teamName, total }
     const allClients = new Set();
-    let currentDriverName = null;
+    let currentTeam  = null;  // { teamId, teamName } | null
+    let skipNext     = false; // 섹션헤더 다음 컬럼헤더 행 스킵
 
     for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const cell = String(row[14]||'').trim();
+      if (skipNext) { skipNext = false; continue; }
+
+      const row  = rows[i];
+      const cell = String(row[COL_NAME]||'').trim();
       if (!cell) continue;
       if (SKIP_KW.some(k => cell.includes(k))) continue;
 
-      if (DRIVER_PAT.test(cell)) {
-        // 기사 summary 행: "N. 표창훈"
-        const name = cell.replace(/^\d+\.\s*/, '').trim();
-        const courseId = DRIVER_COURSE_MAP[name];
-        const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
-        if (!team) { currentDriverName = null; continue; }
-        // 수량 합산: 뜨(15)~유부(22), 밥(23)/국(24) 제외
-        let total = 0;
-        for (let j = 15; j <= 22; j++) total += Number(row[j]||0);
-        if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
-        driverMap[name].total += total;
-        currentDriverName = name;
+      const sm = cell.match(SECTION_PAT);
+      if (sm) {
+        // 코스 섹션 헤더: 코스번호 추출 → teamId 결정
+        const courseId  = '코스' + parseInt(sm[1]);
+        const info      = COURSE_TEAM[courseId] || null;
+        currentTeam     = info ? { teamId: info.teamId, teamName: info.teamName } : null;
+        skipNext        = true;  // 다음 행은 컬럼헤더 → 스킵
         continue;
       }
 
-      if (SECTION_PAT.test(cell)) {
-        // "N ◎ 지역(기사명)배송코스" 섹션 헤더 → currentDriver 유지, 스킵
-        continue;
-      }
+      if (!currentTeam) continue;  // 섹션 진입 전(기사 summary 행 등) 스킵
 
-      // 거래처 행: currentDriver 있고 위 패턴 아닌 경우
-      if (currentDriverName && driverMap[currentDriverName]) {
-        allClients.add(cell);
-        if (!driverMap[currentDriverName].clients.includes(cell)) {
-          driverMap[currentDriverName].clients.push(cell);
-        }
+      // 거래처 행: col7 수량 합산
+      const qty = Number(row[COL_QTY]||0);
+      if (qty <= 0) continue;
+
+      allClients.add(cell);
+      if (!teamAccum[currentTeam.teamId]) {
+        teamAccum[currentTeam.teamId] = { teamId: currentTeam.teamId, teamName: currentTeam.teamName, total: 0 };
       }
+      teamAccum[currentTeam.teamId].total += qty;
     }
 
-    // 새 양식 전용: 행42 이후 거래처별 상세 섹션에서 orderedClients 수집
-    // (col15~24 중 하나라도 > 0인 거래처만, 중복 제거)
-    let detailStart = -1;
-    for (let i = 40; i < rows.length; i++) {
-      if (SECTION_PAT.test(String(rows[i][14]||'').trim())) {
-        detailStart = i + 2; // 섹션헤더(i) + 컬럼헤더(i+1) 스킵
-        break;
-      }
-    }
-    if (detailStart >= 0) {
-      for (let i = detailStart; i < rows.length; i++) {
-        const row = rows[i];
-        const cell = String(row[14]||'').trim();
-        if (!cell) continue;
-        if (SKIP_KW.some(k => cell.includes(k))) continue;
-        if (SECTION_PAT.test(cell)) { i += 1; continue; } // 다음 코스 섹션헤더+컬럼헤더 스킵
-        let hasQty = false;
-        for (let j = 15; j <= 24; j++) {
-          if (Number(row[j]||0) > 0) { hasQty = true; break; }
-        }
-        if (hasQty) allClients.add(cell);
-      }
-    }
+    // driverRows 호환: 팀별 하나의 엔트리로 반환
+    const driverRows = Object.values(teamAccum).map(t => ({
+      name: t.teamName, team: t.teamId, total: t.total, revenue: 0, clients: [],
+    }));
 
-    return { driverRows: Object.values(driverMap), allClients };
+    return { driverRows, allClients };
   }
 
   // ── 구형 양식 파싱: "붙여넣기" 시트 (거래처별 주문행 구조)
@@ -1257,7 +1237,7 @@
           const ws = wb.Sheets[resultSheetName];
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const firstData = rows[1] || [];
-          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
+          const isFormat2 = firstData.length > 14 && /^\d+\.\s+/.test(String(firstData[14]||'').trim());
           if (isFormat2) {
             parseNote = '양식2 (상세 일일장부)';
             ({ driverRows, allClients } = parseResultFormat2(rows));
