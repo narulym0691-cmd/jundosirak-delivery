@@ -563,7 +563,7 @@ async function loadFieldVisits() {
     let snap;
 
     if (isAdmin) {
-      // 관리자/매니저: 팀 전체 기록 (teamId 필터, 클라이언트 정렬)
+      // 관리자/매니저: teamId 필터만 사용 (orderBy 없음 → 복합 인덱스 불필요)
       if (teamId) {
         snap = await db.collection('field_visits')
           .where('teamId', '==', teamId)
@@ -576,10 +576,9 @@ async function loadFieldVisits() {
           .get();
       }
     } else {
-      // 기사: 본인 기록만 (단일 필드 쿼리 → 복합 인덱스 불필요)
+      // 기사: driverId 필터만 사용 (orderBy 없음 → 복합 인덱스 불필요)
       snap = await db.collection('field_visits')
         .where('driverId', '==', currentUser.uid)
-        .orderBy('createdAt', 'desc')
         .limit(20)
         .get();
     }
@@ -591,14 +590,12 @@ async function loadFieldVisits() {
 
     const items = [];
     snap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
-    // 관리자는 클라이언트에서 날짜 내림차순 정렬
-    if (isAdmin) {
-      items.sort((a, b) => {
-        const ta = a.createdAt ? a.createdAt.toMillis() : 0;
-        const tb = b.createdAt ? b.createdAt.toMillis() : 0;
-        return tb - ta;
-      });
-    }
+    // 클라이언트에서 createdAt 내림차순 정렬
+    items.sort((a, b) => {
+      const ta = a.createdAt ? a.createdAt.toMillis() : 0;
+      const tb = b.createdAt ? b.createdAt.toMillis() : 0;
+      return tb - ta;
+    });
 
     container.innerHTML = items.map(v => {
       const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '-';
