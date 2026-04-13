@@ -46,17 +46,7 @@ async function loadTeamData() {
 
     // 월간 통계 불러오기
     const statsDoc = await db.collection('monthly_stats').doc(ym).get();
-    
-    // monthly_stats 없으면 빈 화면 표시 (teams 데이터로 계산하지 않음)
-    if (!statsDoc.exists) {
-      allStats = {};
-      myTeamStats = null;
-      document.getElementById('gaugeCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
-      document.getElementById('rankingCard').innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
-      return;
-    }
-    
-    allStats = statsDoc.data() || {};
+    allStats = statsDoc.exists ? statsDoc.data() : {};
 
     if (currentUser.teamId) {
       myTeamStats = allStats[currentUser.teamId] || null;
@@ -79,40 +69,37 @@ function renderIncentiveGauge() {
     return;
   }
 
-  const s = myTeamStats || {};
-  const hasStats = !!myTeamStats;
-  const t = myTeam;
-  // 실적 숫자: 데이터 없으면 0
-  const cumul = hasStats ? (s.cumulativeTotal || 0) : 0;
-  const baseline = s.baselineCumulative || t.baselineDailyAvg || 0;
-  const diff = hasStats ? (cumul - baseline) : 0;
-  const diffStr = diff >= 0 ? `+${numFormat(diff)}` : numFormat(diff);
-  const grade = hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t);
-  const gColor = gradeColor(grade);
-
-  // 게이지 계산 (기준선 0%, A등급 100%)
-  const rangeMin = baseline;
-  const rangeMax = t.gradeA * (baseline / t.baselineDailyAvg || 1);
-  // 누적 기반 진행도: 실적 없으면 0
-  const gaugePct = hasStats ? Math.min(100, Math.max(0,
-    ((cumul - rangeMin) / (rangeMax - rangeMin + 1)) * 100
-  )) : 0;
-
-  // B까지 남은 개수
-  const toB = t.gradeB ? Math.max(0, t.gradeB - cumul) : null;
-  const toA = t.gradeA ? Math.max(0, t.gradeA - cumul) : null;
-  let remainMsg = '';
-  if (grade === 'A') {
-    remainMsg = '🏆 A등급 달성!';
-  } else if (grade === 'B') {
-    remainMsg = toA > 0 ? `A등급까지 <strong>${numFormat(toA)}개</strong> 남음` : '';
-  } else {
-    remainMsg = toB > 0 ? `B등급까지 <strong>${numFormat(toB)}개</strong> 남음` : '';
+  // monthly_stats 데이터가 없으면 0 표시 (teams 컬렉션으로 계산하지 않음)
+  if (!myTeamStats || Object.keys(myTeamStats).length === 0) {
+    container.innerHTML = `
+      <div class="gauge-header">
+        <span class="gauge-team">${myTeam.name}</span>
+        <span class="grade-badge" style="background:#a0aec0">-</span>
+      </div>
+      <div class="empty-msg" style="padding:16px 0;">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>
+    `;
+    return;
   }
+
+  const s = myTeamStats;
+  // 모든 수치는 monthly_stats에서만 읽음
+  const cumul    = s.cumulativeTotal  || 0;
+  const baseline = s.baselineCumulative || 0;
+  const diff     = s.dailyAvgDiff !== undefined ? Math.round(s.dailyAvgDiff) * (s.bizDays || 0) : (cumul - baseline);
+  const diffStr  = diff >= 0 ? `+${numFormat(diff)}` : numFormat(diff);
+  const grade    = s.grade || '기준미달';
+  const gColor   = gradeColor(grade);
+  const gaugePct = baseline > 0 ? Math.min(100, Math.max(0, (cumul / baseline) * 100)) : 0;
+
+  const toNextGrade = (() => {
+    if (grade === 'A') return '🏆 A등급 달성!';
+    const toB  = Math.max(0, (s.baselineCumulative || 0) * 1.1 - cumul);
+    return `B등급까지 <strong>${numFormat(Math.ceil(toB))}개</strong> 남음`;
+  })();
 
   container.innerHTML = `
     <div class="gauge-header">
-      <span class="gauge-team">${t.name}</span>
+      <span class="gauge-team">${myTeam.name}</span>
       <span class="grade-badge" style="background:${gColor}">${grade}등급</span>
     </div>
     <div class="gauge-numbers">
@@ -137,7 +124,7 @@ function renderIncentiveGauge() {
         <span>기준</span><span>C</span><span>B</span><span>A</span>
       </div>
     </div>
-    <div class="gauge-remain">${remainMsg}</div>
+    <div class="gauge-remain">${toNextGrade}</div>
   `;
 }
 
@@ -149,21 +136,22 @@ function renderTeamRanking() {
     return;
   }
 
-  // 일평균 기준 정렬
-  // monthly_stats 없으면 빈 상태 표시
+  // monthly_stats 없으면 빈 상태 표시 (teams 컬렉션으로 절대 계산하지 않음)
   if (!allStats || Object.keys(allStats).length === 0) {
     container.innerHTML = '<div class="empty-msg">📊 판매 데이터가 없습니다.<br><small>일일장부를 업로드하면 표시됩니다.</small></div>';
     return;
   }
+
   const ranked = allTeams.map(t => {
     const s = allStats[t.id] || {};
     const hasStats = Object.keys(s).length > 0;
-    const bizDays = hasStats ? (s.bizDays || 0) : 0;
-    const cumTotal = hasStats ? (s.cumulativeTotal || 0) : 0;
-    const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumTotal / bizDays) : 0)) : 0;
+    // 모든 수치는 monthly_stats에서만 읽음. 없으면 0
+    const cumTotal    = hasStats ? (s.cumulativeTotal || 0) : 0;
+    const bizDays     = hasStats ? (s.bizDays || 0) : 0;
+    const dailyAvg    = hasStats ? (s.dailyAvg || 0) : 0;
     const dailyAvgDiff = hasStats ? (s.dailyAvgDiff || 0) : 0;
-    const grade = hasStats ? (s.grade || calcGrade(cumTotal, t)) : calcGrade(0, t);
-    const baseline = t.baselineDailyAvg || 0;
+    const grade       = hasStats ? (s.grade || '기준미달') : '-';
+    const baseline    = hasStats ? (s.baselineCumulative || 0) : 0;
     return { ...t, dailyAvg, dailyAvgDiff, grade, cumTotal, bizDays, baseline };
   }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
 
