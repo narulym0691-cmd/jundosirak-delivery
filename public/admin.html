@@ -1035,7 +1035,8 @@
     const driverMap = {};
     for (let i = 1; i < rows.length; i++) {
       const row = rows[i];
-      const name = String(row[colName]||'').trim();
+      const raw = String(row[colName]||'').trim();
+      const name = raw.replace(/^\d+\.\s*/, '').trim();
       if (!name || SKIP_KW.some(k => name.includes(k))) continue;
       const total = Number(row[colTotal]||0);
       if (total <= 0) continue;
