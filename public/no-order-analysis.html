@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미주문 업체 분석 — 준도시락</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7fafc; min-height: 100vh; }
+.header { background: #1a4731; color: #fff; padding: 16px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
+.header-back { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 4px; }
+.header-title { font-size: 17px; font-weight: 700; }
+.header-sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+.content { padding: 16px; max-width: 900px; margin: 0 auto; }
+.period-buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
+.period-btn { padding: 14px 10px; border: 2px solid #e2e8f0; border-radius: 10px; background: #fff; cursor: pointer; text-align: center; transition: all 0.15s; }
+.period-btn:hover { border-color: #1a4731; }
+.period-btn.active { border-color: #1a4731; background: #1a4731; color: #fff; }
+.period-btn .btn-title { font-size: 14px; font-weight: 700; }
+.period-btn .btn-desc { font-size: 11px; color: #718096; margin-top: 3px; }
+.period-btn.active .btn-desc { color: rgba(255,255,255,0.7); }
+.result-section { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.result-title { font-size: 15px; font-weight: 700; color: #1a4731; }
+.result-count { font-size: 13px; color: #718096; }
+.download-btn { padding: 8px 14px; background: #38a169; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+.download-btn:disabled { background: #a0aec0; cursor: not-allowed; }
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+.filter-select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
+.search-input { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; flex: 1; min-width: 120px; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f0fff4; color: #276749; font-weight: 600; padding: 9px 10px; text-align: left; border-bottom: 2px solid #c6f6d5; white-space: nowrap; }
+td { padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #2d3748; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f7fafc; }
+.badge-team { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #e2e8f0; color: #4a5568; }
+.badge-priority { background: #fed7d7; color: #c53030; }
+.empty-msg { text-align: center; padding: 40px; color: #a0aec0; font-size: 14px; }
+.loading-msg { text-align: center; padding: 30px; color: #718096; font-size: 14px; }
+.summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.summary-card { background: #f0fff4; border-radius: 8px; padding: 12px; text-align: center; }
+.summary-card .s-num { font-size: 22px; font-weight: 700; color: #1a4731; }
+.summary-card .s-label { font-size: 11px; color: #718096; margin-top: 3px; }
+.team-names { '1팀 준고': 'team1', '2팀 해운대': 'team2' }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <button class="header-back" onclick="history.back()">←</button>
+  <div>
+    <div class="header-title">📉 미주문 업체 분석</div>
+    <div class="header-sub">해당 기간 동안 한 번도 주문 없는 업체</div>
+  </div>
+</div>
+
+<div class="content">
+  <!-- 기간 선택 버튼 -->
+  <div class="period-buttons">
+    <button class="period-btn" id="btn-p1" onclick="selectPeriod(1)">
+      <div class="btn-title">📅 4월 1일~10일</div>
+      <div class="btn-desc">1구간 영업일 기준 미주문 업체 조회</div>
+    </button>
+    <button class="period-btn" id="btn-p2" onclick="selectPeriod(2)">
+      <div class="btn-title">📅 4월 11일~20일</div>
+      <div class="btn-desc">2구간 영업일 기준 미주문 업체 조회</div>
+    </button>
+    <button class="period-btn" id="btn-p3" onclick="selectPeriod(3)">
+      <div class="btn-title">📅 4월 21일~30일</div>
+      <div class="btn-desc">3구간 영업일 기준 미주문 업체 조회</div>
+    </button>
+    <button class="period-btn" id="btn-p4" onclick="selectPeriod(4)">
+      <div class="btn-title">📊 4월 전체</div>
+      <div class="btn-desc">4월 한 달 전체 미주문 업체 조회</div>
+    </button>
+  </div>
+
+  <!-- 결과 영역 (항상 표시) -->
+  <div class="result-section">
+    <div id="result-empty" class="empty-msg">위 버튼을 클릭하면 미주문 업체 목록이 바로 표시됩니다.</div>
+    <div id="result-loading" class="loading-msg" style="display:none">⏳ 데이터 조회 중...</div>
+    <div id="result-content" style="display:none">
+      <div class="result-header">
+        <div>
+          <div class="result-title" id="result-title">미주문 업체</div>
+          <div class="result-count" id="result-count"></div>
+        </div>
+        <button class="download-btn" onclick="downloadExcel()" id="dl-btn">
+          <span>⬇️</span> 엑셀 다운로드
+        </button>
+      </div>
+      <!-- 요약 카드 -->
+      <div class="summary-cards" id="summary-cards"></div>
+      <!-- 필터 -->
+      <div class="filter-row">
+        <select class="filter-select" id="filter-team" onchange="renderTable()">
+          <option value="">전체 팀</option>
+          <option value="team1">1팀 준고</option>
+          <option value="team2">2팀 해운대</option>
+          <option value="team3">3팀 공오일</option>
+          <option value="team4">4팀 연수남</option>
+          <option value="team5">5팀 아가리</option>
+          <option value="team6">6팀 도세마</option>
+          <option value="team7">7팀 강서영</option>
+        </select>
+        <select class="filter-select" id="filter-priority" onchange="renderTable()">
+          <option value="">전체</option>
+          <option value="1">1순위만</option>
+          <option value="0">일반만</option>
+        </select>
+        <input class="search-input" id="filter-search" type="text" placeholder="업체명 검색..." oninput="renderTable()">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>업체명</th>
+              <th>팀</th>
+              <th>코스</th>
+              <th>일평균</th>
+              <th>1순위</th>
+              <th>주문요일</th>
+              <th>이 기간 영업일수</th>
+            </tr>
+          </thead>
+          <tbody id="result-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="/js/auth.js"></script>
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyARaQ_iFPRKBhMOrRcX0fhQtLGlZtC7UHo",
+  authDomain: "jundosirak-delivery2.firebaseapp.com",
+  projectId: "jundosirak-delivery2",
+  storageBucket: "jundosirak-delivery2.firebasestorage.app",
+  messagingSenderId: "570663336725",
+  appId: "1:570663336725:web:16f1a6662196d6ce7c071c"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// 코스→기사 매핑
+const COURSE_DRIVER = {
+  '코스1':'표창훈','코스2':'이근일','코스3':'김민기','코스4':'오철석',
+  '코스5':'이진우','코스6':'박인수','코스7':'안준수','코스8':'최용혁',
+  '코스9':'유상하','코스10':'금정','코스11':'이호주','코스12':'김창연',
+  '코스13':'이창목','코스14':'김동완','코스15':'전태영','코스16':'김종호',
+  '코스17':'류대현','코스18':'최준은','코스19':'조홍철'
+};
+const TEAM_NAMES = {
+  'team1':'1팀 준고','team2':'2팀 해운대','team3':'3팀 공오일',
+  'team4':'4팀 연수남','team5':'5팀 아가리','team6':'6팀 도세마','team7':'7팀 강서영'
+};
+const DOW_NAMES = ['월','화','수','목','금'];
+
+// 기간 정의
+const PERIODS = {
+  1: { label: '4월 1일~10일', start: '2026-04-01', end: '2026-04-10' },
+  2: { label: '4월 11일~20일', start: '2026-04-11', end: '2026-04-20' },
+  3: { label: '4월 21일~30일', start: '2026-04-21', end: '2026-04-30' },
+  4: { label: '4월 전체', start: '2026-04-01', end: '2026-04-30' },
+};
+
+let currentData = [];
+let currentPeriod = null;
+
+function normName(n) { return String(n||'').replace(/\s/g,''); }
+function isOrdered(clientName, orderedSet) {
+  const cn = normName(clientName);
+  if (orderedSet.has(cn)) return true;
+  for (const o of orderedSet) { if (cn.includes(o) || o.includes(cn)) return true; }
+  return false;
+}
+
+async function selectPeriod(p) {
+  // 버튼 active 처리
+  [1,2,3,4].forEach(i => {
+    document.getElementById('btn-p'+i).classList.toggle('active', i===p);
+  });
+  currentPeriod = p;
+  document.getElementById('result-empty').style.display = 'none';
+  document.getElementById('result-loading').style.display = 'block';
+  document.getElementById('result-content').style.display = 'none';
+
+  const { label, start, end } = PERIODS[p];
+
+  // daily_sales 조회
+  const salesSnap = await db.collection('daily_sales')
+    .where('date','>=',start).where('date','<=',end).get();
+  const byDate = {};
+  salesSnap.forEach(d => {
+    const data = d.data();
+    byDate[data.date] = new Set((data.orderedClients||[]).map(c => normName(c)));
+  });
+  const availDates = Object.keys(byDate).sort();
+
+  // clients 조회
+  const clientsSnap = await db.collection('clients').get();
+  const clients = [];
+  clientsSnap.forEach(d => clients.push({ id: d.id, ...d.data() }));
+
+  // 미주문 업체 계산: 해당 기간 영업일에 한 번도 주문 없는 업체
+  const noOrderClients = [];
+  for (const client of clients) {
+    const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
+    if (!orderDays || !Array.isArray(orderDays)) continue;
+
+    // 이 기간에 주문해야 하는 날짜 필터
+    const bizDaysForClient = availDates.filter(dt => {
+      const dow = new Date(dt).getDay();
+      const dowIdx = dow === 0 ? 6 : dow - 1;
+      return orderDays.includes(dowIdx);
+    });
+    if (bizDaysForClient.length === 0) continue; // 이 기간에 주문요일 없으면 제외
+
+    // 한 번이라도 주문 들어왔는지 체크
+    const orderedAnyDay = bizDaysForClient.some(dt => isOrdered(clientName, byDate[dt]||new Set()));
+    if (!orderedAnyDay) {
+      noOrderClients.push({
+        clientName,
+        teamId: teamId||'',
+        courseId: courseId||'',
+        dailyAvgOrder: dailyAvgOrder||0,
+        isPriority: (dailyAvgOrder||0) >= 8,
+        orderDays: orderDays||[],
+        bizDaysCount: bizDaysForClient.length,
+        driver: COURSE_DRIVER[courseId] || '-'
+      });
+    }
+  }
+
+  currentData = noOrderClients;
+  document.getElementById('result-loading').style.display = 'none';
+  document.getElementById('result-content').style.display = 'block';
+  document.getElementById('result-title').textContent = `📉 ${label} 미주문 업체`;
+
+  // 요약 카드
+  const priorityCount = noOrderClients.filter(c=>c.isPriority).length;
+  const teamCount = new Set(noOrderClients.map(c=>c.teamId)).size;
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="summary-card"><div class="s-num">${noOrderClients.length}</div><div class="s-label">미주문 업체 수</div></div>
+    <div class="summary-card"><div class="s-num" style="color:#c53030">${priorityCount}</div><div class="s-label">1순위 업체</div></div>
+    <div class="summary-card"><div class="s-num">${availDates.length}</div><div class="s-label">해당 기간 영업일</div></div>
+  `;
+
+  renderTable();
+}
+
+function renderTable() {
+  const teamFilter = document.getElementById('filter-team').value;
+  const priorityFilter = document.getElementById('filter-priority').value;
+  const searchFilter = document.getElementById('filter-search').value.trim().toLowerCase();
+
+  let filtered = currentData.filter(c => {
+    if (teamFilter && c.teamId !== teamFilter) return false;
+    if (priorityFilter === '1' && !c.isPriority) return false;
+    if (priorityFilter === '0' && c.isPriority) return false;
+    if (searchFilter && !c.clientName.toLowerCase().includes(searchFilter)) return false;
+    return true;
+  });
+
+  // 1순위 먼저, 그 다음 팀 순
+  filtered.sort((a,b) => {
+    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
+    return (a.teamId||'').localeCompare(b.teamId||'');
+  });
+
+  document.getElementById('result-count').textContent = `총 ${filtered.length}개 업체`;
+
+  const tbody = document.getElementById('result-tbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#a0aec0">해당 조건의 미주문 업체가 없습니다.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(c => `
+    <tr>
+      <td><strong>${c.clientName}</strong>${c.isPriority ? ' <span style="font-size:10px;background:#fed7d7;color:#c53030;padding:1px 5px;border-radius:8px;">1순위</span>' : ''}</td>
+      <td><span class="badge-team">${TEAM_NAMES[c.teamId]||c.teamId||'-'}</span></td>
+      <td>${c.courseId||'-'} <span style="font-size:11px;color:#718096">(${c.driver})</span></td>
+      <td>${c.dailyAvgOrder}개</td>
+      <td>${c.isPriority ? '🔴 예' : '⚪ 아니오'}</td>
+      <td>${c.orderDays.map(d=>DOW_NAMES[d]).join('/')}</td>
+      <td style="text-align:center">${c.bizDaysCount}일</td>
+    </tr>
+  `).join('');
+}
+
+function downloadExcel() {
+  if (!currentData.length || !currentPeriod) return;
+  const { label } = PERIODS[currentPeriod];
+  const teamFilter = document.getElementById('filter-team').value;
+  const priorityFilter = document.getElementById('filter-priority').value;
+  const searchFilter = document.getElementById('filter-search').value.trim().toLowerCase();
+
+  let filtered = currentData.filter(c => {
+    if (teamFilter && c.teamId !== teamFilter) return false;
+    if (priorityFilter === '1' && !c.isPriority) return false;
+    if (priorityFilter === '0' && c.isPriority) return false;
+    if (searchFilter && !c.clientName.toLowerCase().includes(searchFilter)) return false;
+    return true;
+  });
+  filtered.sort((a,b) => {
+    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
+    return (a.teamId||'').localeCompare(b.teamId||'');
+  });
+
+  const rows = [['업체명','팀','코스','담당기사','일평균주문','1순위여부','주문요일','해당기간영업일수']];
+  filtered.forEach(c => {
+    rows.push([
+      c.clientName,
+      TEAM_NAMES[c.teamId]||c.teamId||'-',
+      c.courseId||'-',
+      c.driver||'-',
+      c.dailyAvgOrder,
+      c.isPriority ? '1순위' : '일반',
+      c.orderDays.map(d=>DOW_NAMES[d]).join('/'),
+      c.bizDaysCount
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [30,15,10,10,12,10,15,15].map(w=>({wch:w}));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '미주문업체');
+  XLSX.writeFile(wb, `미주문업체_${label.replace(/\s/g,'_')}.xlsx`);
+}
+
+// 인증 체크
+window.addEventListener('DOMContentLoaded', () => {
+  const user = JSON.parse(localStorage.getItem('jundosirak_user')||'null');
+  if (!user || user.role !== 'admin') {
+    location.href = '/index.html';
+    return;
+  }
+});
+</script>
+</body>
+</html>
