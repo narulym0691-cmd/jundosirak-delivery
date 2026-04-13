@@ -1325,6 +1325,17 @@
       .toLowerCase();
   }
 
+  // ── 부분일치 주문 확인: 경보명이 거래처명에 포함되거나 반대인 경우 매칭 ──
+  function isOrderedPartialMatch(clientName, orderedNorm) {
+    const norm = normClient(clientName);
+    if (!norm) return false;
+    for (const o of orderedNorm) {
+      if (!o) continue;
+      if (norm.includes(o) || o.includes(norm)) return true;
+    }
+    return false;
+  }
+
   // ── 1순위 업체 주문 감지 → sms_schedule 적재 ──
   async function checkPriorityClientsAndScheduleSms(date, driverRows) {
     // 오늘 주문한 거래처 목록 (정규화된 이름으로 저장)
@@ -1431,6 +1442,18 @@
     const batch = db.batch();
     let batchCount = 0;
 
+    // ── 오늘 주문한 거래처의 기존 미해결 경보 자동 해제 (부분일치) ──
+    for (const [alertClientName, prev] of Object.entries(prevAlertMap)) {
+      if (isOrderedPartialMatch(alertClientName, orderedNorm)) {
+        batch.update(db.collection('alerts').doc(prev.docId), {
+          resolved: true,
+          resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          resolvedReason: 'ordered_today'
+        });
+        batchCount++;
+      }
+    }
+
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
       const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
@@ -1439,8 +1462,8 @@
       // 오늘 주문 요일인가?
       if (!orderDays.includes(dowIndex)) continue;
 
-      // 실제 주문했는가? (정규화 비교)
-      if (orderedNorm.has(normClient(clientName))) continue;
+      // 실제 주문했는가? (부분일치 비교)
+      if (isOrderedPartialMatch(clientName, orderedNorm)) continue;
 
       const isPriority = (dailyAvgOrder || 0) >= 8;
       const prev = prevAlertMap[clientName];
