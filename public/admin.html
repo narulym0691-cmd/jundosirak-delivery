@@ -1122,6 +1122,45 @@
   }
 
   // ── 구형 양식 파싱: "붙여넣기" 시트 (거래처별 주문행 구조)
+  // ── 구버전 양식: "붙여넣기" 시트, 고정 col4/10/12 + 헤더 동적 탐색 ──
+  function parseOldFormat(rows) {
+    // 헤더행 탐색 (최대 10행), 없으면 고정 인덱스 사용
+    let dataStart = 1;
+    let colClient = 4, colDriver = 10, colQty = 12;
+    for (let i = 0; i < Math.min(rows.length, 10); i++) {
+      const row = rows[i] || [];
+      let foundHeader = false;
+      for (let j = 0; j < row.length; j++) {
+        const cell = String(row[j]||'').trim();
+        if (cell.includes('업체명')) { colClient = j; foundHeader = true; }
+        if (cell === '담당기사')     { colDriver = j; foundHeader = true; }
+        if (cell === '수량')         { colQty = j; }
+        if (cell === 'No.' || cell === 'No') { dataStart = i + 1; }
+      }
+      if (foundHeader) break;
+    }
+
+    const driverMap = {};
+    const allClients = new Set();
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const clientRaw = String(row[colClient]||'').trim();
+      const driverRaw = String(row[colDriver]||'').trim();
+      const qty = Number(row[colQty]||0);
+      if (!clientRaw || qty <= 0) continue;
+      // 거래처는 driver 매핑 여부와 무관하게 수집
+      allClients.add(clientRaw);
+      if (!driverRaw) continue;
+      const courseId = DRIVER_COURSE_MAP[driverRaw];
+      const team = courseId ? COURSE_TEAM[courseId]?.teamId : null;
+      if (!team) continue;
+      if (!driverMap[driverRaw]) driverMap[driverRaw] = { name: driverRaw, team, total: 0, revenue: 0, clients: [] };
+      driverMap[driverRaw].total += qty;
+      if (!driverMap[driverRaw].clients.includes(clientRaw)) driverMap[driverRaw].clients.push(clientRaw);
+    }
+    return { driverRows: Object.values(driverMap), allClients };
+  }
+
   function parseLegacyFormat(rows) {
     let headerRow = -1, colClient = -1, colDriver = -1, colQty = -1, colAmt = -1;
     for (let i = 0; i < Math.min(rows.length, 10); i++) {
@@ -1174,29 +1213,37 @@
       let driverRows = [], allClients = new Set(), parseNote = '';
 
       const resultSheetName = wb.SheetNames.find(s => s === '결과');
+      let usedOldFormat = false;
       if (resultSheetName) {
-        // "결과" 시트 감지 → 양식1 or 양식2 자동 선택
-        const ws = wb.Sheets[resultSheetName];
-        const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
-        const firstData = rows[1] || [];
-        const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
-        if (isFormat2) {
-          parseNote = '양식2 (상세 일일장부)';
-          ({ driverRows, allClients } = parseResultFormat2(rows));
-        } else {
-          parseNote = '양식1 (단순 합계)';
-          ({ driverRows, allClients } = parseResultFormat1(rows));
+        // "결과" 시트 감지 → 양식1 or 양식2 자동 선택, 실패 시 붙여넣기 fallback
+        try {
+          const ws = wb.Sheets[resultSheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+          const firstData = rows[1] || [];
+          const isFormat2 = firstData.length > 13 && /^\d+\.\s+/.test(String(firstData[13]||'').trim());
+          if (isFormat2) {
+            parseNote = '양식2 (상세 일일장부)';
+            ({ driverRows, allClients } = parseResultFormat2(rows));
+          } else {
+            parseNote = '양식1 (단순 합계)';
+            ({ driverRows, allClients } = parseResultFormat1(rows));
+          }
+          if (!driverRows.length) throw new Error('결과 시트 파싱 결과 없음');
+        } catch(parseErr) {
+          console.warn('결과 시트 파싱 실패, 붙여넣기 fallback:', parseErr.message);
+          usedOldFormat = true;
         }
-      } else {
-        // "붙여넣기" 시트 fallback (구형 양식)
-        parseNote = '구형 양식 (붙여넣기)';
+      }
+      if (!resultSheetName || usedOldFormat) {
+        // 구버전 양식: "붙여넣기" 시트 (고정 col4/10/12)
+        parseNote = '구버전 양식 (붙여넣기)';
         const sheetName = wb.SheetNames.find(s => s === '붙여넣기') || wb.SheetNames[0];
         const ws = wb.Sheets[sheetName];
         const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
-        ({ driverRows, allClients } = parseLegacyFormat(rows));
+        ({ driverRows, allClients } = parseOldFormat(rows));
       }
 
-      if (!driverRows.length) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
+      if (!driverRows.length && allClients.size === 0) throw new Error('파싱된 데이터가 없습니다. 파일을 확인해주세요.');
 
       // 팀별 집계
       const teamTotals = {}, teamDrivers = {}, teamRevenues = {};
@@ -1225,8 +1272,13 @@
 
       document.getElementById('su-preview').style.display = '';
       document.getElementById('su-save-btn').style.display = '';
-      document.getElementById('su-msg').textContent = `✅ ${parseNote} — ${driverRows.length}명 파싱 완료`;
-      document.getElementById('su-msg').style.color = '#276749';
+      if (allClients.size === 0) {
+        document.getElementById('su-msg').textContent = `⚠️ 거래처 파싱 실패 — ${parseNote}, 기사 ${driverRows.length}명. 거래처 목록이 비어 있습니다. 파일 양식을 확인해주세요.`;
+        document.getElementById('su-msg').style.color = '#c53030';
+      } else {
+        document.getElementById('su-msg').textContent = `✅ ${parseNote} — 기사 ${driverRows.length}명 / 거래처 ${allClients.size}개 파싱 완료`;
+        document.getElementById('su-msg').style.color = '#276749';
+      }
 
     } catch(e) {
       document.getElementById('su-msg').textContent = '오류: ' + e.message;
