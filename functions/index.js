@@ -292,14 +292,14 @@ async function getTeamDailyAvg(teamId, dateStr) {
   return count > 0 ? Math.round(total / count) : TEAM_BASELINE[teamId] || 0;
 }
 
-// ─── 새벽 4:30 자동문자 스케줄러 ─────────────────────────────
-// KST 04:30 = UTC 19:30 전날 → cron: '30 19 * * *'
+// ─── 오전 7:00 자동문자 스케줄러 ─────────────────────────────
+// KST 07:00 = UTC 22:00 전날 → cron: '0 22 * * *'
 exports.scheduledSmsAtDawn = functions
   .region('us-central1')
-  .pubsub.schedule('30 19 * * *')
+  .pubsub.schedule('0 22 * * *')
   .timeZone('UTC')
   .onRun(async () => {
-    console.log('=== 새벽 자동문자 스케줄러 시작 ===');
+    console.log('=== 오전 7시 자동문자 스케줄러 시작 ===');
 
     // 부산 날씨 가져오기
     const weather = await getBusanWeather();
