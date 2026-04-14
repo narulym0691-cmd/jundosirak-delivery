@@ -1084,3 +1084,116 @@ exports.scheduledFieldVisitSms = functions
     return null;
   });
 
+
+// ─── 매월 1일 기준수량 자동 갱신 스케줄러 ───────────────────────
+// KST 00:01 = UTC 15:01 전날 → cron: '1 15 * * *' (매일 실행, 1일만 동작)
+// 기존 함수 일절 수정 없음 — 신규 함수만 추가
+exports.autoUpdateBaseline = functions
+  .region('us-central1')
+  .pubsub.schedule('1 15 * * *')
+  .timeZone('UTC')
+  .onRun(async () => {
+    // KST 기준 오늘 날짜 확인
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const kstDay = kstNow.getDate();
+
+    // 매월 1일에만 실행
+    if (kstDay !== 1) {
+      console.log(`기준수량 갱신 스킵: KST ${kstDay}일 (1일만 실행)`);
+      return null;
+    }
+
+    console.log('=== 매월 1일 기준수량 자동 갱신 시작 ===');
+
+    // 전월 계산
+    const prevMonth = new Date(kstNow.getFullYear(), kstNow.getMonth() - 1, 1);
+    const prevMonthStr = prevMonth.toISOString().slice(0, 7); // 'YYYY-MM'
+    const prevStart = `${prevMonthStr}-01`;
+    const prevEnd   = `${prevMonthStr}-31`;
+
+    console.log(`전월: ${prevMonthStr} (${prevStart} ~ ${prevEnd})`);
+
+    try {
+      // 전월 daily_sales 전체 조회
+      const snap = await db.collection('daily_sales')
+        .where('date', '>=', prevStart)
+        .where('date', '<=', prevEnd)
+        .get();
+
+      if (snap.empty) {
+        console.log('전월 판매 데이터 없음, 갱신 중단');
+        return null;
+      }
+
+      // 팀별 합계 & 영업일수 집계
+      const teamSum  = {}; // { teamId: 합계 }
+      const teamDays = {}; // { teamId: 영업일수 }
+
+      snap.forEach(doc => {
+        const { teamTotals } = doc.data();
+        if (!teamTotals) return;
+        Object.entries(teamTotals).forEach(([teamId, qty]) => {
+          if (!teamSum[teamId])  teamSum[teamId]  = 0;
+          if (!teamDays[teamId]) teamDays[teamId] = 0;
+          teamSum[teamId]  += Number(qty) || 0;
+          teamDays[teamId] += 1;
+        });
+      });
+
+      console.log(`팀별 집계 완료: ${Object.keys(teamSum).length}팀, 영업일 ${snap.size}일`);
+
+      // teams 컬렉션 조회
+      const teamsSnap = await db.collection('teams').get();
+      const batch = db.batch();
+      const historyRef = db.collection('baseline_history');
+      const updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+      teamsSnap.forEach(teamDoc => {
+        const teamId   = teamDoc.id;
+        const teamData = teamDoc.data();
+        const days     = teamDays[teamId] || 0;
+        if (days === 0) return; // 데이터 없는 팀 스킵
+
+        const newBaseline = Math.round(teamSum[teamId] / days);
+        const newGradeC   = newBaseline + 50;
+        const newGradeB   = newBaseline + 80;
+        const newGradeA   = newBaseline + 120;
+
+        const oldBaseline = teamData.baselineDailyAvg || 0;
+
+        // teams 문서 업데이트 (name, region 절대 건드리지 않음)
+        batch.update(teamDoc.ref, {
+          baselineDailyAvg: newBaseline,
+          gradeC: newGradeC,
+          gradeB: newGradeB,
+          gradeA: newGradeA,
+        });
+
+        // 변경 이력 저장
+        batch.set(historyRef.doc(), {
+          teamId,
+          teamName:    teamData.name || teamId,
+          month:       prevMonthStr,
+          bizDays:     days,
+          oldBaseline,
+          newBaseline,
+          newGradeC,
+          newGradeB,
+          newGradeA,
+          reason:      `${prevMonthStr} 전월 실적 자동 반영`,
+          autoUpdated: true,
+          updatedAt,
+        });
+
+        console.log(`✅ ${teamData.name}(${teamId}): ${oldBaseline} → ${newBaseline} (${days}일 기준)`);
+      });
+
+      await batch.commit();
+      console.log('=== 기준수량 자동 갱신 완료 ===');
+
+    } catch (e) {
+      console.error('autoUpdateBaseline 오류:', e);
+    }
+    return null;
+  });
