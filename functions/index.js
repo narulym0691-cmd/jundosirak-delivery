@@ -1355,12 +1355,26 @@ exports.syncClaimsFromSheets = functions
 // 구글시트 신규업체 탭에서 오늘 날짜 업체 조회 → 업체 담당자 휴대폰으로 문자 발송
 // 기존 함수 일절 수정 없음 — 신규 함수만 추가
 const NEW_CLIENT_GID = '1000247276';
-const NEW_CLIENT_SMS_TEXT =
+// 기본 문자 템플릿 (sms_config/new_client_templates에 저장된 값 없을 때 사용)
+const NEW_CLIENT_SMS_DEFAULT =
   '안녕하세요, {업체명}입니다 😊\n' +
   '오늘 준도시락을 처음 주문해 주셔서 감사합니다! 식사는 맛있게 하셨나요?\n\n' +
   '💡 준도시락 앱을 이용하시면 구성원 모두가 각자 원하는 메뉴를 개별 주문할 수 있어요. ' +
   '업체명만 동일하게 입력하면 여러 분이 서로 다른 메뉴를 선택해도 한 번에 정확히 배송됩니다!\n\n' +
   '궁금한 점은 문자·전화·카톡 언제든지 편하게 연락 주세요. 앞으로도 잘 부탁드립니다 🍱';
+
+async function getNewClientSmsTemplate() {
+  try {
+    const doc = await db.collection('sms_config').doc('new_client_templates').get();
+    if (!doc.exists) return NEW_CLIENT_SMS_DEFAULT;
+    const { templates, selected } = doc.data();
+    const idx = typeof selected === 'number' ? selected : 0;
+    return (templates && templates[idx]) || NEW_CLIENT_SMS_DEFAULT;
+  } catch(e) {
+    console.error('템플릿 조회 실패, 기본값 사용:', e.message);
+    return NEW_CLIENT_SMS_DEFAULT;
+  }
+}
 
 exports.scheduledNewClientSms = functions
   .region('us-central1')
@@ -1416,8 +1430,9 @@ exports.scheduledNewClientSms = functions
           continue;
         }
 
-        // 문자 내용 생성
-        const text = NEW_CLIENT_SMS_TEXT.replace('{업체명}', client.clientName);
+        // 문자 내용 생성 (sms_config에서 선택된 템플릿 사용)
+        const tmpl = await getNewClientSmsTemplate();
+        const text = tmpl.replace('{업체명}', client.clientName);
         const toPhone = '0' + client.phone.replace(/^0/, '');
 
         // 솔라피 발송
