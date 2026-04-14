@@ -1239,14 +1239,41 @@
       teamTotalsMap[team] = (teamTotalsMap[team]||0) + total;
     }
 
-    // Step3: 거래처 목록 수집 (index4 = 거래처명, 행44 이후)
+    // Step3: 거래처 목록 수집 (행44 이후)
+    // 파일 양식 2종 대응:
+    //   신형(헤더에 '거래처' 컬럼 존재): index14 = 실제 주문 거래처명, index21 = 합계수량
+    //   구형: index5 = 거래처명 (기존 방식)
     const allClients = new Set();
+
+    // 헤더행(행44, index=43)에서 컬럼 위치 동적 탐색
+    let colClient = 5; // 기본값: 구형 양식
+    let colQtyTotal = -1;
+    const headerRow = rows[43] || [];
+    for (let j = 0; j < headerRow.length; j++) {
+      const h = String(headerRow[j]||'').trim();
+      if (h === '거래처') { colClient = j; }
+      if (h === '합계' || h === '합  계') { colQtyTotal = j; }
+    }
+    // 신형 양식: 헤더에 '거래처' 컬럼이 index14에 있으면 수량>0인 행만 수집
+    const isNewFormat = (colClient === 14);
+
     for (let i = 44; i < rows.length; i++) {
       const row = rows[i];
       if (!row) continue;
-      const clientName = String(row[4]||'').trim();
+      const clientName = String(row[colClient]||'').trim();
       if (!clientName || SKIP_KW.some(k => clientName.includes(k))) continue;
       if (/^\d+$/.test(clientName)) continue;
+      // 신형 양식: 수량 합산(뜨/프/샐/품/덮/샌/세트/유부 = index15~22)이 0이면 오늘 주문 없는 거래처 → 제외
+      if (isNewFormat) {
+        let qty = 0;
+        if (colQtyTotal >= 0) {
+          qty = Number(row[colQtyTotal]||0);
+        } else {
+          // 헤더에 합계 컬럼 없을 때: 뜨/프/샐/품/덮/샌/세트/유부 (index15~22) 합산
+          for (let q = 15; q <= 22; q++) qty += Number(row[q]||0);
+        }
+        if (qty <= 0) continue;
+      }
       allClients.add(clientName);
     }
 
