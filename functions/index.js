@@ -1349,3 +1349,106 @@ exports.syncClaimsFromSheets = functions
     }
     return null;
   });
+
+// ─── 신규업체 감사 문자 자동 발송 (매일 KST 17:00) ────────────────
+// UTC 08:00 = KST 17:00
+// 구글시트 신규업체 탭에서 오늘 날짜 업체 조회 → 업체 담당자 휴대폰으로 문자 발송
+// 기존 함수 일절 수정 없음 — 신규 함수만 추가
+const NEW_CLIENT_GID = '1000247276';
+const NEW_CLIENT_SMS_TEXT =
+  '안녕하세요, {업체명}입니다 😊\n' +
+  '오늘 준도시락을 처음 주문해 주셔서 감사합니다! 식사는 맛있게 하셨나요?\n\n' +
+  '💡 준도시락 앱을 이용하시면 구성원 모두가 각자 원하는 메뉴를 개별 주문할 수 있어요. ' +
+  '업체명만 동일하게 입력하면 여러 분이 서로 다른 메뉴를 선택해도 한 번에 정확히 배송됩니다!\n\n' +
+  '궁금한 점은 문자·전화·카톡 언제든지 편하게 연락 주세요. 앞으로도 잘 부탁드립니다 🍱';
+
+exports.scheduledNewClientSms = functions
+  .region('us-central1')
+  .pubsub.schedule('0 8 * * *')  // UTC 08:00 = KST 17:00
+  .timeZone('UTC')
+  .onRun(async () => {
+    console.log('=== 신규업체 감사 문자 발송 시작 ===');
+
+    // KST 오늘 날짜
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const todayKst = kstNow.toISOString().slice(0, 10); // YYYY-MM-DD
+    // 구글시트 날짜 형식: 2026.04.14
+    const todaySheet = todayKst.replace(/-/g, '.');
+    console.log('오늘(KST):', todayKst, '/ 시트형식:', todaySheet);
+
+    try {
+      // 구글시트 신규업체 CSV 읽기
+      const csv = await fetchSheetCsv(NEW_CLIENT_GID);
+      const rows = parseCsv(csv);
+
+      // 오늘 날짜 신규업체 파싱 (col0=날짜, col1=업체명, col2=연락처, col5=담당기사, col6=합계)
+      const todayClients = [];
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const rawDate = (r[0] || '').trim();
+        const clientName = (r[1] || '').trim();
+        const phone = (r[2] || '').trim().replace(/[^0-9]/g, ''); // 숫자만
+        const driverName = (r[5] || '').trim();
+        const qty = parseInt((r[6] || '0').replace(/[^0-9]/g, '')) || 0;
+        if (!rawDate || !clientName || !phone) continue;
+        if (rawDate !== todaySheet) continue;
+        todayClients.push({ clientName, phone, driverName, qty });
+      }
+
+      console.log(`오늘 신규업체: ${todayClients.length}건`);
+
+      if (!todayClients.length) {
+        console.log('오늘 신규업체 없음, 종료');
+        return null;
+      }
+
+      let sent = 0, failed = 0;
+
+      for (const client of todayClients) {
+        // 중복 발송 방지
+        const existing = await db.collection('new_client_sms')
+          .where('date', '==', todayKst)
+          .where('clientName', '==', client.clientName)
+          .limit(1).get();
+        if (!existing.empty) {
+          console.log(`스킵(중복): ${client.clientName}`);
+          continue;
+        }
+
+        // 문자 내용 생성
+        const text = NEW_CLIENT_SMS_TEXT.replace('{업체명}', client.clientName);
+        const toPhone = '0' + client.phone.replace(/^0/, '');
+
+        // 솔라피 발송
+        const result = await sendSolapiSms(toPhone, text);
+
+        // 발송 이력 저장
+        await db.collection('new_client_sms').add({
+          date: todayKst,
+          clientName: client.clientName,
+          phone: client.phone,
+          driverName: client.driverName,
+          qty: client.qty,
+          text,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          error: result.ok ? null : (result.error || null),
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        if (result.ok) {
+          sent++;
+          console.log(`✅ 발송: ${client.clientName} → ${toPhone}`);
+        } else {
+          failed++;
+          console.log(`❌ 실패: ${client.clientName} → ${result.error}`);
+        }
+      }
+
+      console.log(`=== 완료: 성공 ${sent}건 / 실패 ${failed}건 ===`);
+    } catch (e) {
+      console.error('scheduledNewClientSms 오류:', e);
+    }
+    return null;
+  });

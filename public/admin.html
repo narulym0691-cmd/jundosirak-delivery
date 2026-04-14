@@ -835,6 +835,26 @@
   </div>
 </div>
 
+<!-- 신규업체 문자 발송 내역 모달 -->
+<div id="newClientSmsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
+  <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <div style="font-size:18px;font-weight:700;color:#1a4731;">🏪 신규업체 문자 발송 내역</div>
+      <button onclick="document.getElementById('newClientSmsModal').style.display='none'" style="background:none;border:none;font-size:22px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+    <!-- 월 네비게이션 -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;background:#f7fafc;border-radius:10px;padding:10px 16px;">
+      <button onclick="ncSmsChangeMonth(-1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:#1a4731;font-weight:700;">‹</button>
+      <div id="ncSmsMonthLabel" style="font-size:16px;font-weight:700;color:#1a4731;"></div>
+      <button onclick="ncSmsChangeMonth(1)" style="background:none;border:none;font-size:20px;cursor:pointer;color:#1a4731;font-weight:700;">›</button>
+    </div>
+    <!-- 요약 -->
+    <div id="ncSmsSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
+    <!-- 테이블 -->
+    <div id="ncSmsTable" style="overflow-x:auto;"></div>
+  </div>
+</div>
+
 <!-- CS 미완료 클레임 모달 -->
 <div id="claimCsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;overflow-y:auto;">
   <div style="background:#fff;max-width:860px;margin:30px auto;border-radius:14px;padding:24px;position:relative;">
@@ -2780,6 +2800,10 @@ async function sendSms() {
     <span>📸</span> 영업현장 통계
   </button>
   <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showNewClientSmsModal();">
+    <span>🏪</span> 신규업체 문자
+  </button>
+  <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showClaimCsModal();">
     <span>🩹</span> CS 미완료 클레임
   </button>
@@ -2977,6 +3001,105 @@ function downloadFieldVisitExcel() {
 }
 
 // ── CS 미완료 클레임 ──
+// ── 신규업체 문자 발송 내역 ──
+let _ncSmsMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+function showNewClientSmsModal() {
+  _ncSmsMonth = new Date(new Date().getTime() + 9*60*60*1000).toISOString().slice(0, 7);
+  document.getElementById('newClientSmsModal').style.display = 'block';
+  loadNcSmsData();
+}
+
+function ncSmsChangeMonth(delta) {
+  const [y, m] = _ncSmsMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  _ncSmsMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  loadNcSmsData();
+}
+
+async function loadNcSmsData() {
+  document.getElementById('ncSmsMonthLabel').textContent = _ncSmsMonth.replace('-', '년 ') + '월';
+  document.getElementById('ncSmsSummary').innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:12px;color:#718096;font-size:13px;">로딩 중...</div>';
+  document.getElementById('ncSmsTable').innerHTML = '';
+
+  const start = _ncSmsMonth + '-01';
+  const end   = _ncSmsMonth + '-31';
+
+  try {
+    const snap = await db.collection('new_client_sms')
+      .where('date', '>=', start)
+      .where('date', '<=', end)
+      .orderBy('date', 'desc')
+      .get();
+
+    const rows = [];
+    snap.forEach(d => rows.push({ id: d.id, ...d.data() }));
+
+    const total  = rows.length;
+    const sentOk = rows.filter(r => r.sent === 1).length;
+    const fail   = rows.filter(r => r.sent !== 1).length;
+
+    // 요약 카드
+    document.getElementById('ncSmsSummary').innerHTML = `
+      <div style="background:#f0fff4;border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#1a4731;">${total}</div>
+        <div style="font-size:11px;color:#718096;margin-top:2px;">신규업체</div>
+      </div>
+      <div style="background:#ebf8ff;border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#2b6cb0;">${sentOk}</div>
+        <div style="font-size:11px;color:#718096;margin-top:2px;">발송완료</div>
+      </div>
+      <div style="background:#fff5f5;border-radius:10px;padding:12px;text-align:center;">
+        <div style="font-size:22px;font-weight:700;color:#c53030;">${fail}</div>
+        <div style="font-size:11px;color:#718096;margin-top:2px;">실패/미발송</div>
+      </div>
+    `;
+
+    if (!rows.length) {
+      document.getElementById('ncSmsTable').innerHTML = '<div style="text-align:center;padding:24px;color:#718096;font-size:13px;">이달 신규업체 문자 내역이 없습니다.</div>';
+      return;
+    }
+
+    // 테이블
+    const html = `
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f7fafc;">
+            <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">날짜</th>
+            <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">업체명</th>
+            <th style="padding:10px 8px;text-align:left;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">담당기사</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">수량</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">연락처</th>
+            <th style="padding:10px 8px;text-align:center;border-bottom:2px solid #e2e8f0;font-weight:600;color:#4a5568;">발송상태</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr style="border-bottom:1px solid #f0f0f0;">
+              <td style="padding:10px 8px;color:#4a5568;">${r.date || '-'}</td>
+              <td style="padding:10px 8px;font-weight:600;color:#1a4731;">${r.clientName || '-'}</td>
+              <td style="padding:10px 8px;color:#4a5568;">${r.driverName || '-'}</td>
+              <td style="padding:10px 8px;text-align:center;">${r.qty || '-'}</td>
+              <td style="padding:10px 8px;text-align:center;color:#718096;">${r.phone ? r.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') : '-'}</td>
+              <td style="padding:10px 8px;text-align:center;">
+                ${r.sent === 1
+                  ? '<span style="color:#276749;font-weight:600;">✅ 발송완료</span>'
+                  : `<span style="color:#c53030;font-weight:600;">❌ 실패</span>${r.error ? '<br><span style="font-size:10px;color:#718096;">' + r.error + '</span>' : ''}`
+                }
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+    document.getElementById('ncSmsTable').innerHTML = html;
+
+  } catch (e) {
+    console.error('loadNcSmsData 오류:', e);
+    document.getElementById('ncSmsTable').innerHTML = '<div style="text-align:center;padding:24px;color:#c53030;font-size:13px;">데이터 로딩 실패</div>';
+  }
+}
+
 let _claimCsData = [];
 
 function showClaimCsModal() {
