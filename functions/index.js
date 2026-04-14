@@ -1197,3 +1197,155 @@ exports.autoUpdateBaseline = functions
     }
     return null;
   });
+
+// ─── 구글시트 클레임 자동 동기화 ────────────────────────────────
+// 매일 KST 06:00 (UTC 21:00 전날) 실행
+// 공개 구글시트 CSV 읽기 → claims 컬렉션 신규 행만 추가
+// 기존 데이터 일절 수정/삭제 없음 — 신규 추가만
+const CLAIMS_SHEET_ID = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
+// ※ 시트명과 실제 데이터가 다름 (구글시트 탭 순서 기준으로 gid 확인)
+// 상함 탭(gid=227649692) → 실제 오배송/누락 데이터 (col2=날짜,col3=기사명,col4=유형,col5=업체명,col7=금액,col8=부담금)
+// 오배송/누락 탭(gid=1690872474) → 실제 상함 데이터 (col2=날짜,col5=업체명,col8=메뉴명,col9=내용,col11=기사명)
+const CLAIMS_SHEETS = [
+  { name: '오배송/누락탭(상함데이터)', gid: '1690872474', type: '상함_raw'  },
+  { name: '배송지연',                  gid: '1352070318', type: '지연'      },
+  { name: '상함탭(오배송누락데이터)',   gid: '227649692',  type: '누락_raw'  },
+  { name: '이물',                      gid: '362633177',  type: '이물'      },
+];
+
+function fetchSheetCsv(gid) {
+  const https = require('https');
+  return new Promise((resolve, reject) => {
+    function get(url, n = 5) {
+      https.get(url, (res) => {
+        if ([301,302,303,307,308].includes(res.statusCode) && res.headers.location && n > 0) {
+          return get(res.headers.location, n - 1);
+        }
+        let d = '';
+        res.on('data', (c) => { d += c; });
+        res.on('end', () => resolve(d));
+      }).on('error', reject);
+    }
+    get(`https://docs.google.com/spreadsheets/d/${CLAIMS_SHEET_ID}/export?format=csv&gid=${gid}`);
+  });
+}
+
+function parseCsv(text) {
+  // 간단한 CSV 파서 (쉼표+큰따옴표 처리)
+  const rows = [];
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cols = [];
+    let cur = '', inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQ = !inQ; continue; }
+      if (ch === ',' && !inQ) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cols.push(cur.trim());
+    rows.push(cols);
+  }
+  return rows;
+}
+
+function parseClaimsRows(rows, type) {
+  const items = [];
+  // 첫 행은 헤더
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || r.length < 3) continue;
+
+    let date = '', driverName = '', clientName = '', content = '', amount = 0, burden = 0, menu = '', itemType = type;
+
+    if (type === '누락_raw') {
+      // 상함탭(gid=227649692)의 실제 데이터: 오배송/누락
+      // 헤더: 년도,월,날짜,기사명,유형(누락/오배송),업체명,내용,금액,부담금
+      date       = (r[2] || '').trim();
+      driverName = (r[3] || '').trim();
+      itemType   = (r[4] || '누락').trim(); // 누락 or 오배송
+      clientName = (r[5] || '').trim();
+      content    = (r[6] || '').trim();
+      amount     = parseInt((r[7] || '0').replace(/[^0-9]/g, '')) || 0;
+      burden     = parseInt((r[8] || '0').replace(/[^0-9]/g, '')) || 0;
+    } else if (type === '상함_raw') {
+      // 오배송/누락탭(gid=1690872474)의 실제 데이터: 상함
+      // 헤더: 년도,월,날짜,온도,습도,업체명,품목명,수량,메뉴명,내용,사무실대응,담당기사님,번호
+      date       = (r[2] || '').trim();
+      clientName = (r[5] || '').trim();
+      menu       = (r[8] || '').trim();
+      content    = (r[9] || '').trim();
+      driverName = (r[11] || '').trim();
+      itemType   = '상함';
+    } else if (type === '지연') {
+      // 헤더: 년도,월,날짜,날짜,목록,업체/주소,내용
+      date       = (r[2] || '').trim();
+      driverName = (r[3] || '').trim();
+      clientName = (r[5] || '').trim();
+      content    = (r[6] || '').trim();
+    } else if (type === '이물') {
+      // 헤더: 년도,월,날짜,업체명,품목명,수량,메뉴명,내용
+      date       = (r[2] || '').trim();
+      clientName = (r[3] || '').trim();
+      menu       = (r[6] || '').trim();
+      content    = (r[7] || '').trim();
+    }
+
+    // 날짜 유효성 검사 (YYYY-MM-DD)
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    if (!clientName) continue;
+
+    items.push({ date, driverName, clientName, type: itemType, content, menu, amount, burden, csCompleted: false });
+  }
+  return items;
+}
+
+exports.syncClaimsFromSheets = functions
+  .region('us-central1')
+  .pubsub.schedule('0 21 * * *')  // UTC 21:00 = KST 06:00
+  .timeZone('UTC')
+  .onRun(async () => {
+    console.log('=== 구글시트 클레임 동기화 시작 ===');
+    let totalAdded = 0;
+    let totalSkipped = 0;
+
+    try {
+      for (const sheet of CLAIMS_SHEETS) {
+        console.log(`시트 읽기: ${sheet.name}`);
+        const csv = await fetchSheetCsv(sheet.gid);
+        const rows = parseCsv(csv);
+        const items = parseClaimsRows(rows, sheet.type);
+        console.log(`  파싱 결과: ${items.length}건`);
+
+        for (const item of items) {
+          // 중복 체크: date + clientName + type 조합
+          const existing = await db.collection('claims')
+            .where('date', '==', item.date)
+            .where('clientName', '==', item.clientName)
+            .where('type', '==', item.type)
+            .limit(1)
+            .get();
+
+          if (!existing.empty) {
+            totalSkipped++;
+            continue;
+          }
+
+          // 신규 추가
+          await db.collection('claims').add({
+            ...item,
+            source: 'google_sheets',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          totalAdded++;
+          console.log(`  ✅ 추가: [${item.type}] ${item.date} ${item.clientName}`);
+        }
+      }
+
+      console.log(`=== 동기화 완료: 추가 ${totalAdded}건, 중복스킵 ${totalSkipped}건 ===`);
+    } catch (e) {
+      console.error('syncClaimsFromSheets 오류:', e);
+    }
+    return null;
+  });
