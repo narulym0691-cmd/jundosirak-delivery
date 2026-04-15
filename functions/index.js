@@ -1473,3 +1473,83 @@ exports.scheduledNewClientSms = functions
     }
     return null;
   });
+
+// ─── 현장활동(field_visits) 고객관리 기록 시 경보 즉시 해제 ─────────────
+// 기사가 dashboard에서 customer_care 기록 저장 → 해당 거래처 미해결 경보 즉시 resolved
+exports.onFieldVisitCreated = functions
+  .region('us-central1')
+  .firestore.document('field_visits/{visitId}')
+  .onCreate(async (snap, context) => {
+    const visit = snap.data();
+    const { type, clientName, driverName } = visit;
+
+    // customer_care(고객관리) 기록만 처리
+    if (type !== 'customer_care' || !clientName) return null;
+
+    try {
+      // 해당 거래처의 미해결 경보 조회
+      const alertSnap = await db.collection('alerts')
+        .where('clientName', '==', clientName)
+        .where('resolved', '==', false)
+        .get();
+
+      if (alertSnap.empty) {
+        console.log(`현장활동 기록: ${clientName} — 미해결 경보 없음`);
+        return null;
+      }
+
+      const batch = db.batch();
+      alertSnap.forEach(doc => {
+        batch.update(doc.ref, {
+          resolved: true,
+          resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+          resolvedReason: 'field_visit',
+          resolvedBy: driverName || '기사',
+        });
+      });
+      await batch.commit();
+
+      console.log(`✅ 현장활동 → 경보 해제: ${clientName} (${alertSnap.size}건) by ${driverName}`);
+    } catch (e) {
+      console.error('onFieldVisitCreated 경보 해제 오류:', e);
+    }
+    return null;
+  });
+
+// ─── 미해결 경보 자동 해제 스케줄러 (매일 KST 00:05) ──────────────────
+// autoResolveAt 이 지난 경보를 자동으로 resolved 처리
+// KST 00:05 = UTC 15:05 전날 → cron: '5 15 * * *'
+exports.autoResolveAlerts = functions
+  .region('us-central1')
+  .pubsub.schedule('5 15 * * *')
+  .timeZone('UTC')
+  .onRun(async () => {
+    console.log('=== 경보 자동 해제 스케줄러 시작 ===');
+    try {
+      const now = admin.firestore.Timestamp.now();
+      const snap = await db.collection('alerts')
+        .where('resolved', '==', false)
+        .where('autoResolveAt', '<=', now)
+        .get();
+
+      if (snap.empty) {
+        console.log('자동 해제 대상 없음');
+        return null;
+      }
+
+      const batch = db.batch();
+      snap.forEach(doc => {
+        batch.update(doc.ref, {
+          resolved: true,
+          resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+          resolvedReason: 'auto_expired',
+        });
+        console.log(`자동 해제: ${doc.data().clientName} (${doc.data().consecutiveDays}일)`);
+      });
+      await batch.commit();
+      console.log(`=== 자동 해제 완료: ${snap.size}건 ===`);
+    } catch (e) {
+      console.error('autoResolveAlerts 오류:', e);
+    }
+    return null;
+  });

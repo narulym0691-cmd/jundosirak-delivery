@@ -1762,10 +1762,14 @@
       } else {
         // 새 경보 문서 생성
         const alertRef = db.collection('alerts').doc();
+        // autoResolveAt: 생성일 기준 +5일 자동 해제
+        const autoResolveDate = new Date();
+        autoResolveDate.setDate(autoResolveDate.getDate() + 5);
         batch.set(alertRef, {
           type: 'no_order', grade, isPriority,
           clientName, dailyAvgOrder, teamId, courseId, date,
           consecutiveDays, resolved: false,
+          autoResolveAt: firebase.firestore.Timestamp.fromDate(autoResolveDate),
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       }
