@@ -322,9 +322,75 @@ async function loadAdminDirectives() {
       </div>`;
     }).join('');
     container.innerHTML = progressHtml||'<div class="empty-msg">데이터가 없습니다.</div>';
-    feedbackContainer.innerHTML = '<div class="empty-msg">피드백 기능 준비 중입니다.</div>';
+
+    // ── 피드백 미답변 카드 ──
+    await loadFeedbackPending(feedbackContainer);
+
   } catch(e) {
     console.error('지시사항 이행률 로드 실패:', e);
+    container.innerHTML = '<div class="card-error">데이터 로드 실패</div>';
+  }
+}
+
+async function loadFeedbackPending(container) {
+  try {
+    const snap = await db.collection('alerts')
+      .where('resolved', '==', false)
+      .get();
+
+    const TEAM_NAMES = {
+      team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일',
+      team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+    };
+
+    // 확인보고 중 피드백 미제출 항목 수집
+    const pending = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      const isCheck = d.grade === 'check' || d.grade === 'alert';
+      if (isCheck && !(d.feedback && d.feedback.text)) {
+        pending.push({ id: doc.id, ...d });
+      }
+    });
+
+    if (!pending.length) {
+      container.innerHTML = '<div class="empty-msg" style="color:#38a169;font-weight:600;">✅ 미답변 항목이 없습니다.</div>';
+      return;
+    }
+
+    // 팀별 그룹핑
+    const byTeam = {};
+    pending.forEach(a => {
+      const tid = a.teamId || 'unknown';
+      if (!byTeam[tid]) byTeam[tid] = [];
+      byTeam[tid].push(a);
+    });
+
+    const html = `
+      <div style="margin-bottom:8px;font-size:12px;color:#c53030;font-weight:600;">
+        ⚠️ 총 ${pending.length}건 — 담당 기사가 사유를 입력해야 합니다
+      </div>
+      ${Object.entries(byTeam).map(([tid, items]) => `
+        <div style="margin-bottom:10px;">
+          <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:5px;">
+            ${TEAM_NAMES[tid]||tid} (${items.length}건)
+          </div>
+          ${items.map(a => `
+            <div style="display:flex;justify-content:space-between;align-items:center;
+                        padding:8px 10px;background:#fff5f5;border-radius:8px;margin-bottom:4px;
+                        border-left:3px solid #fc8181;">
+              <div>
+                <span style="font-size:13px;font-weight:600;color:#2d3748;">${a.clientName}</span>
+                <span style="font-size:11px;color:#a0aec0;margin-left:6px;">${a.consecutiveDays||'?'}일째 미주문</span>
+              </div>
+              <span style="font-size:11px;background:#fed7d7;color:#c53030;
+                           border-radius:10px;padding:2px 8px;font-weight:600;">미답변</span>
+            </div>`).join('')}
+        </div>`).join('')}`;
+
+    container.innerHTML = html;
+  } catch(e) {
+    console.error('피드백 미답변 로드 실패:', e);
     container.innerHTML = '<div class="card-error">데이터 로드 실패</div>';
   }
 }
