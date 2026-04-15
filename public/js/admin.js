@@ -263,8 +263,15 @@ async function loadAdminDirectives() {
     const teamProgress = {};
     allTeamsData.forEach(t => { teamProgress[t.id] = { name: t.name, total: 0, done: 0 }; });
     const usersSnap = await db.collection('users').get();
-    const userTeamMap = {};
-    usersSnap.forEach(doc => { const d=doc.data(); if(d.active!==false) userTeamMap[doc.id]=d.teamId; });
+    const userTeamMap = {};   // uid → teamId
+    const userNameMap = {};   // uid → name
+    usersSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.active !== false) {
+        userTeamMap[doc.id] = d.teamId;
+        userNameMap[doc.id] = d.name || doc.id;
+      }
+    });
     directives.forEach(d => {
       const targetTeams = d.targetTeams&&d.targetTeams.length>0 ? d.targetTeams : allTeamsData.map(t=>t.id);
       targetTeams.forEach(tid => {
@@ -272,8 +279,9 @@ async function loadAdminDirectives() {
         teamProgress[tid].total++;
         if (d.completions) {
           const teamUsers = Object.keys(userTeamMap).filter(uid=>userTeamMap[uid]===tid);
-          const anyDone = teamUsers.some(uid=>d.completions[uid]&&d.completions[uid].done);
-          if (anyDone) teamProgress[tid].done++;
+          // 전원 이행해야 완료 처리
+          const allDone = teamUsers.length > 0 && teamUsers.every(uid=>d.completions[uid]&&d.completions[uid].done);
+          if (allDone) teamProgress[tid].done++;
         }
       });
     });
@@ -286,16 +294,18 @@ async function loadAdminDirectives() {
         if (!teamDirectiveMap[tid]) return;
         const teamUsers = Object.keys(userTeamMap).filter(uid=>userTeamMap[uid]===tid);
         const doneUsers = teamUsers.filter(uid=>d.completions&&d.completions[uid]&&d.completions[uid].done);
+        const notDoneUsers = teamUsers.filter(uid=>!(d.completions&&d.completions[uid]&&d.completions[uid].done));
         const comments = doneUsers.map(uid=>{
           const c = d.completions[uid];
-          const uName = Object.keys(userTeamMap).find(k=>k===uid);
-          return { uid, comment: c.comment||'', doneAt: c.doneAt };
+          return { uid, name: userNameMap[uid]||uid, comment: c.comment||'', doneAt: c.doneAt };
         }).filter(x=>x.comment);
         teamDirectiveMap[tid].items.push({
           content: d.content,
           deadline: d.deadline,
           total: teamUsers.length,
           done: doneUsers.length,
+          doneNames: doneUsers.map(uid=>userNameMap[uid]||uid),
+          notDoneNames: notDoneUsers.map(uid=>userNameMap[uid]||uid),
           comments
         });
       });
@@ -1115,10 +1125,20 @@ window.showTeamDirectiveDetail = function(teamId) {
         const deadline = item.deadline ? item.deadline.toDate().toLocaleDateString('ko-KR') : '없음';
         const commentsHtml = item.comments && item.comments.length > 0
           ? item.comments.map(c => `
-              <div style="margin-top:6px;padding:6px 10px;background:#f7fafc;border-radius:6px;font-size:12px;color:#4a5568;">
-                💬 ${c.comment}
+              <div style="margin-top:4px;padding:5px 10px;background:#f7fafc;border-radius:6px;font-size:12px;color:#4a5568;">
+                💬 <b>${c.name}</b>: ${c.comment}
                 ${c.doneAt ? `<span style="color:#a0aec0;margin-left:6px;">${c.doneAt.toDate().toLocaleDateString('ko-KR')}</span>` : ''}
               </div>`).join('')
+          : '';
+        const notDoneHtml = item.notDoneNames && item.notDoneNames.length > 0
+          ? `<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">
+              ${item.notDoneNames.map(n=>`<span style="background:#fff5f5;color:#c53030;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">⏳ ${n}</span>`).join('')}
+             </div>`
+          : '';
+        const doneHtml = item.doneNames && item.doneNames.length > 0
+          ? `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;">
+              ${item.doneNames.map(n=>`<span style="background:#f0fff4;color:#276749;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:600;">✅ ${n}</span>`).join('')}
+             </div>`
           : '';
         return `
           <div style="padding:12px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:8px;">
@@ -1130,6 +1150,8 @@ window.showTeamDirectiveDetail = function(teamId) {
             <div style="background:#edf2f7;border-radius:4px;height:6px;margin-bottom:6px;">
               <div style="width:${pct}%;background:${pctColor};height:6px;border-radius:4px;"></div>
             </div>
+            ${notDoneHtml}
+            ${doneHtml}
             ${commentsHtml}
           </div>`;
       }).join('');
