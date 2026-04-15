@@ -1165,13 +1165,65 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
         <tr><td style="padding:8px 0;color:#718096;">연속 미주문</td><td style="padding:8px 0;font-weight:700;color:${levelColor};">${consecutiveDays}일째</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">발생일</td><td style="padding:8px 0;">${date||'-'}</td></tr>
       </table>
-      <div style="margin-top:20px;display:flex;gap:10px;">
-        <button onclick="sendAlertSms('${id}','${clientName}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
-        <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
+      <div style="margin-top:20px;display:flex;flex-direction:column;gap:10px;">
+        ${level === 'check' || level === 'alert' ? `
+        <div style="background:#fffbf5;border:1px solid #fbd38d;border-radius:10px;padding:14px;">
+          <div style="font-size:13px;font-weight:700;color:#c05621;margin-bottom:10px;">📝 확인보고 사유 입력</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+            ${['거래처 휴무', '담당자 부재', '일시적 감소', '계절/행사 영향', '경쟁업체 이탈', '직접 연락 완료', '기타'].map(r =>
+              `<button onclick="this.classList.toggle('sel');document.querySelectorAll('.fb-reason-btn').forEach(b=>b!==this&&b.classList.remove('sel'));window._adminFbReason='${r}';"
+                class="fb-reason-btn"
+                style="padding:6px 12px;border:1.5px solid #e2e8f0;border-radius:16px;font-size:12px;background:#fff;cursor:pointer;transition:all 0.15s;"
+                onmouseover="this.style.borderColor='#c05621'" onmouseout="if(!this.classList.contains('sel'))this.style.borderColor='#e2e8f0'"
+              >${r}</button>`
+            ).join('')}
+          </div>
+          <textarea id="adminFbExtra" placeholder="추가 내용 입력 (선택)" rows="2"
+            style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;box-sizing:border-box;"></textarea>
+          <button onclick="submitAdminFeedback('${id}','${(clientName||'').replace(/'/g,"\\'")}','${teamId}')"
+            style="width:100%;margin-top:8px;padding:11px;background:#c05621;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
+            ✅ 사유 제출 및 경보 해제
+          </button>
+        </div>` : ''}
+        <div style="display:flex;gap:10px;">
+          <button onclick="sendAlertSms('${id}','${clientName}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
+          <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
+        </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+};
+
+// ── 관리자 확인보고 사유 제출 ──
+window.submitAdminFeedback = async function(alertId, clientName, teamId) {
+  const reason = window._adminFbReason || '';
+  const extra = (document.getElementById('adminFbExtra')?.value || '').trim();
+  if (!reason && !extra) {
+    alert('사유를 선택하거나 입력해 주세요.');
+    return;
+  }
+  const text = reason && extra ? reason + ' — ' + extra : reason || extra;
+  try {
+    await db.collection('alerts').doc(alertId).update({
+      feedback: {
+        text,
+        submittedByName: '관리자',
+        submittedAt: firebase.firestore.FieldValue.serverTimestamp()
+      },
+      resolved: true,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      resolvedReason: 'admin_feedback'
+    });
+    document.getElementById('alertDetailModal')?.remove();
+    window._adminFbReason = null;
+    alert('✅ 사유가 제출되었습니다.');
+    // 카드 새로고침
+    await loadAdminAlerts();
+    await loadAdminDirectives();
+  } catch(e) {
+    alert('저장 오류: ' + e.message);
+  }
 };
 
 // ── 지시사항 이행률 팀별 상세 모달 ──
