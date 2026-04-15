@@ -858,9 +858,15 @@ exports.onClaimCreated = functions
   .firestore.document('claims/{claimId}')
   .onCreate(async (snap, context) => {
     const claim = snap.data();
-    const { type, driverName, date, clientName } = claim;
+    const { type, driverName, date, clientName, source } = claim;
     
-    console.log(`클레임 발생: ${type} | ${driverName} | ${clientName} | ${date}`);
+    console.log(`클레임 발생: ${type} | ${driverName} | ${clientName} | ${date} | source: ${source||'manual'}`);
+    
+    // 구글시트 동기화로 추가된 데이터는 문자 발송 안 함
+    if (source === 'google_sheets') {
+      console.log('⏭ 구글시트 동기화 데이터 — 문자 발송 건너뜀');
+      return null;
+    }
     
     try {
       // 1. 오배송/지연 → 정성평가 감점
