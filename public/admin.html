@@ -1583,17 +1583,55 @@
   function normClient(name) {
     return String(name||'')
       .replace(/\(주\)|\(주식회사\)|주식회사|\(유\)|\(합\)/gi, '')  // 법인 접두어 제거
+      .replace(/[_]?(부산시?|해운대구?|수영구?|남구|동구|북구|사하구?|사상구?|금정구?|연제구?|동래구?|강서구?|영도구?|중구|서구|기장군?|양산시?|창원시?)[_]?/g, '') // 지역명 제거
       .replace(/[\s\-_\.\(\)（）【】\[\]]/g, '')  // 공백/특수문자 제거
+      .replace(/\(주\)|\(주식회사\)|주식회사|\(유\)|\(합\)/gi, '')  // 혹시 남은 법인명 재처리
       .toLowerCase();
   }
 
-  // ── 부분일치 주문 확인: 경보명이 거래처명에 포함되거나 반대인 경우 매칭 ──
+  // ── 레벤슈타인 거리 계산 ──
+  function levenshtein(a, b) {
+    const m = a.length, n = b.length;
+    const dp = Array.from({length: m+1}, (_,i) => Array.from({length: n+1}, (_,j) => i===0?j:j===0?i:0));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+    return dp[m][n];
+  }
+
+  // ── 유사도 매칭: 포함 관계 + 공통 접두어 + 레벤슈타인 ──
+  function similarityScore(a, b) {
+    if (!a || !b) return 0;
+    const shorter = a.length < b.length ? a : b;
+    const longer  = a.length < b.length ? b : a;
+    if (longer.includes(shorter)) return 1.0;
+    // 공통 접두어 비율
+    let common = 0;
+    for (let i = 0; i < shorter.length; i++) {
+      if (shorter[i] === longer[i]) common++; else break;
+    }
+    const prefixScore = common / shorter.length;
+    if (prefixScore >= 0.75) return prefixScore;
+    // 레벤슈타인 거리 기반 유사도
+    const dist = levenshtein(a, b);
+    return 1 - dist / Math.max(a.length, b.length);
+  }
+
+  // ── 부분일치 주문 확인: 정규화 + 포함 관계 + 유사도 매칭 ──
   function isOrderedPartialMatch(clientName, orderedNorm) {
     const norm = normClient(clientName);
-    if (!norm) return false;
+    if (!norm || norm.length < 2) return false;
     for (const o of orderedNorm) {
-      if (!o) continue;
+      if (!o || o.length < 2) continue;
+      // 포함 관계
       if (norm.includes(o) || o.includes(norm)) return true;
+      // 짧은 쪽 기준 앞 4글자 이상 일치 + 전체 길이 차이 2 이하일 때만 매칭
+      const shorter = norm.length < o.length ? norm : o;
+      const prefix4 = shorter.slice(0, 4);
+      if (shorter.length >= 4 && norm.startsWith(prefix4) && o.startsWith(prefix4)
+          && Math.abs(norm.length - o.length) <= 2) return true;
+      // 레벤슈타인 유사도 0.8 이상 (6글자 이상일 때만 — 짧은 이름 오탐 방지)
+      if (shorter.length >= 6 && similarityScore(norm, o) >= 0.80) return true;
     }
     return false;
   }
