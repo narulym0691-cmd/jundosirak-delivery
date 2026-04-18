@@ -1113,7 +1113,7 @@ window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
       return;
     }
 
-    const res = await fetch('https://us-central1-jundosirak-delivery2.cloudfunctions.net/sendSms', {
+    const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ targets, text })

@@ -1,11 +1,12 @@
 // Firebase 설정
 const firebaseConfig = {
-  apiKey: "AIzaSyDMji7rccF5c5jHA46S57ww_gY0efuy_M4",
-  authDomain: "jundosirak-delivery2.firebaseapp.com",
-  projectId: "jundosirak-delivery2",
-  storageBucket: "jundosirak-delivery2.firebasestorage.app",
-  messagingSenderId: "627206670087",
-  appId: "1:627206670087:web:a2a3981cd2e093ab1e67a2"
+  apiKey: "AIzaSyCMUqXPDxPyqnRIBRV2UIgxbShWzEUD5yg",
+  authDomain: "jundosirak-delivery-ae87f.firebaseapp.com",
+  projectId: "jundosirak-delivery-ae87f",
+  storageBucket: "jundosirak-delivery-ae87f.firebasestorage.app",
+  messagingSenderId: "758374011966",
+  appId: "1:758374011966:web:b379171e702e521830ed6f",
+  measurementId: "G-PWMD4YK6VJ"
 };
 
 // Firebase 초기화 (중복 방지)

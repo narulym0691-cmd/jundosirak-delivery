@@ -1,7 +1,7 @@
 // vehicle.js - 기사용 차량 점검 사진 업로드 + Gemini AI 채점
 
 // ── 상수 ──────────────────────────────────────
-const GEMINI_API_KEY = 'AIzaSyARaQ_iFPRKBhMOrRcX0fhQtLGlZtC7UHo';
+const GEMINI_API_KEY = '';
 const GEMINI_ENDPOINT =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_API_KEY;
 
