@@ -220,7 +220,7 @@ async function loadAdminAlerts() {
   const container = document.getElementById('adminAlertsCard');
   const summaryEl = document.getElementById('summaryAlerts');
   try {
-    const snap = await db.collection('alerts').get();
+    const snap = await db.collection('alerts').get({source:'server'});
     let urgent = 0, watch = 0, check = 0;
     const items = [];
     // (urgent/watch/check는 중복 제거 후 재계산)
