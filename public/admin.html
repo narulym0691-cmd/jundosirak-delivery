@@ -1869,13 +1869,13 @@
         // 일반: 3일 연속 미주문부터 경보
         consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
         if (consecutiveDays < 3) continue; // 1~2일째는 경보 없음
-        grade = 'alert';
+        grade = 'check';
       }
 
       if (prev) {
         // 기존 미해결 경보 업데이트 (새 문서 생성 안 함)
         batch.update(db.collection('alerts').doc(prev.docId), {
-          consecutiveDays, date, grade,
+          consecutiveDays, date, grade, teamId, courseId, name, dailyAvg, isPriority,
           updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
       } else {
