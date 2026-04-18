@@ -18,8 +18,49 @@ async function initAdmin() {
     loadWorkdays(),
     loadBaselineCard(),
     loadDeliveryLogs(),
-    loadVehicleStatus()
+    loadVehicleStatus(),
+    loadNewClientsCard()
   ]);
+}
+
+async function loadNewClientsCard() {
+  const card = document.getElementById('newClientsTodayCard');
+  const title = document.getElementById('newClientsTodayTitle');
+  const list = document.getElementById('newClientsTodayList');
+  if (!card) return;
+
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const now = new Date();
+  const todayStr = fmt(now);
+  const todayAt14 = new Date(now); todayAt14.setHours(14, 0, 0, 0);
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = fmt(yesterday);
+
+  let data = null, displayDate = '';
+  try {
+    const todaySnap = await db.collection('sales_daily').doc(todayStr).get();
+    if (todaySnap.exists && todaySnap.data().newClients && todaySnap.data().newClients.length > 0) {
+      data = todaySnap.data().newClients;
+      displayDate = todayStr;
+    } else if (now < todayAt14) {
+      const ySnap = await db.collection('sales_daily').doc(yesterdayStr).get();
+      if (ySnap.exists && ySnap.data().newClients && ySnap.data().newClients.length > 0) {
+        data = ySnap.data().newClients;
+        displayDate = yesterdayStr;
+      }
+    }
+  } catch(e) { console.warn('신규업체 카드 로드 오류:', e.message); }
+
+  if (!data || data.length === 0) { card.style.display = 'none'; return; }
+
+  title.textContent = `🆕 오늘 신규업체 ${data.length}건 (${displayDate})`;
+  list.innerHTML = data.map(c => `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;margin-bottom:4px;background:${(c.quantity||0)>=8?'#e6fffa':'#fff'};border:1px solid #e2e8f0;">
+      <span style="font-weight:700;font-size:13px;">${c.clientName}</span>
+      <span style="font-size:12px;color:#4a5568;">${c.driverName||'-'}</span>
+      <span style="font-weight:700;font-size:13px;color:#1a4731;">${c.quantity||0}개</span>
+    </div>`).join('');
+  card.style.display = '';
 }
 
 async function updateMonthInfo() {

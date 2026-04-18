@@ -442,6 +442,14 @@
     </div>
   </div>
 
+  <!-- 오늘 신규업체 카드 -->
+  <div class="card" id="newClientsTodayCard" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="card-title" style="margin:0;" id="newClientsTodayTitle">🆕 오늘 신규업체 0건</div>
+    </div>
+    <div id="newClientsTodayList"></div>
+  </div>
+
   <!-- 팀 순위 테이블 -->
   <div class="card">
     <div class="card-title">팀 순위</div>
@@ -1414,16 +1422,21 @@
     const MENUS = ['뜨','프','샐','품','덮','샌','세트','김밥','밥','국'];
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
+    const clientOrderMap = {}; // clientName → { total, driverName, courseId }
     for (const sheetName of wb.SheetNames) {
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
       if (rows.length < 45) continue;
       const hdr = rows[43] || [];
       if (!String(hdr[10]||'').includes('거래처') && !String(hdr[3]||'').includes('이름')) continue;
+      let currentCourseId = '';
       for (let i = 44; i < rows.length; i++) {
         const row = rows[i];
         if (!row) continue;
-        if (row[0] === 0 && String(row[2]||'').includes('배송코스')) continue;
+        if (row[0] === 0 && String(row[2]||'').includes('배송코스')) {
+          currentCourseId = String(row[2]||'').replace(/배송코스/g,'').trim() || String(row[1]||'').trim();
+          continue;
+        }
         const clientName = String(row[10]||'').trim();
         if (!clientName) continue;
         const driverName = String(row[3]||'').trim();
@@ -1436,6 +1449,7 @@
         });
         if (total > 0) {
           orderedClients.push(clientName);
+          clientOrderMap[clientName] = { total, driverName, courseId: currentCourseId };
           if (driverName) {
             if (!driverStats[driverName]) { driverStats[driverName] = { total:0 }; MENUS.forEach(m => driverStats[driverName][m] = 0); }
             driverStats[driverName].total += total;
@@ -1447,7 +1461,7 @@
       }
       if (orderedClients.length || notOrderedClients.length) break;
     }
-    return { orderedClients, notOrderedClients, driverStats };
+    return { orderedClients, notOrderedClients, driverStats, clientOrderMap };
   }
 
   window.onSalesFileChange = async (input) => {
@@ -2050,6 +2064,27 @@
         notOrderedClients: _salesData.notOrderedClients || [],
         driverStats: _salesData.driverStats || {}
       });
+
+      // 신규업체 감지 (clients 컬렉션에 없는 거래처)
+      try {
+        const existClientsSnap = await db.collection('clients').get();
+        const existingNames = new Set();
+        existClientsSnap.forEach(doc => existingNames.add(String(doc.data().clientName || '').trim()));
+        const newClients = [];
+        for (const clientName of (_salesData.orderedClients || [])) {
+          if (existingNames.has(clientName)) continue;
+          const co = _salesData.clientOrderMap && _salesData.clientOrderMap[clientName];
+          newClients.push({
+            clientName,
+            driverName: co ? co.driverName : '',
+            quantity: co ? co.total : 0,
+            courseId: co ? co.courseId : ''
+          });
+        }
+        if (newClients.length > 0) {
+          await db.collection('sales_daily').doc(date).update({ newClients });
+        }
+      } catch(e) { console.warn('신규업체 감지 오류(무시):', e.message); }
 
       const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
       const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
