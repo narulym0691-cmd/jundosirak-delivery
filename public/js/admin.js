@@ -1198,11 +1198,11 @@ window.showAlertDetail = function(id, name, level, consecutiveDays, teamId, cour
         <div style="font-size:22px;font-weight:800;color:${levelColor};">${levelLabel}</div>
       </div>
       <table style="width:100%;font-size:14px;border-collapse:collapse;">
-        <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${a.name}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${name}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">구분</td><td style="padding:8px 0;font-weight:700;color:${isPriority?'#744210':'#718096'};">${priorityLabel}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">팀</td><td style="padding:8px 0;">${teamNames[teamId]||teamId||'-'}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">코스</td><td style="padding:8px 0;">${courseId||'-'}</td></tr>
-        <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${a.dailyAvg}개</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${dailyAvg}개</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">연속 미주문</td><td style="padding:8px 0;font-weight:700;color:${levelColor};">${consecutiveDays}일째</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">발생일</td><td style="padding:8px 0;">${date||'-'}</td></tr>
       </table>
@@ -1221,13 +1221,13 @@ window.showAlertDetail = function(id, name, level, consecutiveDays, teamId, cour
           </div>
           <textarea id="adminFbExtra" placeholder="추가 내용 입력 (선택)" rows="2"
             style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;box-sizing:border-box;"></textarea>
-          <button onclick="submitAdminFeedback('${id}','${(a.name||'').replace(/'/g,"\\'")}','${teamId}')"
+          <button onclick="submitAdminFeedback('${id}','${(name||'').replace(/'/g,"\\'")}','${teamId}')"
             style="width:100%;margin-top:8px;padding:11px;background:#c05621;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
             ✅ 사유 제출 및 경보 해제
           </button>
         </div>` : ''}
         <div style="display:flex;gap:10px;">
-          <button onclick="sendAlertSms('${id}','${a.name}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
+          <button onclick="sendAlertSms('${id}','${name}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
           <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
         </div>
       </div>
