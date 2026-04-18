@@ -242,13 +242,13 @@ async function loadAdminAlerts() {
     const severityOrder = { urgent: 1, watch: 2, check: 3 };
     const latestByClient = new Map();
     items.forEach(a => {
-      const existing = latestByClient.get(a.clientName);
-      if (!existing) { latestByClient.set(a.clientName, a); return; }
+      const existing = latestByClient.get(a.name);
+      if (!existing) { latestByClient.set(a.name, a); return; }
       const aSev = severityOrder[a.level] !== undefined ? severityOrder[a.level] : 0;
       const eSev = severityOrder[existing.level] !== undefined ? severityOrder[existing.level] : 0;
       // 더 심각한 등급 우선, 같으면 최신 날짜
       if (aSev > eSev || (aSev === eSev && (a.date||'') > (existing.date||''))) {
-        latestByClient.set(a.clientName, a);
+        latestByClient.set(a.name, a);
       }
     });
     const activeItems = Array.from(latestByClient.values());
@@ -279,10 +279,10 @@ async function loadAdminAlerts() {
       const levelLabel = a.level==='urgent'?'즉시경보':a.level==='watch'?'주시':'확인보고';
       const levelClass = a.level==='urgent'?'alert-urgent':a.level==='watch'?'alert-watch':'alert-check';
       const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
-      const smsBtn = `<button onclick="event.stopPropagation();sendAlertSms('${a.id}','${a.clientName}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
+      const smsBtn = `<button onclick="event.stopPropagation();sendAlertSms('${a.id}','${a.name}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
       const teamLabel = teamNames[a.teamId] || a.teamId || '';
-      const isPriority = a.isPriority || (a.dailyAvgOrder||0) >= 8;
-      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvgOrder||0},'${a.date||''}',${isPriority})"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.clientName}</span>${isPriority?'<span style="font-size:10px;background:#744210;color:#fff;padding:1px 5px;border-radius:8px;margin-left:3px;">⭐</span>':''}<span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
+      const isPriority = a.isPriority || (a.dailyAvg||0) >= 8;
+      return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.name||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvg||0},'${a.date||''}',${isPriority})"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.name}</span>${isPriority?'<span style="font-size:10px;background:#744210;color:#fff;padding:1px 5px;border-radius:8px;margin-left:3px;">⭐</span>':''}<span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
     }).join('');
   } catch(e) {
     console.error('경보 로드 실패:', e);
@@ -421,7 +421,7 @@ async function loadFeedbackPending(container) {
                         padding:8px 10px;background:#fff5f5;border-radius:8px;margin-bottom:4px;
                         border-left:3px solid #fc8181;">
               <div>
-                <span style="font-size:13px;font-weight:600;color:#2d3748;">${a.clientName}</span>
+                <span style="font-size:13px;font-weight:600;color:#2d3748;">${a.name}</span>
                 <span style="font-size:11px;color:#a0aec0;margin-left:6px;">${a.consecutiveDays||'?'}일째 미주문</span>
               </div>
               <span style="font-size:11px;background:#fed7d7;color:#c53030;
@@ -518,12 +518,12 @@ async function saveNewClient() {
   const teamId = COURSE_TEAM[course] || '';
   msg.textContent='저장 중...'; msg.style.color='#4a5568';
   try {
-    const existing = await db.collection('clients').where('clientName','==',name).limit(1).get();
+    const existing = await db.collection('clients').where('name','==',name).limit(1).get();
     if(!existing.empty) {
-      await existing.docs[0].ref.update({ courseId:course, teamId, dailyAvgOrder:avg, isPriority:avg>=8, orderDays, note, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
+      await existing.docs[0].ref.update({ courseId:course, teamId, dailyAvg:avg, isPriority:avg>=8, orderDays, note, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
       msg.textContent='✅ 기존 거래처 업데이트 완료: '+name; msg.style.color='#276749';
     } else {
-      await db.collection('clients').add({ clientName:name, courseId:course, teamId, dailyAvgOrder:avg, isPriority:avg>=8, orderDays, note, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
+      await db.collection('clients').add({ name:name, courseId:course, teamId, dailyAvg:avg, isPriority:avg>=8, orderDays, note, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
       msg.textContent='✅ 신규 거래처 추가 완료: '+name; msg.style.color='#276749';
     }
     // 입력 초기화
@@ -574,11 +574,11 @@ function onClientFileChange(input) {
         ['월','화','수','목','금'].forEach((d,idx)=>{ if(String(row[3+idx]||'').trim().toUpperCase()==='O'){orderDays.push(idx);dayLabels.push(d);} });
         const dailyAvg=parseInt(row[8])||0;
         const memo=String(row[9]||'').trim();
-        clientUploadData.push({clientName:name,courseId:course,teamId:COURSE_TEAM_MAP[course]||'',isPriority,orderDays,dayLabels,dailyAvgOrder:dailyAvg,memo,active:true});
+        clientUploadData.push({name:name,courseId:course,teamId:COURSE_TEAM_MAP[course]||'',isPriority,orderDays,dayLabels,dailyAvg:dailyAvg,memo,active:true});
       }
       if(!clientUploadData.length){document.getElementById('cu-msg').textContent='⚠️ 유효한 데이터가 없습니다.';return;}
       const tbody=document.getElementById('cu-preview-body');
-      tbody.innerHTML=clientUploadData.map(c=>`<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:5px 8px;">${c.clientName}</td><td style="padding:5px 8px;text-align:center;">${c.courseId}</td><td style="padding:5px 8px;text-align:center;color:${c.isPriority?'#e53e3e':'#718096'}">${c.isPriority?'★1순위':'일반'}</td><td style="padding:5px 8px;text-align:center;">${c.dayLabels.join(',')}</td><td style="padding:5px 8px;text-align:center;">${c.dailyAvgOrder||'-'}</td><td style="padding:5px 8px;color:#718096;font-size:10px;">${c.memo||''}</td></tr>`).join('');
+      tbody.innerHTML=clientUploadData.map(c=>`<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:5px 8px;">${c.name}</td><td style="padding:5px 8px;text-align:center;">${c.courseId}</td><td style="padding:5px 8px;text-align:center;color:${c.isPriority?'#e53e3e':'#718096'}">${c.isPriority?'★1순위':'일반'}</td><td style="padding:5px 8px;text-align:center;">${c.dayLabels.join(',')}</td><td style="padding:5px 8px;text-align:center;">${c.dailyAvg||'-'}</td><td style="padding:5px 8px;color:#718096;font-size:10px;">${c.memo||''}</td></tr>`).join('');
       document.getElementById('cu-preview-summary').textContent=`총 ${clientUploadData.length}개 거래처`;
       document.getElementById('cu-preview').style.display='block';
       document.getElementById('cu-save-btn').style.display='block';
@@ -594,9 +594,9 @@ async function saveClientData() {
   try {
     const batch=db.batch(); let newCount=0,updateCount=0;
     for(const c of clientUploadData){
-      const snap=await db.collection('clients').where('clientName','==',c.clientName).limit(1).get();
+      const snap=await db.collection('clients').where('name','==',c.name).limit(1).get();
       if(snap.empty){const ref=db.collection('clients').doc();batch.set(ref,{...c,createdAt:firebase.firestore.FieldValue.serverTimestamp()});newCount++;}
-      else{const ref=snap.docs[0].ref;batch.update(ref,{courseId:c.courseId,teamId:c.teamId,isPriority:c.isPriority,orderDays:c.orderDays,dailyAvgOrder:c.dailyAvgOrder,memo:c.memo,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});updateCount++;}
+      else{const ref=snap.docs[0].ref;batch.update(ref,{courseId:c.courseId,teamId:c.teamId,isPriority:c.isPriority,orderDays:c.orderDays,dailyAvg:c.dailyAvg,memo:c.memo,updatedAt:firebase.firestore.FieldValue.serverTimestamp()});updateCount++;}
     }
     await batch.commit();
     msg.style.color='#38a169'; msg.textContent=`✅ 저장 완료! 신규 ${newCount}건 / 업데이트 ${updateCount}건`;
@@ -762,7 +762,7 @@ async function loadDeliveryLogs(){
 function renderDeliveryDetail(logs){
   const el=document.getElementById('deliveryDetailList');
   if(!logs||!logs.length){el.innerHTML='<div class="empty-msg">없음</div>';return;}
-  const rows=logs.map(log=>{const dt=log.completedAt?log.completedAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):'-';return `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:5px 8px;font-size:12px;color:#718096;">${dt}</td><td style="padding:5px 8px;font-weight:600;font-size:12px;">${log.driverName||log.driverId}</td><td style="padding:5px 8px;font-size:12px;color:#4a5568;">${log.teamName||'-'}</td><td style="padding:5px 8px;font-size:12px;">${log.courseId||'-'}</td><td style="padding:5px 8px;font-size:12px;color:#718096;">${log.clientName||'-'}</td><td style="padding:5px 8px;font-size:11px;color:#a0aec0;">${log.source||'app'}</td></tr>`;}).join('');
+  const rows=logs.map(log=>{const dt=log.completedAt?log.completedAt.toDate().toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}):'-';return `<tr style="border-bottom:1px solid #f0f0f0;"><td style="padding:5px 8px;font-size:12px;color:#718096;">${dt}</td><td style="padding:5px 8px;font-weight:600;font-size:12px;">${log.driverName||log.driverId}</td><td style="padding:5px 8px;font-size:12px;color:#4a5568;">${log.teamName||'-'}</td><td style="padding:5px 8px;font-size:12px;">${log.courseId||'-'}</td><td style="padding:5px 8px;font-size:12px;color:#718096;">${log.name||'-'}</td><td style="padding:5px 8px;font-size:11px;color:#a0aec0;">${log.source||'app'}</td></tr>`;}).join('');
   el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:12px;"><thead><tr style="background:#f7fafc;"><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">완료시간</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">기사</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">팀</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">코스</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">거래처</th><th style="padding:5px 8px;text-align:left;border-bottom:1px solid #e2e8f0;">출처</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -941,7 +941,7 @@ async function loadAdminFieldVisits() {
                 <td style="padding:8px 6px;white-space:nowrap;color:#718096;font-size:12px;">${dt}</td>
                 <td style="padding:8px 6px;font-weight:600;white-space:nowrap;">${v.driverName||'-'}${commentBadge}</td>
                 <td style="padding:8px 6px;white-space:nowrap;color:#4a5568;">${v.teamName||'-'}</td>
-                <td style="padding:8px 6px;white-space:nowrap;"><span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.clientName||'-'}</span> ${typeBadge}</td>
+                <td style="padding:8px 6px;white-space:nowrap;"><span style="background:#f0fff4;color:#276749;padding:1px 7px;border-radius:10px;font-size:12px;">${v.name||'-'}</span> ${typeBadge}</td>
                 <td style="padding:8px 6px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${preview}</td>
                 <td style="padding:8px 6px;text-align:center;color:#718096;">${photoCnt > 0 ? '📷'+photoCnt : '-'}</td>
                 <td style="padding:8px 6px;text-align:center;" onclick="event.stopPropagation()">
@@ -1118,7 +1118,7 @@ window.showAdminFvDetail = function(v) {
       </div>
       <div style="font-size:12px;color:#718096;margin-bottom:4px;">${dt}</div>
       <div style="font-size:13px;font-weight:700;color:#1a4731;margin-bottom:2px;">${v.driverName||'-'} &middot; ${v.teamName||'-'}</div>
-      <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.clientName||'-'}</div>
+      <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.name||'-'}</div>
       <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content||''}</div>
       ${photos}
       ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px;margin-top:8px;font-size:13px;color:#276749;">📌 관리자 메모: ${v.adminComment}</div>` : ''}
@@ -1130,9 +1130,9 @@ window.showAdminFvDetail = function(v) {
 };
 
 // ── 경보 팀장 문자 수동 발송 ──────────────────────────────────
-window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
+window.sendAlertSms = async (alertId, name, level, days, teamId) => {
   const levelLabel = level === 'urgent' ? '🚨 즉시경보' : level === 'watch' ? '⚠️ 주시경보' : '확인보고';
-  const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${clientName}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+  const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${name}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
 
   if (!confirm(`팀장에게 경보 문자를 발송하시겠습니까?\n\n[메시지]\n${text}`)) return;
 
@@ -1177,7 +1177,7 @@ window.sendAlertSms = async (alertId, clientName, level, days, teamId) => {
 };
 
 // ── 경보 상세 모달 ──────────────────────────────────────────────
-window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId, courseId, dailyAvgOrder, date, isPriority) {
+window.showAlertDetail = function(id, name, level, consecutiveDays, teamId, courseId, dailyAvg, date, isPriority) {
   const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
   const levelLabel = level==='urgent'?'🔴 즉시경보':level==='watch'?'🟡 주시':'🟠 확인보고';
   const levelColor = level==='urgent'?'#e53e3e':level==='watch'?'#dd6b20':'#c05621';
@@ -1198,11 +1198,11 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
         <div style="font-size:22px;font-weight:800;color:${levelColor};">${levelLabel}</div>
       </div>
       <table style="width:100%;font-size:14px;border-collapse:collapse;">
-        <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${clientName}</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;width:90px;">거래처</td><td style="padding:8px 0;font-weight:700;font-size:16px;">${a.name}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">구분</td><td style="padding:8px 0;font-weight:700;color:${isPriority?'#744210':'#718096'};">${priorityLabel}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">팀</td><td style="padding:8px 0;">${teamNames[teamId]||teamId||'-'}</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">코스</td><td style="padding:8px 0;">${courseId||'-'}</td></tr>
-        <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${dailyAvgOrder}개</td></tr>
+        <tr><td style="padding:8px 0;color:#718096;">일평균 수량</td><td style="padding:8px 0;font-weight:700;color:#e53e3e;">${a.dailyAvg}개</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">연속 미주문</td><td style="padding:8px 0;font-weight:700;color:${levelColor};">${consecutiveDays}일째</td></tr>
         <tr><td style="padding:8px 0;color:#718096;">발생일</td><td style="padding:8px 0;">${date||'-'}</td></tr>
       </table>
@@ -1221,13 +1221,13 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
           </div>
           <textarea id="adminFbExtra" placeholder="추가 내용 입력 (선택)" rows="2"
             style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;box-sizing:border-box;"></textarea>
-          <button onclick="submitAdminFeedback('${id}','${(clientName||'').replace(/'/g,"\\'")}','${teamId}')"
+          <button onclick="submitAdminFeedback('${id}','${(a.name||'').replace(/'/g,"\\'")}','${teamId}')"
             style="width:100%;margin-top:8px;padding:11px;background:#c05621;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">
             ✅ 사유 제출 및 경보 해제
           </button>
         </div>` : ''}
         <div style="display:flex;gap:10px;">
-          <button onclick="sendAlertSms('${id}','${clientName}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
+          <button onclick="sendAlertSms('${id}','${a.name}','${level}',${consecutiveDays},'${teamId}');document.getElementById('alertDetailModal').remove();" style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">📱 팀장 문자 발송</button>
           <button onclick="document.getElementById('alertDetailModal').remove()" style="padding:11px 18px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;cursor:pointer;">닫기</button>
         </div>
       </div>
@@ -1237,7 +1237,7 @@ window.showAlertDetail = function(id, clientName, level, consecutiveDays, teamId
 };
 
 // ── 관리자 확인보고 사유 제출 ──
-window.submitAdminFeedback = async function(alertId, clientName, teamId) {
+window.submitAdminFeedback = async function(alertId, name, teamId) {
   const reason = window._adminFbReason || '';
   const extra = (document.getElementById('adminFbExtra')?.value || '').trim();
   if (!reason && !extra) {

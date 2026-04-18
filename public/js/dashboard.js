@@ -227,7 +227,7 @@ async function loadAlerts() {
           <span style="color:#a0aec0;margin-left:6px;">${a.feedback.submittedAt ? new Date(a.feedback.submittedAt.toDate()).toLocaleDateString('ko-KR') : ''}</span>
         </div>` : `
         <div style="margin-top:8px;">
-          <button onclick="openFeedbackModal('${a.id}','${(a.clientName||'').replace(/'/g,"\\'")}')"
+          <button onclick="openFeedbackModal('${a.id}','${(a.name||'').replace(/'/g,"\\'")}')"
             style="width:100%;padding:9px;background:#e53e3e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
             📝 사유 입력 필요
           </button>
@@ -237,8 +237,8 @@ async function loadAlerts() {
         <div class="alert-item ${levelClass}">
           <div class="alert-left">
             <span class="alert-badge ${levelClass}">${levelLabel}</span>
-            <span class="alert-name">${a.clientName}</span>
-            <span style="font-size:11px;color:#718096;">${a.dailyAvgOrder}개</span>
+            <span class="alert-name">${a.name}</span>
+            <span style="font-size:11px;color:#718096;">${a.dailyAvg}개</span>
           </div>
           <div class="alert-right">
             <span class="alert-days">${a.consecutiveDays||1}일째</span>
@@ -529,7 +529,7 @@ async function saveFieldVisit() {
       driverName: currentUser.name,
       teamId: currentUser.teamId || '',
       teamName: myTeam ? myTeam.name : '',
-      clientName,
+      name,
       content,
       photoUrls,
       visitType: fvSelectedType,
@@ -619,7 +619,7 @@ async function loadFieldVisits() {
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;flex-wrap:wrap;">
               <span style="font-size:12px;color:#718096;">${dt}</span>
               <span style="font-size:12px;font-weight:700;color:${isMe ? '#1a4731' : '#4a5568'}">${v.driverName}${isMe ? ' (나)' : ''}</span>
-              <span style="font-size:11px;background:#f0fff4;color:#276749;padding:1px 6px;border-radius:10px;">${v.clientName}</span>
+              <span style="font-size:11px;background:#f0fff4;color:#276749;padding:1px 6px;border-radius:10px;">${v.name}</span>
               ${badge}
               ${commentBadge}
             </div>
@@ -663,7 +663,7 @@ window.showFieldVisitDetail = function(v) {
         <span style="font-size:13px;font-weight:700;color:#1a4731;">${v.driverName} · ${v.teamName || ''}</span>
         ${badge}
       </div>
-      <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.clientName}</div>
+      <div style="font-size:13px;background:#f0fff4;color:#276749;display:inline-block;padding:2px 10px;border-radius:10px;margin-bottom:12px;">${v.name}</div>
       <div style="font-size:14px;color:#2d3748;white-space:pre-wrap;margin-bottom:14px;">${v.content}</div>
       ${photos}
       ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#276749;"><strong>📌 관리자 메모:</strong> ${v.adminComment}</div>` : ''}
@@ -750,7 +750,7 @@ window.editFieldVisit = function(v) {
         <div style="font-size:15px;font-weight:800;">✏️ 기록 수정</div>
         <button onclick="document.getElementById('fv-edit-modal').remove()" style="background:none;border:none;font-size:20px;color:#718096;cursor:pointer;">✕</button>
       </div>
-      <div style="font-size:12px;color:#718096;margin-bottom:8px;">${v.clientName} · ${v.driverName}</div>
+      <div style="font-size:12px;color:#718096;margin-bottom:8px;">${v.name} · ${v.driverName}</div>
       <textarea id="fv-edit-content" style="width:100%;height:120px;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;resize:none;box-sizing:border-box;">${v.content}</textarea>
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button onclick="document.getElementById('fv-edit-modal').remove()" style="flex:1;padding:10px;background:#e2e8f0;color:#4a5568;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">취소</button>
@@ -1083,8 +1083,8 @@ async function loadAlertReport() {
     list.innerHTML = myAlerts.map(a => `
       <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:10px;border:1px solid #fed7d7;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <div style="font-size:14px;font-weight:700;color:#2d3748;">${a.clientName}</div>
-          <span style="font-size:11px;color:#c53030;font-weight:600;">${a.consecutiveDays}일째 미주문 · 일평균 ${a.dailyAvgOrder}개</span>
+          <div style="font-size:14px;font-weight:700;color:#2d3748;">${a.name}</div>
+          <span style="font-size:11px;color:#c53030;font-weight:600;">${a.consecutiveDays}일째 미주문 · 일평균 ${a.dailyAvg}개</span>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button onclick="submitAlertAction('${a.id}','contacted')" style="padding:6px 10px;background:#ebf8ff;color:#2b6cb0;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">📞 연락완료</button>

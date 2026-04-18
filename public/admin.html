@@ -1606,7 +1606,7 @@
       if (parts.length < 3) continue;
       const isoDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
       if (isoDate === date) {
-        newOnDate.push({ clientName, driver, qty });
+        newOnDate.push({ name, driver, qty });
       }
     }
 
@@ -1621,7 +1621,7 @@
       // 중복 체크
       const existing = await db.collection('sms_schedule')
         .where('date','==',date)
-        .where('clientName','==',item.clientName)
+        .where('name','==',item.name)
         .where('type','==','new_client')
         .limit(1).get();
       if (!existing.empty) continue;
@@ -1631,7 +1631,7 @@
         date,
         courseId,
         driverName: item.driver,
-        clientName: item.clientName,
+        name: item.name,
         menu: '뜨근한식',
         quantity: item.qty,
         teamId: teamInfo.teamId,
@@ -1642,16 +1642,16 @@
 
       // clients에 firstOrderDate 업데이트
       const clientSnap = await db.collection('clients')
-        .where('clientName','==',item.clientName).limit(1).get();
+        .where('name','==',item.name).limit(1).get();
       if (!clientSnap.empty) {
         await clientSnap.docs[0].ref.update({ firstOrderDate: date, isNew: true });
       } else {
         await db.collection('clients').add({
-          clientName: item.clientName, courseId,
+          name: item.name, courseId,
           teamId: teamInfo.teamId, isPriority: false, isNew: true,
           firstOrderDate: date, orderDays:[0,1,2,3,4],
           dayLabels:['월','화','수','목','금'],
-          dailyAvgOrder: item.qty, memo:'판매업로드 자동등록',
+          dailyAvg: item.qty, memo:'판매업로드 자동등록',
           active: true, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         });
       }
@@ -1699,7 +1699,7 @@
   }
 
   // ── 부분일치 주문 확인: 정규화 + 포함 관계 + 유사도 매칭 ──
-  function isOrderedPartialMatch(clientName, orderedNorm) {
+  function isOrderedPartialMatch(name, orderedNorm) {
     const norm = normClient(clientName);
     if (!norm || norm.length < 2) return false;
     for (const o of orderedNorm) {
@@ -1735,15 +1735,15 @@
 
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
-      const { clientName, courseId, teamId, dailyAvgOrder, isPriority } = client;
-      const isP = isPriority || (dailyAvgOrder || 0) >= 8;
+      const { name, courseId, teamId, dailyAvg, isPriority } = client;
+      const isP = isPriority || (dailyAvg || 0) >= 8;
       if (!isP) continue;
-      if (!orderedNorm.has(normClient(clientName))) continue; // 오늘 주문 없으면 스킵 (정규화 비교)
+      if (!orderedNorm.has(normClient(name))) continue; // 오늘 주문 없으면 스킵 (정규화 비교)
 
       // 중복 체크
       const existing = await db.collection('sms_schedule')
         .where('date','==',date)
-        .where('clientName','==',clientName)
+        .where('name','==',name)
         .where('type','==','priority_client')
         .limit(1).get();
       if (!existing.empty) continue;
@@ -1751,7 +1751,7 @@
       // 담당 기사 찾기
       let driverName = null;
       if (_salesData && _salesData.driverRows) {
-        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(clientName));
+        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(name));
         if (dr) driverName = dr.name;
       }
       if (!driverName) continue;
@@ -1763,7 +1763,7 @@
         date,
         courseId: courseId||'',
         driverName,
-        clientName,
+        name,
         quantity: 0, // 실제 수량은 driverRows에서 추가 파악 가능하나 우선 0
         teamId: teamInfo.teamId,
         teamName: teamInfo.teamName,
@@ -1813,8 +1813,8 @@
     const prevAlertMap = {};
     prevAlertsSnap.forEach(d => {
       const a = d.data();
-      if (!prevAlertMap[a.clientName] || a.date > prevAlertMap[a.clientName].date) {
-        prevAlertMap[a.clientName] = { consecutiveDays: a.consecutiveDays || 1, date: a.date, docId: d.id };
+      if (!prevAlertMap[a.name] || a.date > prevAlertMap[a.name].date) {
+        prevAlertMap[a.name] = { consecutiveDays: a.consecutiveDays || 1, date: a.date, docId: d.id };
       }
     });
 
@@ -1837,17 +1837,17 @@
 
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
-      const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
+      const { name, orderDays, dailyAvg, teamId, courseId } = client;
       if (!orderDays || !Array.isArray(orderDays)) continue;
 
       // 오늘 주문 요일인가?
       if (!orderDays.includes(dowIndex)) continue;
 
       // 실제 주문했는가? (부분일치 비교)
-      if (isOrderedPartialMatch(clientName, orderedNorm)) continue;
+      if (isOrderedPartialMatch(name, orderedNorm)) continue;
 
-      const isPriority = (dailyAvgOrder || 0) >= 8;
-      const prev = prevAlertMap[clientName];
+      const isPriority = (dailyAvg || 0) >= 8;
+      const prev = prevAlertMap[name];
 
       // 이미 오늘 처리된 경보면 스킵 (같은 날 중복 실행 방지)
       if (prev && prev.date === date) continue;
@@ -1855,7 +1855,7 @@
       // 담당기사 파악
       let driverName = null;
       if (_salesData && _salesData.driverRows) {
-        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(clientName));
+        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(name));
         if (dr) driverName = dr.name;
       }
 
@@ -1886,7 +1886,7 @@
         autoResolveDate.setDate(autoResolveDate.getDate() + 5);
         batch.set(alertRef, {
           type: 'no_order', grade, isPriority,
-          clientName, dailyAvgOrder, teamId, courseId, date,
+          name, dailyAvg, teamId, courseId, date,
           consecutiveDays, resolved: false,
           autoResolveAt: firebase.firestore.Timestamp.fromDate(autoResolveDate),
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1897,7 +1897,7 @@
 
       if (driverName) {
         if (!alertsByDriver[driverName]) alertsByDriver[driverName] = [];
-        alertsByDriver[driverName].push({ grade, clientName, dailyAvgOrder, consecutiveDays });
+        alertsByDriver[driverName].push({ grade, name, dailyAvg, consecutiveDays });
       }
 
       // batch 500개 제한 방지
@@ -1924,15 +1924,15 @@
           let lines = [`[준도시락 거래처 경보]`, `${dName} 기사님, 담당 거래처 미주문 알림입니다.`, ``];
           if (urgent.length > 0) {
             lines.push(`🔴 즉시경보 (${urgent.length}건)`);
-            urgent.forEach(a => lines.push(`  · ${a.clientName}${a.dailyAvgOrder ? ` (일평균 ${a.dailyAvgOrder}개)` : ''}`));
+            urgent.forEach(a => lines.push(`  · ${a.name}${a.dailyAvg ? ` (일평균 ${a.dailyAvg}개)` : ''}`));
           }
           if (watch.length > 0) {
             lines.push(`🟡 주시 (${watch.length}건)`);
-            watch.forEach(a => lines.push(`  · ${a.clientName} (${a.consecutiveDays}일째)`));
+            watch.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
           }
           if (check.length > 0) {
             lines.push(`🟠 확인보고 (${check.length}건)`);
-            check.forEach(a => lines.push(`  · ${a.clientName} (${a.consecutiveDays}일째)`));
+            check.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
           }
           lines.push(``); lines.push(`확인 후 연락 부탁드립니다.`);
 
@@ -2872,7 +2872,7 @@ async function loadSmsHistory() {
       const statusColor = (r.sent||0) > 0 ? '#276749' : '#c53030';
       const statusText  = (r.sent||0) > 0 ? '✅ 성공' : '❌ 실패';
       const driverLine  = r.driverName ? `<span style="font-weight:600;">${r.driverName}</span> →` : '';
-      const clientLine  = r.clientName ? `<span style="color:#2b6cb0;">${r.clientName}</span>` : (r.targets ? r.targets.join(', ') : '');
+      const clientLine  = r.name ? `<span style="color:#2b6cb0;">${r.name}</span>` : (r.targets ? r.targets.join(', ') : '');
       return `
         <div style="border-bottom:1px solid #e2e8f0;padding:10px 0;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
@@ -3337,7 +3337,7 @@ async function loadNcSmsData() {
           ${rows.map(r => `
             <tr style="border-bottom:1px solid #f0f0f0;">
               <td style="padding:10px 8px;color:#4a5568;">${r.date || '-'}</td>
-              <td style="padding:10px 8px;font-weight:600;color:#1a4731;">${r.clientName || '-'}</td>
+              <td style="padding:10px 8px;font-weight:600;color:#1a4731;">${r.name || '-'}</td>
               <td style="padding:10px 8px;color:#4a5568;">${r.driverName || '-'}</td>
               <td style="padding:10px 8px;text-align:center;">${r.qty || '-'}</td>
               <td style="padding:10px 8px;text-align:center;color:#718096;">${r.phone ? r.phone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3') : '-'}</td>
@@ -3422,10 +3422,10 @@ async function loadClaimCs() {
             <tr style="border-bottom:1px solid #f0f0f0;">
               <td style="padding:10px;font-size:12px;">${c.date}</td>
               <td style="padding:10px;text-align:center;font-weight:700;color:${c.type==='상함'?'#dd6b20':'#e53e3e'};">${c.type}</td>
-              <td style="padding:10px;">${c.clientName||'-'}</td>
+              <td style="padding:10px;">${c.name||'-'}</td>
               <td style="padding:10px;font-size:12px;color:#718096;">${(c.content||'').slice(0,30)}${(c.content||'').length>30?'...':''}</td>
               <td style="padding:10px;text-align:center;">${c.csSmsSent?'✅':'❌'}</td>
-              <td style="padding:10px;text-align:center;"><button onclick="checkFieldVisit('${c.clientName}')" style="padding:4px 10px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">확인</button></td>
+              <td style="padding:10px;text-align:center;"><button onclick="checkFieldVisit('${c.name}')" style="padding:4px 10px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">확인</button></td>
             </tr>`).join('')}
         </tbody>
       </table>`;
@@ -3438,7 +3438,7 @@ async function loadClaimCs() {
 async function checkFieldVisit(clientName) {
   try {
     const snap = await db.collection('field_visits')
-      .where('clientName','==',clientName)
+      .where('name','==',name)
       .where('type','==','customer_care')
       .limit(1)
       .get();
@@ -3447,7 +3447,7 @@ async function checkFieldVisit(clientName) {
       alert(`${clientName} 고객관리 기록이 없습니다.`);
     } else {
       const fv = snap.docs[0].data();
-      alert(`✅ 작성 완료\n\n거래처: ${fv.clientName}\n내용: ${fv.content||'-'}\n작성일: ${fv.visitDate}`);
+      alert(`✅ 작성 완료\n\n거래처: ${fv.name}\n내용: ${fv.content||'-'}\n작성일: ${fv.visitDate}`);
     }
   } catch(e) {
     alert('확인 오류: ' + e.message);
@@ -3586,7 +3586,7 @@ function showReportDetail(teamId) {
       <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:4px;">${driver} 기사 (${alerts.length}건)</div>
       ${alerts.map(a => `
         <div style="font-size:12px;padding:4px 8px;background:#fff;border-radius:4px;margin-bottom:3px;display:flex;justify-content:space-between;">
-          <span>${a.clientName}</span>
+          <span>${a.name}</span>
           <span style="color:#c53030;">${a.grade==='urgent'?'🔴 즉시경보':'🟡 경보'} · ${a.consecutiveDays}일째</span>
         </div>
       `).join('')}
@@ -3645,7 +3645,7 @@ async function buildAlertSmsTargets(teamDataSubset, userMap, leaderMap) {
       if (!u || !u.phone) continue;
       const lines = [`[준도시락] ${driverName} 기사님, 미주문 업체 확인 요청`, ``];
       alerts.forEach(a => {
-        lines.push(`${a.grade==='urgent'?'🔴':'🟡'} ${a.clientName} (${a.consecutiveDays}일째, 일평균 ${a.dailyAvgOrder}개)`);
+        lines.push(`${a.grade==='urgent'?'🔴':'🟡'} ${a.name} (${a.consecutiveDays}일째, 일평균 ${a.dailyAvg}개)`);
       });
       lines.push(``, `확인 후 처리결과를 입력해주세요.`, `👉 https://jundosirak-delivery-ae87f.web.app`);
       targets.push({ name: driverName, phone: u.phone.replace(/-/g,''), text: lines.join('\n') });
@@ -3657,7 +3657,7 @@ async function buildAlertSmsTargets(teamDataSubset, userMap, leaderMap) {
       const teamName = ALERT_TEAM_NAMES[teamId] || teamId;
       const lines = [`[준도시락] ${teamName} 미주문 현황 (총 ${pending.length}건)`, ``];
       for (const [driverName, alerts] of Object.entries(byDriver)) {
-        lines.push(`[${driverName}] ${alerts.map(a=>a.clientName).join(', ')}`);
+        lines.push(`[${driverName}] ${alerts.map(a=>a.name).join(', ')}`);
       }
       lines.push(``, `담당 기사에게 확인 요청 부탁드립니다.`);
       // 팀장 본인은 기사 개별 발송 대상이면 제외 (중복 방지)
@@ -3750,16 +3750,16 @@ async function loadAlerts() {
             const gradeLabel = a.grade==='urgent'?'🔴 즉시경보':a.grade==='watch'?'🟡 주시':'🟠 확인보고';
             const gradeColor = a.grade==='urgent'?'#e53e3e':a.grade==='watch'?'#dd6b20':'#c05621';
             const teamNames = { team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일', team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영' };
-            const isPriority = a.isPriority || (a.dailyAvgOrder||0) >= 8;
+            const isPriority = a.isPriority || (a.dailyAvg||0) >= 8;
             const priorityBadge = isPriority
               ? '<span style="background:#744210;color:#fff;font-size:10px;padding:2px 6px;border-radius:10px;">⭐1순위</span>'
               : '<span style="background:#e2e8f0;color:#718096;font-size:10px;padding:2px 6px;border-radius:10px;">일반</span>';
             return `
             <tr style="border-bottom:1px solid #f0f0f0;${a.resolved?'opacity:0.5;':''}" data-id="${a.id}">
               <td style="padding:10px;text-align:center;font-weight:700;color:${gradeColor};white-space:nowrap;">${gradeLabel}</td>
-              <td style="padding:10px;font-weight:600;">${a.clientName||'-'}</td>
+              <td style="padding:10px;font-weight:600;">${a.name||'-'}</td>
               <td style="padding:10px;text-align:center;">${priorityBadge}</td>
-              <td style="padding:10px;text-align:center;">${a.dailyAvgOrder||'-'}개</td>
+              <td style="padding:10px;text-align:center;">${a.dailyAvg||'-'}개</td>
               <td style="padding:10px;text-align:center;font-size:12px;">${teamNames[a.teamId]||a.teamId||'-'}</td>
               <td style="padding:10px;text-align:center;font-size:12px;">${a.date||'-'}</td>
               <td style="padding:10px;text-align:center;font-weight:700;">${a.consecutiveDays||1}일째</td>
@@ -3784,8 +3784,8 @@ async function cleanupDuplicateAlerts() {
     const grouped = {}; // clientName → [{id, consecutiveDays, date}]
     snap.forEach(d => {
       const a = d.data();
-      if (!grouped[a.clientName]) grouped[a.clientName] = [];
-      grouped[a.clientName].push({ id: d.id, consecutiveDays: a.consecutiveDays||1, date: a.date||'' });
+      if (!grouped[a.name]) grouped[a.name] = [];
+      grouped[a.name].push({ id: d.id, consecutiveDays: a.consecutiveDays||1, date: a.date||'' });
     });
 
     let deleteCount = 0;
