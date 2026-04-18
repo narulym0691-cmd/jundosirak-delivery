@@ -1410,6 +1410,46 @@
     return { driverRows: Object.values(driverMap), allClients };
   }
 
+  function parseClientOrderData(wb) {
+    const MENUS = ['뜨','프','샐','품','덮','샌','세트','김밥','밥','국'];
+    const orderedClients = [], notOrderedClients = [];
+    const driverStats = {};
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+      if (rows.length < 45) continue;
+      const hdr = rows[43] || [];
+      if (!String(hdr[10]||'').includes('거래처') && !String(hdr[3]||'').includes('이름')) continue;
+      for (let i = 44; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row) continue;
+        if (row[0] === 0 && String(row[2]||'').includes('배송코스')) continue;
+        const clientName = String(row[10]||'').trim();
+        if (!clientName) continue;
+        const driverName = String(row[3]||'').trim();
+        let total = 0;
+        const menuQtys = {};
+        MENUS.forEach((menu, idx) => {
+          const qty = parseInt(row[14 + idx]) || 0;
+          menuQtys[menu] = qty;
+          total += qty;
+        });
+        if (total > 0) {
+          orderedClients.push(clientName);
+          if (driverName) {
+            if (!driverStats[driverName]) { driverStats[driverName] = { total:0 }; MENUS.forEach(m => driverStats[driverName][m] = 0); }
+            driverStats[driverName].total += total;
+            MENUS.forEach(m => driverStats[driverName][m] += menuQtys[m]);
+          }
+        } else {
+          notOrderedClients.push(clientName);
+        }
+      }
+      if (orderedClients.length || notOrderedClients.length) break;
+    }
+    return { orderedClients, notOrderedClients, driverStats };
+  }
+
   window.onSalesFileChange = async (input) => {
     const file = input.files[0];
     if (!file) return;
@@ -1490,7 +1530,8 @@
         teamDrivers[d.team].push(d.name + ':' + d.total);
       });
 
-      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients: [...allClients] };
+      const clientOrderData = parseClientOrderData(wb);
+      _salesData = { teamTotals, teamDrivers, teamRevenues, driverRows, orderedClients: [...allClients], ...clientOrderData };
 
       // 미리보기 렌더
       const tbody = document.getElementById('su-preview-body');
@@ -2004,7 +2045,10 @@
       // sales_daily 업로드 로그 기록
       await db.collection('sales_daily').doc(date).set({
         uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
-        fileName: document.getElementById('su-filename').textContent
+        fileName: document.getElementById('su-filename').textContent,
+        orderedClients: _salesData.orderedClients || [],
+        notOrderedClients: _salesData.notOrderedClients || [],
+        driverStats: _salesData.driverStats || {}
       });
 
       const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
