@@ -58,13 +58,6 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
-    },
-    {
-      "collectionGroup": "driver_feedback_log",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "yearMonth", "order": "ASCENDING" }
-      ]
     }
   ],
   "fieldOverrides": []
