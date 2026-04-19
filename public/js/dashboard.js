@@ -280,7 +280,7 @@ async function loadDirectives() {
         if (!currentUser.teamId || !d.targetTeams.includes(currentUser.teamId)) return;
       }
       // 미완료 항목만
-      const myCompletion = d.completions && d.completions[currentUser.uid];
+      const myCompletion = d.completions && d.completions[currentUser.uid || currentUser.id];
       if (myCompletion && myCompletion.done) return;
 
       items.push(d);
@@ -320,7 +320,7 @@ async function completeDirective(directiveId, checkbox) {
   checkbox.disabled = true;
   try {
     await db.collection('directives').doc(directiveId).update({
-      [`completions.${currentUser.uid}`]: {
+      [`completions.${currentUser.uid || currentUser.id}`]: {
         done: true,
         comment: '',
         doneAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -490,7 +490,7 @@ async function saveFieldVisit() {
         for (const file of fvFiles) {
           try {
             const ts = Date.now();
-            const ref = storage.ref(`field_visits/${ym}/${currentUser.uid}/${ts}_${file.name}`);
+            const ref = storage.ref(`field_visits/${ym}/${currentUser.uid || currentUser.id}/${ts}_${file.name}`);
             await ref.put(file);
             const url = await ref.getDownloadURL();
             photoUrls.push(url);
@@ -525,7 +525,7 @@ async function saveFieldVisit() {
     }
 
     await db.collection('field_visits').add({
-      driverId: currentUser.uid,
+      driverId: currentUser.uid || currentUser.id,
       driverName: currentUser.name,
       teamId: currentUser.teamId || '',
       teamName: myTeam ? myTeam.name : '',
@@ -584,7 +584,7 @@ async function loadFieldVisits() {
     } else {
       // 기사: driverId 필터만 사용 (orderBy 없음 → 복합 인덱스 불필요)
       snap = await db.collection('field_visits')
-        .where('driverId', '==', currentUser.uid)
+        .where('driverId', '==', currentUser.uid || currentUser.id)
         .limit(20)
         .get();
     }
@@ -605,7 +605,7 @@ async function loadFieldVisits() {
 
     container.innerHTML = items.map(v => {
       const dt = v.createdAt ? v.createdAt.toDate().toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : '-';
-      const isMe = v.driverId === currentUser.uid;
+      const isMe = v.driverId === currentUser.uid || currentUser.id;
       const preview = v.content.length > 40 ? v.content.slice(0, 40) + '…' : v.content;
       const badge = fvTypeBadge(v);
       const thumb = v.photoUrls && v.photoUrls.length > 0
@@ -668,7 +668,7 @@ window.showFieldVisitDetail = function(v) {
       ${photos}
       ${v.adminComment ? `<div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#276749;"><strong>📌 관리자 메모:</strong> ${v.adminComment}</div>` : ''}
       <div style="display:flex;gap:8px;margin-bottom:8px;">
-        ${(v.driverId === currentUser.uid || currentUser.role === 'admin') ? `
+        ${(v.driverId === currentUser.uid || currentUser.id || currentUser.role === 'admin') ? `
           <button onclick="editFieldVisit(${JSON.stringify(v).replace(/"/g, '&quot;')})" style="flex:1;padding:10px;background:#2b6cb0;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✏️ 수정</button>
           <button onclick="deleteFieldVisit('${v.id}')" style="flex:1;padding:10px;background:#e53e3e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">🗑️ 삭제</button>
         ` : ''}
@@ -1108,7 +1108,7 @@ async function submitAlertAction(alertId, result) {
       actionStatus: 'done',
       actionResult: result,
       actionAt: firebase.firestore.FieldValue.serverTimestamp(),
-      actionBy: currentUser.uid || currentUser.name
+      actionBy: currentUser.uid || currentUser.id || currentUser.name
     });
     const el = document.getElementById('action-result-'+alertId);
     if (el) { el.textContent = `✅ ${resultLabels[result]} 처리됨`; el.style.display='block'; }
@@ -1130,7 +1130,7 @@ async function submitAlertActionEtc(alertId) {
       actionResult: 'etc',
       actionMemo: memo,
       actionAt: firebase.firestore.FieldValue.serverTimestamp(),
-      actionBy: currentUser.uid || currentUser.name
+      actionBy: currentUser.uid || currentUser.id || currentUser.name
     });
     const el = document.getElementById('action-result-'+alertId);
     if (el) { el.textContent = `✅ 기타: ${memo}`; el.style.display='block'; }
