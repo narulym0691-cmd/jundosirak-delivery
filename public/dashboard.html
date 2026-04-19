@@ -718,7 +718,22 @@
     </div>
   </div>
 
-  <!-- 내정보 탭 섹션 -->
+  <!-- 피드백 탭 섹션 -->
+  <div class="tab-section" data-tab="feedback">
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div class="card-title" style="margin:0;">💬 미주문 피드백</div>
+        <span id="feedbackBadge" style="display:none;background:#e53e3e;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;"></span>
+      </div>
+      <div id="feedbackList"><div class="empty-msg">로딩 중...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">✅ 완료된 피드백</div>
+      <div id="feedbackDoneList"><div class="empty-msg">완료된 피드백이 없습니다.</div></div>
+    </div>
+  </div>
+
+<!-- 내정보 탭 섹션 -->
   <div class="tab-section" data-tab="myinfo">
     <div class="card">
       <div class="card-title">내 정보</div>
@@ -758,6 +773,10 @@
   <button class="tab-btn" data-tab="fieldvisit" onclick="showTab('fieldvisit')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 13c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
     현장
+  </button>
+  <button class="tab-btn" id="tabBtn-feedback" data-tab="feedback" onclick="showTab('feedback')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 9h-2V5h2v6zm0 4h-2v-2h2v2z"/></svg>
+    피드백
   </button>
   <button class="tab-btn" data-tab="myinfo" onclick="showTab('myinfo')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
@@ -864,6 +883,7 @@
     if (tabName === 'evaluation') initEvaluationTab();
     if (tabName === 'sales') loadSalesTab();
     if (tabName === 'fieldvisit') loadFieldVisits();
+    if (tabName === 'feedback') loadFeedbackTab();
   };
 
   function applyEvalTabVisibility() {
@@ -1080,6 +1100,177 @@
 
   // 초기화
   initDashboard().then(() => loadCsAlerts()).catch(() => loadCsAlerts());
+
+// ─── 피드백 탭 ───────────────────────────────────────────────
+async function loadFeedbackTab() {
+  const listEl = document.getElementById('feedbackList');
+  const doneEl = document.getElementById('feedbackDoneList');
+  const badgeEl = document.getElementById('feedbackBadge');
+  if (!currentUser) return;
+
+  listEl.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+  doneEl.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+
+  try {
+    const courseId = currentUser.courseId;
+    if (!courseId) {
+      listEl.innerHTML = '<div class="empty-msg">담당 코스가 등록되지 않았습니다.</div>';
+      doneEl.innerHTML = '';
+      return;
+    }
+
+    // 내 코스의 미해결 경보 조회
+    const alertsSnap = await db.collection('alerts')
+      .where('courseId', '==', courseId)
+      .where('resolved', '==', false)
+      .get({source:'server'});
+
+    // 완료된 피드백 로그 (최근 30일)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const doneSnap = await db.collection('driver_feedback_log')
+      .where('courseId', '==', courseId)
+      .where('status', '==', 'done')
+      .orderBy('createdAt', 'desc')
+      .limit(10)
+      .get();
+
+    // ── 미피드백 목록 ──
+    const pending = [];
+    alertsSnap.forEach(d => {
+      const a = { id: d.id, ...d.data() };
+      pending.push(a);
+    });
+
+    // 배지 업데이트
+    if (pending.length > 0) {
+      badgeEl.textContent = pending.length + '건';
+      badgeEl.style.display = '';
+    } else {
+      badgeEl.style.display = 'none';
+    }
+
+    if (!pending.length) {
+      listEl.innerHTML = '<div class="empty-msg" style="color:#38a169;">✅ 피드백이 필요한 경보가 없습니다!</div>';
+    } else {
+      const gradeLabel = g => g==='urgent'?'🔴 즉시경보':g==='watch'?'🟡 주시':'🟠 확인보고';
+      const gradeColor = g => g==='urgent'?'#fff5f5':g==='watch'?'#fffaf0':'#fffbf5';
+      const gradeBorder = g => g==='urgent'?'#feb2b2':g==='watch'?'#fbd38d':'#fbd38d';
+
+      listEl.innerHTML = pending.map(a => `
+        <div style="background:${gradeColor(a.grade)};border:1.5px solid ${gradeBorder(a.grade)};border-radius:12px;padding:16px;margin-bottom:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-size:12px;font-weight:700;">${gradeLabel(a.grade)}</span>
+            <span style="font-size:11px;color:#718096;">${a.consecutiveDays||0}일 연속 미주문</span>
+          </div>
+          <div style="font-size:16px;font-weight:800;margin-bottom:12px;">${a.name||'-'}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+            ${['📞 전화 연락','🚶 직접 방문','😴 거래처 휴무','❌ 계약 해지 의사','💰 가격 불만','📝 기타'].map(r =>
+              `<button onclick="selectFeedbackReason(this,'${a.id}')" data-reason="${r}"
+                style="padding:7px 12px;border:1.5px solid #e2e8f0;border-radius:20px;font-size:12px;background:#fff;cursor:pointer;font-family:inherit;"
+              >${r}</button>`
+            ).join('')}
+          </div>
+          <textarea id="extra-${a.id}" placeholder="추가 내용 (선택)" rows="2"
+            style="width:100%;padding:8px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;box-sizing:border-box;margin-bottom:8px;font-family:inherit;"></textarea>
+          <button onclick="submitFeedback('${a.id}','${(a.name||'').replace(/'/g,"\\'")}',this)"
+            style="width:100%;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+            ✅ 피드백 제출
+          </button>
+        </div>`).join('');
+    }
+
+    // ── 완료된 피드백 ──
+    if (doneSnap.empty) {
+      doneEl.innerHTML = '<div class="empty-msg">완료된 피드백이 없습니다.</div>';
+    } else {
+      doneEl.innerHTML = doneSnap.docs.map(d => {
+        const f = d.data();
+        return `<div style="padding:10px 0;border-bottom:1px solid #f0f0f0;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <div style="font-size:14px;font-weight:700;">${f.clientName||'-'}</div>
+            <div style="font-size:12px;color:#718096;">${f.feedback||'-'}</div>
+          </div>
+          <span style="font-size:11px;color:#38a169;font-weight:700;">완료</span>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) {
+    listEl.innerHTML = '<div class="card-error">피드백 로드 실패: ' + e.message + '</div>';
+  }
+}
+
+// 피드백 사유 선택
+window.selectFeedbackReason = function(btn, alertId) {
+  const parent = btn.closest('div[style*="flex-wrap"]');
+  parent.querySelectorAll('button').forEach(b => {
+    b.style.background = '#fff';
+    b.style.borderColor = '#e2e8f0';
+    b.style.color = '#2d3748';
+    b.style.fontWeight = '400';
+  });
+  btn.style.background = '#1a4731';
+  btn.style.borderColor = '#1a4731';
+  btn.style.color = '#fff';
+  btn.style.fontWeight = '700';
+  btn._selected = true;
+};
+
+// 피드백 제출
+window.submitFeedback = async function(alertId, clientName, btn) {
+  // 선택된 사유 찾기
+  const card = btn.closest('div[style*="background:"]');
+  const reasonBtns = card.querySelectorAll('button[data-reason]');
+  let reason = '';
+  reasonBtns.forEach(b => { if (b._selected) reason = b.dataset.reason; });
+  if (!reason) { alert('피드백 사유를 선택해주세요.'); return; }
+
+  const extra = document.getElementById('extra-' + alertId)?.value || '';
+  btn.disabled = true;
+  btn.textContent = '제출 중...';
+
+  try {
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const today = kstNow.toISOString().slice(0, 10);
+
+    // 피드백 로그 저장
+    await db.collection('driver_feedback_log').add({
+      alertId,
+      driverName: currentUser.name,
+      teamId: currentUser.teamId || '',
+      courseId: currentUser.courseId || '',
+      clientName,
+      feedback: reason,
+      feedbackExtra: extra,
+      status: 'done',
+      isCompliant: true,
+      date: today,
+      yearMonth: today.slice(0, 7),
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 경보 해제
+    await db.collection('alerts').doc(alertId).update({
+      resolved: true,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      resolvedReason: 'driver_feedback',
+      feedbackStatus: 'done',
+      driverFeedback: reason,
+      driverFeedbackExtra: extra,
+      driverFeedbackAt: firebase.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // 카드 제거 애니메이션
+    card.style.transition = 'opacity 0.3s';
+    card.style.opacity = '0';
+    setTimeout(() => loadFeedbackTab(), 350);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '✅ 피드백 제출';
+    alert('오류: ' + e.message);
+  }
+};
 </script>
 
 <script>

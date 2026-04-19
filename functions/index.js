@@ -1553,3 +1553,173 @@ exports.autoResolveAlerts = functions
     }
     return null;
   });
+
+// ─── 기사 피드백 스케줄러 ─────────────────────────────────────
+// 매일 KST 07:00 (UTC 22:00 전날) 기사별 미주문 경보 문자 발송
+// + 이틀 경과 미피드백 경보 자동 처리
+exports.scheduledDriverFeedbackSms = functions
+  .region('us-central1')
+  .pubsub.schedule('0 22 * * *') // UTC 22:00 = KST 07:00
+  .timeZone('UTC')
+  .onRun(async () => {
+    const now = new Date();
+    // KST 기준 오늘 날짜
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const today = kstNow.toISOString().slice(0, 10);
+    // 이틀 전 날짜 (자동처리 기준)
+    const twoDaysAgo = new Date(kstNow.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+    console.log(`=== 기사 피드백 스케줄러 시작: ${today} ===`);
+
+    try {
+      // ── 1. 이틀 경과 미피드백 자동 처리 ──────────────────────
+      const expiredSnap = await db.collection('alerts')
+        .where('resolved', '==', false)
+        .where('feedbackStatus', '==', 'pending')
+        .where('feedbackDeadline', '<=', today)
+        .get();
+
+      if (!expiredSnap.empty) {
+        const batch = db.batch();
+        for (const doc of expiredSnap.docs) {
+          const a = doc.data();
+          // 미이행 로그 기록
+          await db.collection('driver_feedback_log').add({
+            alertId: doc.id,
+            driverName: a.driverName || '',
+            teamId: a.teamId || '',
+            courseId: a.courseId || '',
+            clientName: a.name || '',
+            feedback: null,
+            feedbackExtra: null,
+            status: 'expired',
+            isCompliant: false,
+            date: a.feedbackDeadline || today,
+            yearMonth: today.slice(0, 7),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          batch.update(doc.ref, {
+            feedbackStatus: 'expired',
+            resolved: true,
+            resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+            resolvedReason: 'feedback_expired',
+          });
+          console.log(`미이행 자동처리: ${a.name} (${a.driverName || '기사미상'})`);
+        }
+        await batch.commit();
+        console.log(`자동처리 완료: ${expiredSnap.size}건`);
+      }
+
+      // ── 2. 기사별 미주문 경보 문자 발송 ──────────────────────
+      // 미해결 + 피드백 대기 중인 경보 전체 조회
+      const alertsSnap = await db.collection('alerts')
+        .where('resolved', '==', false)
+        .get();
+
+      if (alertsSnap.empty) {
+        console.log('발송할 경보 없음');
+        return null;
+      }
+
+      // 기사별 courseId 맵 로드
+      const usersSnap = await db.collection('users').get();
+      const courseDriverMap = {}; // courseId → { name, phone, userId }
+      usersSnap.forEach(d => {
+        const u = d.data();
+        if (u.courseId && u.phone && u.active !== false) {
+          courseDriverMap[u.courseId] = { name: u.name, phone: u.phone };
+        }
+      });
+
+      // 경보를 코스별로 그룹핑
+      const driverAlerts = {}; // driverName → [alerts]
+      const deadlineDate = new Date(kstNow.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+      for (const doc of alertsSnap.docs) {
+        const a = doc.data();
+        const courseId = a.courseId;
+        if (!courseId) continue;
+        const driver = courseDriverMap[courseId];
+        if (!driver) continue;
+
+        // feedbackStatus 초기화 (없으면 pending으로 설정)
+        if (!a.feedbackStatus) {
+          await doc.ref.update({
+            feedbackStatus: 'pending',
+            feedbackDeadline: deadlineDate,
+            driverName: driver.name,
+            feedbackRequired: true,
+          });
+        }
+
+        if (!driverAlerts[driver.name]) {
+          driverAlerts[driver.name] = { phone: driver.phone, alerts: [] };
+        }
+        driverAlerts[driver.name].alerts.push({
+          id: doc.id,
+          name: a.name || '',
+          grade: a.grade || 'check',
+          consecutiveDays: a.consecutiveDays || 0,
+        });
+      }
+
+      // 기사별 문자 발송
+      let sentCount = 0;
+      for (const [driverName, info] of Object.entries(driverAlerts)) {
+        if (!info.alerts.length) continue;
+
+        // 등급별 정렬: urgent → watch → check
+        const gradeOrder = { urgent: 0, watch: 1, check: 2 };
+        info.alerts.sort((a, b) => (gradeOrder[a.grade] || 2) - (gradeOrder[b.grade] || 2));
+
+        const urgentList = info.alerts.filter(a => a.grade === 'urgent');
+        const watchList  = info.alerts.filter(a => a.grade === 'watch');
+        const checkList  = info.alerts.filter(a => a.grade === 'check');
+
+        let lines = [`[준도시락 배송관리]`, `안녕하세요 ${driverName} 기사님 👋`, ``, `담당 거래처 미주문 현황입니다.`, ``];
+
+        if (urgentList.length) {
+          lines.push(`🔴 즉시경보`);
+          urgentList.forEach(a => lines.push(` · ${a.name} — ${a.consecutiveDays}일 연속`));
+          lines.push('');
+        }
+        if (watchList.length) {
+          lines.push(`🟡 주시`);
+          watchList.forEach(a => lines.push(` · ${a.name} — ${a.consecutiveDays}일 연속`));
+          lines.push('');
+        }
+        if (checkList.length) {
+          lines.push(`🟠 확인보고`);
+          checkList.forEach(a => lines.push(` · ${a.name} — ${a.consecutiveDays}일 연속`));
+          lines.push('');
+        }
+
+        lines.push(`오늘 중으로 배송관리 앱에`);
+        lines.push(`피드백을 입력해주세요.`);
+        lines.push(`(미입력 시 이틀 후 자동처리)`);
+
+        const text = lines.join('\n');
+        const result = await sendOneSms(info.phone, text);
+
+        await db.collection('sms_logs').add({
+          type: 'driver_feedback_request',
+          driverName,
+          phone: info.phone,
+          alertCount: info.alerts.length,
+          text,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          date: today,
+        });
+
+        if (result.ok) sentCount++;
+        console.log(`문자 ${result.ok ? '발송' : '실패'}: ${driverName} (경보 ${info.alerts.length}건)`);
+      }
+
+      console.log(`=== 기사 문자 발송 완료: ${sentCount}/${Object.keys(driverAlerts).length}명 ===`);
+    } catch (e) {
+      console.error('scheduledDriverFeedbackSms 오류:', e);
+    }
+    return null;
+  });
