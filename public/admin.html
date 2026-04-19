@@ -501,6 +501,19 @@
     </div>
   </div>
 
+  <!-- 기사 이행률 통계 -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="card-title" style="margin:0;">📋 기사 피드백 이행률</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="feedbackStatMonth" onchange="loadFeedbackStats()"
+          style="padding:5px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:inherit;">
+        </select>
+      </div>
+    </div>
+    <div id="feedbackStatsCard"><div class="empty-msg">로딩 중...</div></div>
+  </div>
+
   <!-- 기준수량 관리 -->
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">

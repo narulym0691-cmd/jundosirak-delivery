@@ -19,7 +19,8 @@ async function initAdmin() {
     loadBaselineCard(),
     loadDeliveryLogs(),
     loadVehicleStatus(),
-    loadNewClientsCard()
+    loadNewClientsCard(),
+    loadFeedbackStats()
   ]);
 }
 
@@ -1330,4 +1331,118 @@ window.showTeamDirectiveDetail = function(teamId) {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+};
+
+// ─── 기사 피드백 이행률 통계 ──────────────────────────────────
+window.loadFeedbackStats = async function() {
+  const card = document.getElementById('feedbackStatsCard');
+  if (!card) return;
+  card.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+
+  // 월 선택 셀렉트 초기화
+  const sel = document.getElementById('feedbackStatMonth');
+  if (sel && !sel.options.length) {
+    const now = new Date();
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = d.toISOString().slice(0, 7);
+      const opt = document.createElement('option');
+      opt.value = ym;
+      opt.textContent = ym.replace('-', '년 ') + '월';
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  }
+  const ym = sel ? sel.value : new Date().toISOString().slice(0, 7);
+
+  try {
+    // 해당 월 피드백 로그 전체 조회
+    const snap = await db.collection('driver_feedback_log')
+      .where('yearMonth', '==', ym)
+      .get({ source: 'server' });
+
+    if (snap.empty) {
+      card.innerHTML = `<div class="empty-msg">${ym} 피드백 데이터가 없습니다.<br><span style="font-size:11px;color:#a0aec0;">07:00 자동문자 발송 후 기사 피드백이 쌓이면 표시됩니다.</span></div>`;
+      return;
+    }
+
+    // 기사별 집계
+    const stats = {}; // driverName → { done, expired, total }
+    snap.forEach(d => {
+      const f = d.data();
+      const name = f.driverName || '미상';
+      if (!stats[name]) stats[name] = { done: 0, expired: 0, total: 0, teamId: f.teamId || '' };
+      stats[name].total++;
+      if (f.status === 'done') stats[name].done++;
+      if (f.status === 'expired') stats[name].expired++;
+    });
+
+    // 이행률 정렬 (낮은 순)
+    const rows = Object.entries(stats).sort((a, b) => {
+      const ra = a[1].total ? a[1].done / a[1].total : 1;
+      const rb = b[1].total ? b[1].done / b[1].total : 1;
+      return ra - rb;
+    });
+
+    const totalDone     = rows.reduce((s, r) => s + r[1].done, 0);
+    const totalExpired  = rows.reduce((s, r) => s + r[1].expired, 0);
+    const totalAll      = rows.reduce((s, r) => s + r[1].total, 0);
+    const overallPct    = totalAll ? Math.round(totalDone / totalAll * 100) : 0;
+    const pctColor = pct => pct >= 80 ? '#38a169' : pct >= 50 ? '#d69e2e' : '#e53e3e';
+
+    card.innerHTML = `
+      <!-- 전체 요약 -->
+      <div style="background:#f7fafc;border-radius:10px;padding:14px;margin-bottom:14px;display:flex;justify-content:space-around;text-align:center;">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:${pctColor(overallPct)};">${overallPct}%</div>
+          <div style="font-size:11px;color:#718096;">전체 이행률</div>
+        </div>
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#38a169;">${totalDone}</div>
+          <div style="font-size:11px;color:#718096;">이행</div>
+        </div>
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#e53e3e;">${totalExpired}</div>
+          <div style="font-size:11px;color:#718096;">미이행</div>
+        </div>
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#4a5568;">${totalAll}</div>
+          <div style="font-size:11px;color:#718096;">전체</div>
+        </div>
+      </div>
+
+      <!-- 기사별 테이블 -->
+      <table class="admin-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th style="text-align:left;padding:8px 10px;">기사</th>
+            <th style="text-align:center;padding:8px 6px;">이행</th>
+            <th style="text-align:center;padding:8px 6px;">미이행</th>
+            <th style="text-align:center;padding:8px 6px;">이행률</th>
+            <th style="text-align:left;padding:8px 6px;">그래프</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(([name, s]) => {
+            const pct = s.total ? Math.round(s.done / s.total * 100) : 100;
+            const color = pctColor(pct);
+            const warn = pct < 50 ? ' style="background:#fff5f5;"' : '';
+            return `<tr${warn}>
+              <td style="padding:8px 10px;font-weight:600;font-size:13px;">${name}</td>
+              <td style="text-align:center;padding:8px 6px;color:#38a169;font-weight:700;">${s.done}</td>
+              <td style="text-align:center;padding:8px 6px;color:#e53e3e;font-weight:700;">${s.expired}</td>
+              <td style="text-align:center;padding:8px 6px;font-weight:800;color:${color};">${pct}%</td>
+              <td style="padding:8px 6px;">
+                <div style="background:#edf2f7;border-radius:4px;height:8px;min-width:60px;">
+                  <div style="width:${pct}%;background:${color};height:8px;border-radius:4px;transition:width 0.4s;"></div>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:#a0aec0;margin-top:10px;text-align:right;">* 미이행: 이틀 내 미입력 자동처리 기준</div>`;
+  } catch(e) {
+    card.innerHTML = `<div class="card-error">오류: ${e.message}</div>`;
+  }
 };
