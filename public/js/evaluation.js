@@ -543,6 +543,25 @@ window.loadMonthlyAggregation = async function() {
       // vehicle_inspections 없으면 무시
     }
 
+    // 3-1. 피드백 이행/미이행 로드 (driver_feedback_log)
+    // 기사명 기준으로 집계 (driverName 필드)
+    const feedbackMap = {}; // { driverName: { done, expired } }
+    try {
+      const fbSnap = await db.collection('driver_feedback_log')
+        .where('yearMonth', '==', month)
+        .get();
+      fbSnap.forEach(doc => {
+        const f = doc.data();
+        const nm = f.driverName || '';
+        if (!nm) return;
+        if (!feedbackMap[nm]) feedbackMap[nm] = { done: 0, expired: 0 };
+        if (f.status === 'done')    feedbackMap[nm].done++;
+        if (f.status === 'expired') feedbackMap[nm].expired++;
+      });
+    } catch (e) {
+      // driver_feedback_log 없으면 무시
+    }
+
     // 4. 팀별 집계
     const teamStats = {}; // { teamId: { drivers:[], quantSum, peerSum, vehicleSum } }
     allDrivers.forEach(driver => {
@@ -556,8 +575,12 @@ window.loadMonthlyAggregation = async function() {
         ? peerByDriver[driver.id].sum / peerByDriver[driver.id].cnt
         : 0;
 
-      // 정량 점수: 50 기준에서 가감 (최소 0)
-      const quantScore  = Math.max(0, 50 + qPts);
+      // 피드백 점수: 이행 +1점/건, 미이행 -2점/건
+      const fbData   = feedbackMap[driver.name] || { done: 0, expired: 0 };
+      const fbPts    = (fbData.done * 1) + (fbData.expired * -2);
+
+      // 정량 점수: 50 기준에서 가감 (최소 0) — 피드백 포함
+      const quantScore  = Math.max(0, 50 + qPts + fbPts);
       // 동료평가: 평균 별점(1~5) → 30점 환산
       const peerScore   = Math.round(peerAvg / 5 * 30);
       // 차량: AI 채점 결과 (0~20), 미제출 0점
@@ -565,7 +588,9 @@ window.loadMonthlyAggregation = async function() {
 
       teamStats[tid].drivers.push({
         id: driver.id, name: driver.name,
-        quantRaw: qPts, quantScore,
+        quantRaw: qPts, fbPts,
+        fbDone: fbData.done, fbExpired: fbData.expired,
+        quantScore,
         peerAvg: Math.round(peerAvg * 10) / 10, peerScore,
         vehicleScore,
         total: quantScore + peerScore + vehicleScore
@@ -631,13 +656,14 @@ window.loadMonthlyAggregation = async function() {
           <td><button class="detail-toggle" onclick="toggleDetail('detail-${r.teamId}')">상세</button></td>
         </tr>
         <tr>
-          <td colspan="7" style="padding:0;">
+          <td colspan="8" style="padding:0;">
             <div class="detail-panel" id="detail-${r.teamId}">
               <table style="width:100%;border-collapse:collapse;font-size:12px;">
                 <thead>
                   <tr style="color:#718096;">
                     <th style="padding:5px;text-align:left;">기사</th>
                     <th style="padding:5px;text-align:center;">정량(가감)</th>
+                    <th style="padding:5px;text-align:center;">피드백(가감)</th>
                     <th style="padding:5px;text-align:center;">정량점수</th>
                     <th style="padding:5px;text-align:center;">동료평균</th>
                     <th style="padding:5px;text-align:center;">동료점수</th>
@@ -646,19 +672,29 @@ window.loadMonthlyAggregation = async function() {
                   </tr>
                 </thead>
                 <tbody>
-                  ${r.drivers.map(d => `
+                  ${r.drivers.map(d => {
+                    const fbSign = d.fbPts >= 0 ? '+' : '';
+                    const fbColor = d.fbPts > 0 ? '#276749' : d.fbPts < 0 ? '#c53030' : '#718096';
+                    const fbTip = d.fbDone || d.fbExpired
+                      ? `이행 ${d.fbDone}건 / 미이행 ${d.fbExpired}건`
+                      : '피드백 없음';
+                    return `
                     <tr style="border-top:1px solid #f0f4f1;">
                       <td style="padding:5px;">${escHtml(d.name)}</td>
                       <td style="padding:5px;text-align:center;color:${d.quantRaw >= 0 ? '#276749' : '#c53030'};">
                         ${d.quantRaw >= 0 ? '+' : ''}${d.quantRaw}
+                      </td>
+                      <td style="padding:5px;text-align:center;color:${fbColor};" title="${fbTip}">
+                        ${d.fbPts !== 0 ? fbSign + d.fbPts : '-'}
+                        ${d.fbExpired > 0 ? `<span style="font-size:10px;color:#e53e3e;"> (미이행${d.fbExpired})</span>` : ''}
                       </td>
                       <td style="padding:5px;text-align:center;">${d.quantScore}</td>
                       <td style="padding:5px;text-align:center;">${d.peerAvg > 0 ? d.peerAvg + '점' : '-'}</td>
                       <td style="padding:5px;text-align:center;">${d.peerScore}</td>
                       <td style="padding:5px;text-align:center;">${d.vehicleScore > 0 ? d.vehicleScore + '점' : '❌'}</td>
                       <td style="padding:5px;text-align:center;font-weight:700;">${d.total}</td>
-                    </tr>
-                  `).join('')}
+                    </tr>`;
+                  }).join('')}
                 </tbody>
               </table>
             </div>
