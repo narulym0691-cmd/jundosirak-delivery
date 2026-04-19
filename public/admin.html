@@ -1419,7 +1419,8 @@
   }
 
   function parseClientOrderData(wb) {
-    const MENUS = ['뜨','프','샐','품','덮','샌','세트','김밥','밥','국'];
+    const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부','밥','국'];
+    const MENUS_EXCLUDE = ['밥','국']; // 총수량 합산 제외 메뉴
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
     const clientOrderMap = {}; // clientName → { total, driverName, courseId }
@@ -1445,7 +1446,7 @@
         MENUS.forEach((menu, idx) => {
           const qty = parseInt(row[14 + idx]) || 0;
           menuQtys[menu] = qty;
-          total += qty;
+          if (!MENUS_EXCLUDE.includes(menu)) total += qty; // 밥/국 제외
         });
         if (total > 0) {
           orderedClients.push(clientName);
