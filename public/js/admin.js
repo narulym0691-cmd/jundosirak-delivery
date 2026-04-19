@@ -92,8 +92,8 @@ async function loadAdminData() {
   const ym = getCurrentYearMonth();
   try {
     const [teamsSnap, statsDoc] = await Promise.all([
-      db.collection('teams').get(),
-      db.collection('monthly_stats').doc(ym).get()
+      db.collection('teams').get({source:'server'}),
+      db.collection('monthly_stats').doc(ym).get({source:'server'})
     ]);
     allTeamsData = [];
     teamsSnap.forEach(doc => allTeamsData.push({ id: doc.id, ...doc.data() }));
@@ -619,12 +619,12 @@ async function loadAllMonthlyStats(){
 async function loadBaselineCard() {
   const container = document.getElementById('baselineCard');
   try {
-    const snap = await db.collection('teams').get();
+    const snap = await db.collection('teams').get({source:'server'});
     const teams = [];
     snap.forEach(doc => teams.push({ id: doc.id, ...doc.data() }));
     teams.sort((a,b) => a.id.localeCompare(b.id));
     const ym = getCurrentYearMonth();
-    const statsDoc = await db.collection('monthly_stats').doc(ym).get();
+    const statsDoc = await db.collection('monthly_stats').doc(ym).get({source:'server'});
     const stats = statsDoc.exists ? statsDoc.data() : {};
     container.innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -654,7 +654,7 @@ async function calcBaseline(period) {
   container.innerHTML='<div class="empty-msg">계산 중...</div>';
   try {
     await loadAllMonthlyStats();
-    const teamsSnap=await db.collection('teams').get();
+    const teamsSnap=await db.collection('teams').get({source:'server'});
     const teams=[];
     teamsSnap.forEach(doc=>teams.push({id:doc.id,...doc.data()}));
     teams.sort((a,b)=>a.id.localeCompare(b.id));
@@ -698,7 +698,7 @@ async function applyAllBaseline(teamList){
   if(reason===null) return;
   try{
     const batch=db.batch();
-    const teamsSnap=await db.collection('teams').get();
+    const teamsSnap=await db.collection('teams').get({source:'server'});
     const currentTeams={};
     teamsSnap.forEach(doc=>{currentTeams[doc.id]=doc.data();});
     teamList.forEach(({id,name,calcAvg})=>{
@@ -781,7 +781,7 @@ async function loadVehicleStatus(){
     const usersSnap=await db.collection('users').where('role','in',['driver','leader']).where('active','==',true).get();
     const drivers=[];
     usersSnap.forEach(doc=>{const d=doc.data();drivers.push({id:doc.id,name:d.name||'-',teamId:d.teamId||'-',teamName:''});});
-    const teamsSnap=await db.collection('teams').get();
+    const teamsSnap=await db.collection('teams').get({source:'server'});
     const teamMap={};
     teamsSnap.forEach(doc=>{teamMap[doc.id]=doc.data().name||doc.id;});
     drivers.forEach(d=>{d.teamName=teamMap[d.teamId]||d.teamId;});
