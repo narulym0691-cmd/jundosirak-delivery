@@ -2083,7 +2083,7 @@
       try {
         const existClientsSnap = await db.collection('clients').get();
         const existingNames = new Set();
-        existClientsSnap.forEach(doc => existingNames.add(String(doc.data().clientName || '').trim()));
+        existClientsSnap.forEach(doc => existingNames.add(String(doc.data().name || doc.data().clientName || '').trim()));
         const newClients = [];
         for (const clientName of (_salesData.orderedClients || [])) {
           if (existingNames.has(clientName)) continue;
