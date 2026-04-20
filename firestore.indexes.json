@@ -54,7 +54,7 @@
       "collectionGroup": "driver_feedback_log",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "courseId", "order": "ASCENDING" },
+        { "fieldPath": "teamId", "order": "ASCENDING" },
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
