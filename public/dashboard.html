@@ -1112,16 +1112,16 @@ async function loadFeedbackTab() {
   doneEl.innerHTML = '<div class="empty-msg">로딩 중...</div>';
 
   try {
-    const courseId = currentUser.courseId;
-    if (!courseId) {
-      listEl.innerHTML = '<div class="empty-msg">담당 코스가 등록되지 않았습니다.</div>';
+    const teamId = currentUser.teamId;
+    if (!teamId) {
+      listEl.innerHTML = '<div class="empty-msg">담당 팀이 등록되지 않았습니다.</div>';
       doneEl.innerHTML = '';
       return;
     }
 
-    // 내 코스의 미해결 경보 조회
+    // 내 팀의 미해결 경보 조회
     const alertsSnap = await db.collection('alerts')
-      .where('courseId', '==', courseId)
+      .where('teamId', '==', teamId)
       .where('resolved', '==', false)
       .get({source:'server'});
 
@@ -1129,7 +1129,7 @@ async function loadFeedbackTab() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const doneSnap = await db.collection('driver_feedback_log')
-      .where('courseId', '==', courseId)
+      .where('teamId', '==', teamId)
       .where('status', '==', 'done')
       .orderBy('createdAt', 'desc')
       .limit(10)
