@@ -1457,17 +1457,27 @@
         if (!String(hdr[10]||'').includes('거래처') && !String(hdr[3]||'').includes('이름')) continue;
         colClient = 10;
       }
+      // 섹션 헤더 패턴: row[13]에 "N ◎ 지역(기사명)배송코스" 형태
+      const SECTION_PAT = /^(\d+)\s*◎/;
+      const COURSE_NUM_MAP = {
+        1:'코스1',2:'코스2',3:'코스3',4:'코스4',5:'코스5',6:'코스6',7:'코스7',
+        8:'코스8',9:'코스9',10:'코스10',11:'코스11',12:'코스12',13:'코스13',
+        14:'코스14',15:'코스15',16:'코스16',17:'코스17',18:'코스18',19:'코스19'
+      };
       let currentCourseId = '';
       for (let i = 44; i < rows.length; i++) {
         const row = rows[i];
         if (!row) continue;
-        if (row[0] === 0 && String(row[2]||'').includes('배송코스')) {
-          currentCourseId = String(row[2]||'').replace(/배송코스/g,'').trim() || String(row[1]||'').trim();
+        // 섹션 헤더 감지: row[13]에 배송코스 포함
+        const secCell = String(row[colClient]||'').trim();
+        if (secCell.includes('배송코스') && SECTION_PAT.test(secCell)) {
+          const courseNum = parseInt(secCell.match(SECTION_PAT)[1]);
+          currentCourseId = COURSE_NUM_MAP[courseNum] || '';
           continue;
         }
-        const clientName = String(row[colClient]||'').trim();
-        if (!clientName) continue;
         // 헤더행 스킵 (거래처1~9, 번호, 순서 등)
+        const clientName = secCell;
+        if (!clientName) continue;
         if (SKIP_HEADER_KW.some(k => clientName === k || clientName.startsWith('거래처'))) continue;
         const driverName = String(row[3]||'').trim();
         let total = 0;
