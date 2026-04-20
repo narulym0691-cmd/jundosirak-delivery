@@ -1676,23 +1676,30 @@ async function loadNotificationsTab() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
 
   try {
-    // 1. 내가 입력한 사유 목록 (최근 30일)
+    // 1. 내가 입력한 사유 목록 (최근 30일) — orderBy 없이 클라이언트 정렬 (인덱스 불필요)
     const respSnap = await db.collection('no_order_responses')
       .where('driverName', '==', driverName)
-      .orderBy('createdAt', 'desc')
-      .limit(30)
+      .limit(50)
       .get();
 
-    // 2. 나에게 발송된 미주문 문자 (이번 달) — 미입력 건 파악용
+    // 클라이언트 정렬: createdAt 내림차순
+    const respDocs = [];
+    respSnap.forEach(d => respDocs.push(d));
+    respDocs.sort((a, b) => {
+      const ta = a.data().createdAt ? a.data().createdAt.toMillis() : 0;
+      const tb = b.data().createdAt ? b.data().createdAt.toMillis() : 0;
+      return tb - ta;
+    });
+
+    // 2. 나에게 발송된 미주문 문자 (이번 달) — 단일 필드 where만 사용
     const smsSnap = await db.collection('sms_logs')
       .where('driverName', '==', driverName)
       .where('type', '==', 'no_order_morning')
-      .where('date', '>=', monthStart)
       .get();
 
     // 입력된 날짜 Set
     const respondedDates = new Set();
-    respSnap.forEach(d => respondedDates.add(d.data().date));
+    respDocs.forEach(d => respondedDates.add(d.data().date));
 
     // 미입력 건
     const missingItems = [];
@@ -1731,13 +1738,13 @@ async function loadNotificationsTab() {
     }
 
     // 입력한 사유 목록
-    if (respSnap.empty) {
+    if (respDocs.length === 0) {
       listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#718096;font-size:13px;">최근 입력한 사유가 없습니다.</div>';
       return;
     }
 
     let html = '';
-    respSnap.forEach(doc => {
+    respDocs.forEach(doc => {
       const d = doc.data();
       let statusHtml = '';
       if (d.isPraised) {
@@ -1785,7 +1792,6 @@ async function initNotifBadge() {
       .get();
     const respSnap = await db.collection('no_order_responses')
       .where('driverName', '==', currentUser.name)
-      .orderBy('createdAt', 'desc')
       .limit(50)
       .get();
     const respondedDates = new Set();
