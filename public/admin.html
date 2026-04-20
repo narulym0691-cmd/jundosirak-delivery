@@ -2125,9 +2125,25 @@
         const existClientsSnap = await db.collection('clients').get();
         const existingNames = new Set();
         existClientsSnap.forEach(doc => existingNames.add(String(doc.data().name || doc.data().clientName || '').trim()));
+
+        // 정규화 함수: _구/동/시 suffix, 공백, 특수문자 제거 후 비교
+        const normName = n => n.replace(/_(부산|해운대|남구|동구|북구|서구|사하구|사상구|수영구|연제구|금정구|동래구|강서구|기장군|부산진구|중구|영도구|남구|진구)/g,'').replace(/\s+/g,'').toLowerCase();
+        const existingNormed = new Set();
+        existClientsSnap.forEach(doc => existingNormed.add(normName(String(doc.data().name || doc.data().clientName || '').trim())));
+
+        // 스킵 키워드
+        const SKIP_NC = ['소계','합계','총합계','공란','미배정','조식배송'];
+
         const newClients = [];
         for (const clientName of (_salesData.orderedClients || [])) {
+          // 스킵 키워드 포함 업체 제외
+          if (SKIP_NC.some(k => clientName.includes(k))) continue;
+          // 숫자만인 경우 제외
+          if (/^\d+$/.test(clientName)) continue;
+          // 정확히 일치하면 신규 아님
           if (existingNames.has(clientName)) continue;
+          // 정규화 후 일치해도 신규 아님 (지역명 suffix 차이 허용)
+          if (existingNormed.has(normName(clientName))) continue;
           const co = _salesData.clientOrderMap && _salesData.clientOrderMap[clientName];
           newClients.push({
             clientName,
@@ -2138,6 +2154,9 @@
         }
         if (newClients.length > 0) {
           await db.collection('sales_daily').doc(date).update({ newClients });
+        } else {
+          // 이전에 잘못 저장된 newClients 초기화
+          await db.collection('sales_daily').doc(date).update({ newClients: [] });
         }
       } catch(e) { console.warn('신규업체 감지 오류(무시):', e.message); }
 
