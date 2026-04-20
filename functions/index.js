@@ -533,12 +533,30 @@ exports.scheduledSmsAtDawn = functions
 
           let noOrderSmsSent = 0, noOrderSmsFailed = 0;
 
+          const BASE_URL = 'https://jundosirak-delivery-ae87f.web.app/no-order-response.html';
+
           for (const [courseId, clients] of Object.entries(driverMissingMap)) {
             const driver = courseDriverMap[courseId];
             if (!driver || !driver.phone) continue;
 
-            const clientList = clients.map(c => `  · ${c}`).join('\n');
-            const text = `[준도시락 배송관리] 미주문 알림\n${driver.name} 기사님, 어제(${yesterdayStr}) 담당 거래처 미주문입니다.\n\n${clientList}\n\n오늘 확인 후 시스템에 사유를 입력해주세요.`;
+            const encDriver = encodeURIComponent(driver.name);
+            const encCourse = encodeURIComponent(courseId);
+            const encDate   = encodeURIComponent(yesterdayStr);
+
+            let text;
+            if (clients.length >= 5) {
+              // 업체가 5개 이상이면 전체 링크 1개만
+              const link = `${BASE_URL}?driver=${encDriver}&course=${encCourse}&date=${encDate}`;
+              text = `[준도시락 배송관리] 미주문 알림\n${driver.name} 기사님, 어제(${yesterdayStr}) 미주문 ${clients.length}곳입니다.\n\n사유 입력:\n${link}`;
+            } else {
+              // 4개 이하이면 업체별 링크 개별 제공
+              const clientLinks = clients.map(c => {
+                const encClient = encodeURIComponent(c);
+                const link = `${BASE_URL}?driver=${encDriver}&course=${encCourse}&date=${encDate}&client=${encClient}`;
+                return `  · ${c} →\n${link}`;
+              }).join('\n');
+              text = `[준도시락 배송관리] 미주문 알림\n${driver.name} 기사님, 어제(${yesterdayStr}) 미주문 업체입니다.\n\n업체별 사유 입력:\n${clientLinks}`;
+            }
 
             const result = await sendOneSms(driver.phone, text);
             await db.collection('sms_logs').add({

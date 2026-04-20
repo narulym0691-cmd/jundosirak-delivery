@@ -746,6 +746,35 @@
     </div>
   </div>
 
+  <!-- 전체 현황 탭 섹션 -->
+  <div class="tab-section" data-tab="leaderboard">
+
+    <!-- ① 이번 달 팀별 판매 순위 -->
+    <div class="card">
+      <div class="card-title">🏆 이번 달 팀별 판매 순위</div>
+      <div id="lbTeamRank">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- ② 미주문 대응률 (이번 달) -->
+    <div class="card">
+      <div class="card-title">📊 미주문 대응률 (이번 달)</div>
+      <div id="lbResponseRate">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+    <!-- ③ 칭찬 게시판 -->
+    <div class="card">
+      <div class="card-title">👏 칭찬 게시판</div>
+      <div id="lbPraiseBoard">
+        <div class="empty-msg">로딩 중...</div>
+      </div>
+    </div>
+
+  </div>
+
 </div>
 
 <!-- 바텀 탭 -->
@@ -781,6 +810,10 @@
   <button class="tab-btn" data-tab="myinfo" onclick="showTab('myinfo')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
     내정보
+  </button>
+  <button class="tab-btn" data-tab="leaderboard" onclick="showTab('leaderboard')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L12 15.45 7.77 18l1.12-4.81-3.73-3.23 4.92-.42L12 5l1.92 4.53 4.92.42-3.73 3.23L16.23 18z"/></svg>
+    현황
   </button>
 </nav>
 
@@ -884,6 +917,7 @@
     if (tabName === 'sales') loadSalesTab();
     if (tabName === 'fieldvisit') loadFieldVisits();
     if (tabName === 'feedback') loadFeedbackTab();
+    if (tabName === 'leaderboard') loadLeaderboardTab();
   };
 
   function applyEvalTabVisibility() {
@@ -1611,6 +1645,214 @@ async function loadEvalResult() {
     `;
   } catch (e) {
     container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
+  }
+}
+
+// ── 전체 현황 탭 (leaderboard) ────────────────────────────────────────
+const LB_TEAM_NAMES = {
+  team1: '준고', team2: '해운대', team3: '공오일(051)',
+  team4: '연수남', team5: '아가리', team6: '도세마', team7: '강서영'
+};
+
+let _lbLoaded = false;
+
+async function loadLeaderboardTab() {
+  if (_lbLoaded) return; // 이미 로드했으면 스킵
+  _lbLoaded = true;
+
+  await Promise.all([
+    loadLbTeamRank(),
+    loadLbResponseRate(),
+    loadLbPraiseBoard()
+  ]);
+}
+
+// ① 이번 달 팀별 판매 순위
+async function loadLbTeamRank() {
+  const container = document.getElementById('lbTeamRank');
+  if (!container) return;
+
+  try {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    const snap = await db.collection('monthly_stats').doc(ym).get();
+
+    if (!snap.exists) {
+      container.innerHTML = '<div class="empty-msg">이번 달 판매 데이터가 없습니다.</div>';
+      return;
+    }
+
+    const data = snap.data();
+    // monthly_stats 구조: { teamId: { total, avg, ... }, ... }
+    const teamEntries = Object.keys(LB_TEAM_NAMES).map(tid => {
+      const td = data[tid] || {};
+      return {
+        teamId: tid,
+        teamName: LB_TEAM_NAMES[tid],
+        total: td.total || td.cumulative || 0,
+        avg: td.avg || td.dailyAvg || 0
+      };
+    });
+
+    // 누적 판매수량 기준 내림차순 정렬
+    teamEntries.sort((a, b) => b.total - a.total);
+
+    const topTeam = teamEntries[0];
+
+    container.innerHTML = teamEntries.map((t, idx) => {
+      const rank = idx + 1;
+      const rankIcon = rank === 1 ? '🏆' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}위`;
+      const isTop = t.teamId === topTeam.teamId;
+      const barWidth = topTeam.total > 0 ? Math.round((t.total / topTeam.total) * 100) : 0;
+
+      return `
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:${rank <= 3 ? '18px' : '13px'};font-weight:700;min-width:28px;">${rankIcon}</span>
+              <span style="font-size:14px;font-weight:${isTop ? '800' : '600'};color:${isTop ? '#1a4731' : '#2d3748'};">${t.teamName}</span>
+            </div>
+            <span style="font-size:14px;font-weight:700;color:#1a4731;">${t.total.toLocaleString()}개</span>
+          </div>
+          <div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+            <div style="height:100%;width:${barWidth}%;background:${isTop ? '#1a4731' : '#38a169'};border-radius:4px;transition:width 0.5s;"></div>
+          </div>
+        </div>`;
+    }).join('');
+
+  } catch (e) {
+    container.innerHTML = `<div class="card-error">로드 실패: ${e.message}</div>`;
+  }
+}
+
+// ② 미주문 대응률 (이번 달)
+async function loadLbResponseRate() {
+  const container = document.getElementById('lbResponseRate');
+  if (!container) return;
+
+  try {
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    // 이번 달 시작일
+    const monthStart = `${ym}-01`;
+
+    // 발송 건수 (기사별)
+    const logsSnap = await db.collection('sms_logs')
+      .where('type', '==', 'no_order_morning')
+      .where('date', '>=', monthStart)
+      .get();
+
+    // 응답 건수 (기사별)
+    const respSnap = await db.collection('no_order_responses')
+      .where('date', '>=', monthStart)
+      .get();
+
+    // 기사별 발송 건수 집계
+    const sentMap = {}; // driverName → count
+    logsSnap.forEach(doc => {
+      const d = doc.data();
+      const name = d.driverName || '';
+      if (name) sentMap[name] = (sentMap[name] || 0) + (d.clientCount || 1);
+    });
+
+    // 기사별 응답 건수 집계
+    const respMap = {}; // driverName → count
+    respSnap.forEach(doc => {
+      const d = doc.data();
+      const name = d.driverName || '';
+      if (name) respMap[name] = (respMap[name] || 0) + 1;
+    });
+
+    const allDrivers = [...new Set([...Object.keys(sentMap), ...Object.keys(respMap)])].sort();
+
+    if (allDrivers.length === 0) {
+      container.innerHTML = '<div class="empty-msg">이번 달 미주문 발송 내역이 없습니다.</div>';
+      return;
+    }
+
+    const rows = allDrivers.map(name => {
+      const sent = sentMap[name] || 0;
+      const resp = respMap[name] || 0;
+      const rate = sent > 0 ? Math.round((resp / sent) * 100) : 0;
+      const noResp = sent - resp;
+      return { name, sent, resp, rate, noResp };
+    });
+
+    // 대응률 내림차순 정렬
+    rows.sort((a, b) => b.rate - a.rate);
+
+    container.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f7fafc;">
+              <th style="padding:8px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">기사명</th>
+              <th style="padding:8px;text-align:center;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">발송</th>
+              <th style="padding:8px;text-align:center;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">입력</th>
+              <th style="padding:8px;text-align:center;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">대응률</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map(r => {
+              const rateColor = r.rate >= 80 ? '#276749' : r.rate >= 50 ? '#d69e2e' : '#c53030';
+              const noRespBadge = r.noResp > 0
+                ? `<span style="color:#c53030;font-size:11px;font-weight:700;"> (미입력 ${r.noResp}건)</span>`
+                : '';
+              return `
+                <tr style="border-bottom:1px solid #f0f0f0;">
+                  <td style="padding:8px;color:#2d3748;font-weight:600;">${r.name}${noRespBadge}</td>
+                  <td style="padding:8px;text-align:center;color:#4a5568;">${r.sent}</td>
+                  <td style="padding:8px;text-align:center;color:#4a5568;">${r.resp}</td>
+                  <td style="padding:8px;text-align:center;font-weight:700;color:${rateColor};">${r.rate}%</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+  } catch (e) {
+    container.innerHTML = `<div class="card-error">로드 실패: ${e.message}</div>`;
+  }
+}
+
+// ③ 칭찬 게시판
+async function loadLbPraiseBoard() {
+  const container = document.getElementById('lbPraiseBoard');
+  if (!container) return;
+
+  try {
+    const snap = await db.collection('no_order_responses')
+      .where('isPraised', '==', true)
+      .orderBy('createdAt', 'desc')
+      .limit(20)
+      .get();
+
+    if (snap.empty) {
+      container.innerHTML = '<div class="empty-msg">칭찬 내역이 없습니다.</div>';
+      return;
+    }
+
+    const items = [];
+    snap.forEach(doc => items.push(doc.data()));
+
+    container.innerHTML = items.map(d => {
+      const comment = d.comment ? `<div style="font-size:12px;color:#718096;margin-top:4px;">💬 ${d.comment}</div>` : '';
+      return `
+        <div style="padding:12px 0;border-bottom:1px solid #f0f0f0;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:12px;color:#718096;">📅 ${d.date || '-'}</span>
+            <span style="font-size:12px;color:#718096;">|</span>
+            <span style="font-size:13px;font-weight:700;color:#1a4731;">👤 ${d.driverName || '-'}</span>
+            <span style="font-size:12px;color:#718096;">|</span>
+            <span style="font-size:13px;font-weight:600;color:#2d3748;">🏪 ${d.clientName || '-'}</span>
+          </div>
+          ${comment}
+        </div>`;
+    }).join('');
+
+  } catch (e) {
+    container.innerHTML = `<div class="card-error">로드 실패: ${e.message}</div>`;
   }
 }
 </script>

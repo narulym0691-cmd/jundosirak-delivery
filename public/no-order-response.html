@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>미주문 사유 입력</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      background: #f0f4f1;
+      min-height: 100vh;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1a4731 0%, #2d6a4f 100%);
+      color: white;
+      padding: 16px 20px;
+      text-align: center;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+    }
+
+    .header-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .header-info {
+      font-size: 13px;
+      opacity: 0.85;
+      line-height: 1.6;
+    }
+
+    .main {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px 16px 40px;
+    }
+
+    /* 업체 목록 (복수 업체일 때) */
+    .client-list-card {
+      background: white;
+      border-radius: 14px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .client-list-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #718096;
+      margin-bottom: 10px;
+    }
+
+    .client-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border: 2px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      background: white;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2d3748;
+    }
+
+    .client-item:last-child { margin-bottom: 0; }
+
+    .client-item.selected {
+      border-color: #38a169;
+      background: #f0fff4;
+      color: #1a4731;
+    }
+
+    .client-item .client-check {
+      width: 20px;
+      height: 20px;
+      border: 2px solid #cbd5e0;
+      border-radius: 50%;
+      margin-right: 10px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+
+    .client-item.selected .client-check {
+      border-color: #38a169;
+      background: #38a169;
+      color: white;
+      font-size: 12px;
+    }
+
+    /* 사유 섹션 */
+    .section-card {
+      background: white;
+      border-radius: 14px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 12px rgba(26,71,49,0.08);
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a4731;
+      margin-bottom: 14px;
+    }
+
+    .reason-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .reason-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 14px 8px;
+      border: 2px solid #e2e8f0;
+      border-radius: 12px;
+      background: white;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: #4a5568;
+      transition: all 0.15s;
+      text-align: center;
+      line-height: 1.3;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .reason-btn .reason-emoji {
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .reason-btn:active {
+      transform: scale(0.97);
+    }
+
+    .reason-btn.selected {
+      border-color: #38a169;
+      background: #f0fff4;
+      color: #1a4731;
+    }
+
+    .detail-area {
+      display: none;
+      margin-top: 14px;
+    }
+
+    .detail-area.visible {
+      display: block;
+    }
+
+    .detail-textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      resize: none;
+      color: #2d3748;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+
+    .detail-textarea:focus {
+      border-color: #38a169;
+    }
+
+    /* 제출 버튼 */
+    .submit-btn {
+      width: 100%;
+      padding: 15px;
+      background: #1a4731;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .submit-btn:active {
+      background: #2d6a4f;
+    }
+
+    .submit-btn:disabled {
+      background: #a0aec0;
+      cursor: not-allowed;
+    }
+
+    /* 완료 화면 */
+    .done-screen {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+    }
+
+    .done-screen.visible {
+      display: block;
+    }
+
+    .done-icon {
+      font-size: 64px;
+      margin-bottom: 20px;
+    }
+
+    .done-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #1a4731;
+      margin-bottom: 10px;
+    }
+
+    .done-sub {
+      font-size: 15px;
+      color: #718096;
+    }
+
+    /* 로딩 스피너 */
+    .loading-screen {
+      text-align: center;
+      padding: 60px 20px;
+      color: #718096;
+      font-size: 14px;
+    }
+
+    /* 에러 메시지 */
+    .error-msg {
+      background: #fff5f5;
+      border: 1px solid #feb2b2;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #c53030;
+      font-size: 13px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .error-msg.visible {
+      display: block;
+    }
+
+    /* 선택된 업체 표시 (단일 업체) */
+    .single-client-badge {
+      background: #f0fff4;
+      border: 1.5px solid #c6f6d5;
+      border-radius: 10px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .single-client-badge .badge-icon {
+      font-size: 20px;
+    }
+
+    .single-client-badge .badge-name {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a4731;
+    }
+
+    .progress-bar {
+      height: 3px;
+      background: #c6f6d5;
+      border-radius: 2px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #38a169;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-title">📋 미주문 사유 입력</div>
+  <div class="header-info" id="headerInfo">불러오는 중...</div>
+</div>
+
+<div class="main" id="mainContent">
+  <div class="loading-screen" id="loadingScreen">
+    ⏳ 정보를 불러오는 중입니다...
+  </div>
+
+  <!-- 입력 폼 -->
+  <div id="formArea" style="display:none;">
+
+    <!-- 단일 업체일 때 뱃지 -->
+    <div class="single-client-badge" id="singleClientBadge" style="display:none;">
+      <span class="badge-icon">🏪</span>
+      <span class="badge-name" id="singleClientName"></span>
+    </div>
+
+    <!-- 복수 업체일 때 목록 -->
+    <div class="client-list-card" id="multiClientCard" style="display:none;">
+      <div class="client-list-title">📋 미주문 업체 목록 (해당 업체를 선택하세요)</div>
+      <div id="clientListArea"></div>
+    </div>
+
+    <!-- 사유 선택 -->
+    <div class="section-card">
+      <div class="section-title">사유를 선택해주세요</div>
+      <div class="reason-grid">
+        <button class="reason-btn" onclick="selectReason(this, '🏖️ 고객 휴가')">
+          <span class="reason-emoji">🏖️</span>
+          <span>고객 휴가</span>
+        </button>
+        <button class="reason-btn" onclick="selectReason(this, '📞 연락 안됨')">
+          <span class="reason-emoji">📞</span>
+          <span>연락 안됨</span>
+        </button>
+        <button class="reason-btn" onclick="selectReason(this, '🔄 주문 방식 변경')">
+          <span class="reason-emoji">🔄</span>
+          <span>주문 방식 변경</span>
+        </button>
+        <button class="reason-btn" onclick="selectReason(this, '⚠️ 불만 접수')">
+          <span class="reason-emoji">⚠️</span>
+          <span>불만 접수</span>
+        </button>
+        <button class="reason-btn" onclick="selectReason(this, '❌ 계약 해지 의사')">
+          <span class="reason-emoji">❌</span>
+          <span>계약 해지 의사</span>
+        </button>
+        <button class="reason-btn" id="etcBtn" onclick="selectReason(this, '📝 기타')">
+          <span class="reason-emoji">📝</span>
+          <span>기타</span>
+        </button>
+      </div>
+
+      <div class="detail-area" id="detailArea">
+        <textarea class="detail-textarea" id="detailText" rows="3" placeholder="기타 사유를 입력해주세요..."></textarea>
+      </div>
+    </div>
+
+    <div class="error-msg" id="errorMsg"></div>
+
+    <button class="submit-btn" onclick="submitResponse()" id="submitBtn">
+      ✅ 제출하기
+    </button>
+  </div>
+
+  <!-- 완료 화면 -->
+  <div class="done-screen" id="doneScreen">
+    <div class="done-icon">🙏</div>
+    <div class="done-title">입력 완료!</div>
+    <div class="done-sub">감사합니다<br>관리자가 확인 후 처리하겠습니다.</div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+<script>
+  // ── Firebase 설정 (firebase-config.js 와 동일) ──
+  const firebaseConfig = {
+    apiKey: "AIzaSyCMUqXPDxPyqnRIBRV2UIgxbShWzEUD5yg",
+    authDomain: "jundosirak-delivery-ae87f.firebaseapp.com",
+    projectId: "jundosirak-delivery-ae87f",
+    storageBucket: "jundosirak-delivery-ae87f.firebasestorage.app",
+    messagingSenderId: "758374011966",
+    appId: "1:758374011966:web:b379171e702e521830ed6f",
+    measurementId: "G-PWMD4YK6VJ"
+  };
+
+  if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+  }
+  const db = firebase.firestore();
+
+  // ── URL 파라미터 파싱 ──
+  const params = new URLSearchParams(location.search);
+  const driverName = params.get('driver') || '';
+  const courseId   = params.get('course') || '';
+  const date       = params.get('date')   || '';
+  const clientParam = params.get('client') || ''; // 단일 업체명 (없으면 전체)
+
+  let selectedReason = '';
+  let selectedClient = '';   // 현재 선택된 업체 (단일이면 바로 설정)
+  let noOrderClients = [];   // 복수 업체 목록
+
+  // ── 초기화 ──
+  async function init() {
+    // 헤더 정보 표시
+    const dateLabel = date || '날짜 미상';
+    document.getElementById('headerInfo').textContent =
+      `📅 ${dateLabel}  |  👤 ${driverName || '기사명 미상'}`;
+
+    document.getElementById('loadingScreen').style.display = 'none';
+
+    if (clientParam) {
+      // 단일 업체
+      selectedClient = clientParam;
+      document.getElementById('singleClientBadge').style.display = 'flex';
+      document.getElementById('singleClientName').textContent = clientParam;
+    } else {
+      // 복수 업체: Firestore에서 해당 날짜+코스의 미주문 업체 조회
+      await loadNoOrderClients();
+    }
+
+    document.getElementById('formArea').style.display = 'block';
+  }
+
+  async function loadNoOrderClients() {
+    // sms_logs에서 해당 날짜, 코스의 미주문 목록 조회
+    try {
+      const snap = await db.collection('sms_logs')
+        .where('type', '==', 'no_order_morning')
+        .where('date', '==', date)
+        .where('courseId', '==', courseId)
+        .limit(1)
+        .get();
+
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        noOrderClients = data.clients || [];
+      }
+    } catch (e) {
+      console.warn('sms_logs 조회 실패:', e.message);
+    }
+
+    if (noOrderClients.length === 0) {
+      // fallback: Firestore clients 컬렉션에서 직접 조회
+      noOrderClients = ['(업체 목록 로드 실패)'];
+    }
+
+    if (noOrderClients.length === 1) {
+      // 1개면 단일처럼 처리
+      selectedClient = noOrderClients[0];
+      document.getElementById('singleClientBadge').style.display = 'flex';
+      document.getElementById('singleClientName').textContent = selectedClient;
+    } else {
+      // 복수 업체 목록 표시
+      document.getElementById('multiClientCard').style.display = 'block';
+      renderClientList();
+    }
+  }
+
+  function renderClientList() {
+    const area = document.getElementById('clientListArea');
+    area.innerHTML = noOrderClients.map((name, idx) => `
+      <div class="client-item" id="clientItem-${idx}" onclick="selectClient(${idx}, '${name.replace(/'/g,"\\'")}')">
+        <div class="client-check" id="clientCheck-${idx}"></div>
+        <span>${name}</span>
+      </div>
+    `).join('');
+  }
+
+  function selectClient(idx, name) {
+    // 이전 선택 해제
+    document.querySelectorAll('.client-item').forEach(el => el.classList.remove('selected'));
+    document.querySelectorAll('.client-check').forEach(el => { el.textContent = ''; });
+
+    // 현재 선택
+    const item = document.getElementById('clientItem-' + idx);
+    const check = document.getElementById('clientCheck-' + idx);
+    if (item) item.classList.add('selected');
+    if (check) check.textContent = '✓';
+
+    selectedClient = name;
+  }
+
+  function selectReason(btn, reason) {
+    // 이전 선택 해제
+    document.querySelectorAll('.reason-btn').forEach(b => b.classList.remove('selected'));
+
+    // 현재 선택
+    btn.classList.add('selected');
+    selectedReason = reason;
+
+    // 기타 선택 시 텍스트 입력창 표시
+    const detailArea = document.getElementById('detailArea');
+    if (reason === '📝 기타') {
+      detailArea.classList.add('visible');
+      document.getElementById('detailText').focus();
+    } else {
+      detailArea.classList.remove('visible');
+      document.getElementById('detailText').value = '';
+    }
+
+    hideError();
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.classList.add('visible');
+  }
+
+  function hideError() {
+    document.getElementById('errorMsg').classList.remove('visible');
+  }
+
+  async function submitResponse() {
+    hideError();
+
+    // 유효성 검사
+    if (!selectedClient) {
+      showError('업체를 선택해주세요.');
+      return;
+    }
+    if (!selectedReason) {
+      showError('사유를 선택해주세요.');
+      return;
+    }
+
+    const detailText = document.getElementById('detailText').value.trim();
+    if (selectedReason === '📝 기타' && !detailText) {
+      showError('기타 사유를 입력해주세요.');
+      return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = '제출 중...';
+
+    try {
+      await db.collection('no_order_responses').add({
+        date: date,
+        clientName: selectedClient,
+        driverName: driverName,
+        courseId: courseId,
+        reason: selectedReason,
+        reasonDetail: detailText,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        confirmedBy: '',
+        confirmedAt: null,
+        comment: '',
+        isPraised: false
+      });
+
+      // 완료 화면 표시
+      document.getElementById('formArea').style.display = 'none';
+      document.getElementById('doneScreen').classList.add('visible');
+
+    } catch (e) {
+      showError('저장 중 오류가 발생했습니다: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '✅ 제출하기';
+    }
+  }
+
+  // 시작
+  init();
+</script>
+</body>
+</html>

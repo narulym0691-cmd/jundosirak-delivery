@@ -1155,6 +1155,50 @@
   </div>
 </div>
 
+<!-- 미주문 사유 수신함 카드 -->
+<div style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div style="font-size:15px;font-weight:800;color:#1a4731;">
+      📥 미주문 사유 수신함
+      <span id="norBadge" style="display:none;background:#e53e3e;color:#fff;border-radius:12px;padding:2px 10px;font-size:12px;font-weight:700;margin-left:6px;"></span>
+    </div>
+    <button onclick="loadNoOrderResponses()" style="padding:6px 12px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 새로고침</button>
+  </div>
+  <div id="norList">
+    <div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>
+  </div>
+</div>
+
+<!-- 미주문 확인 모달 -->
+<div id="norConfirmModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:12px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:15px;font-weight:700;color:#1a4731;" id="norModalTitle">미주문 확인</div>
+      <button onclick="closeNorModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#718096;">×</button>
+    </div>
+    <div style="padding:16px 20px;">
+      <div style="font-size:12px;color:#718096;margin-bottom:6px;font-weight:600;">업체: <span id="norModalClient" style="color:#2d3748;"></span></div>
+      <div style="font-size:12px;color:#718096;margin-bottom:6px;font-weight:600;">기사: <span id="norModalDriver" style="color:#2d3748;"></span></div>
+      <div style="font-size:12px;color:#718096;margin-bottom:12px;font-weight:600;">사유: <span id="norModalReason" style="color:#2d3748;"></span></div>
+      <label style="font-size:13px;font-weight:700;color:#2d3748;display:block;margin-bottom:6px;">코멘트 (선택)</label>
+      <textarea id="norCommentInput" rows="3" placeholder="코멘트를 입력하세요..."
+        style="width:100%;padding:10px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;resize:none;outline:none;"
+        onfocus="this.style.borderColor='#38a169'" onblur="this.style.borderColor='#e2e8f0'"></textarea>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid #e2e8f0;display:flex;gap:10px;">
+      <button onclick="confirmNorResponse(false)" id="norConfirmBtn"
+        style="flex:1;padding:11px;background:#edf2f7;color:#2d3748;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+        ✅ 확인만
+      </button>
+      <button onclick="confirmNorResponse(true)" id="norPraiseBtn"
+        style="flex:1;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+        👍 칭찬하기
+      </button>
+    </div>
+    <div id="norModalMsg" style="padding:0 20px 12px;font-size:12px;text-align:center;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Firebase CDN -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -4044,6 +4088,208 @@ window.showSalesAlarmModal = function() {
 
 initAdmin();
 initSalesAlarm();
+
+// ── 미주문 사유 수신함 ──────────────────────────────────────────────────
+let _norCurrentDocId = '';
+let _norCurrentDriverName = '';
+let _norCurrentDriverPhone = '';
+let _norCurrentClientName = '';
+
+async function loadNoOrderResponses() {
+  const listEl = document.getElementById('norList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
+
+  try {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    const snap = await db.collection('no_order_responses')
+      .where('date', '>=', cutoffStr)
+      .orderBy('date', 'desc')
+      .orderBy('createdAt', 'desc')
+      .limit(100)
+      .get();
+
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">최근 30일 수신 내역이 없습니다.</div>';
+      const badge = document.getElementById('norBadge');
+      if (badge) badge.style.display = 'none';
+      return;
+    }
+
+    let unconfirmed = 0;
+    const rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      if (!d.confirmedBy) unconfirmed++;
+      rows.push({ id: doc.id, ...d });
+    });
+
+    // 뱃지 업데이트
+    const badge = document.getElementById('norBadge');
+    if (badge) {
+      if (unconfirmed > 0) {
+        badge.textContent = unconfirmed;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    // 행 데이터를 캐시에 저장 (onclick 인수 이스케이프 문제 회피)
+    window._norRowsCache = rows;
+
+    listEl.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f7fafc;">
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;white-space:nowrap;">날짜</th>
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">업체명</th>
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;white-space:nowrap;">담당기사</th>
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;">사유</th>
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;white-space:nowrap;">상태</th>
+              <th style="padding:8px 10px;text-align:left;color:#718096;font-weight:700;border-bottom:2px solid #e2e8f0;white-space:nowrap;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((r, idx) => {
+              let statusBadge;
+              if (r.isPraised) {
+                statusBadge = '<span style="background:#fef3c7;color:#92400e;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">칭찬됨 🏆</span>';
+              } else if (r.confirmedBy) {
+                statusBadge = '<span style="background:#f0fff4;color:#276749;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">확인됨</span>';
+              } else {
+                statusBadge = '<span style="background:#fff5f5;color:#c53030;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:700;">미확인</span>';
+              }
+              const reasonTxt = r.reasonDetail ? `${r.reason} (${r.reasonDetail})` : (r.reason || '-');
+              const actionBtn = (!r.confirmedBy)
+                ? `<button onclick="openNorModalByIdx(${idx})"
+                    style="padding:4px 10px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">확인</button>`
+                : '';
+              return `
+                <tr style="border-bottom:1px solid #f0f0f0;">
+                  <td style="padding:8px 10px;color:#4a5568;white-space:nowrap;">${r.date || '-'}</td>
+                  <td style="padding:8px 10px;color:#2d3748;font-weight:600;">${r.clientName || '-'}</td>
+                  <td style="padding:8px 10px;color:#4a5568;white-space:nowrap;">${r.driverName || '-'}</td>
+                  <td style="padding:8px 10px;color:#4a5568;">${reasonTxt}</td>
+                  <td style="padding:8px 10px;">${statusBadge}</td>
+                  <td style="padding:8px 10px;">${actionBtn}</td>
+                </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+
+  } catch (e) {
+    listEl.innerHTML = `<div style="color:#c53030;padding:12px;font-size:13px;">❌ 로드 실패: ${e.message}</div>`;
+  }
+}
+
+function openNorModalByIdx(idx) {
+  const rows = window._norRowsCache || [];
+  const r = rows[idx];
+  if (!r) return;
+
+  _norCurrentDocId = r.id;
+  _norCurrentDriverName = r.driverName || '';
+  _norCurrentClientName = r.clientName || '';
+
+  // 담당 기사 전화번호 조회
+  _norCurrentDriverPhone = '';
+  if (_norCurrentDriverName) {
+    db.collection('users').where('name', '==', _norCurrentDriverName).where('role', '==', 'driver').limit(1).get()
+      .then(snap => { if (!snap.empty) _norCurrentDriverPhone = snap.docs[0].data().phone || ''; })
+      .catch(() => {});
+  }
+
+  const reasonTxt = r.reasonDetail ? `${r.reason} (${r.reasonDetail})` : (r.reason || '-');
+  document.getElementById('norModalTitle').textContent = '미주문 확인';
+  document.getElementById('norModalClient').textContent = _norCurrentClientName;
+  document.getElementById('norModalDriver').textContent = _norCurrentDriverName;
+  document.getElementById('norModalReason').textContent = reasonTxt;
+  document.getElementById('norCommentInput').value = '';
+  document.getElementById('norModalMsg').textContent = '';
+  document.getElementById('norConfirmBtn').disabled = false;
+  document.getElementById('norPraiseBtn').disabled = false;
+
+  const modal = document.getElementById('norConfirmModal');
+  modal.style.display = 'flex';
+}
+
+function closeNorModal() {
+  document.getElementById('norConfirmModal').style.display = 'none';
+}
+
+async function confirmNorResponse(withPraise) {
+  const comment = document.getElementById('norCommentInput').value.trim();
+  const msgEl = document.getElementById('norModalMsg');
+  const confirmBtn = document.getElementById('norConfirmBtn');
+  const praiseBtn = document.getElementById('norPraiseBtn');
+  msgEl.textContent = '';
+
+  if (!_norCurrentDocId) return;
+
+  confirmBtn.disabled = true;
+  praiseBtn.disabled = true;
+  msgEl.style.color = '#718096';
+  msgEl.textContent = '저장 중...';
+
+  try {
+    const updateData = {
+      confirmedBy: '이영민',
+      confirmedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      comment: comment,
+    };
+    if (withPraise) {
+      updateData.isPraised = true;
+    }
+
+    await db.collection('no_order_responses').doc(_norCurrentDocId).update(updateData);
+
+    // 칭찬하기 선택 시 기사에게 칭찬 문자 발송
+    if (withPraise && _norCurrentDriverPhone) {
+      const praiseText = `[준도시락] ${_norCurrentDriverName} 기사님, ${_norCurrentClientName} 업체 미주문 처리 잘 하셨습니다 👍 대표님이 확인하셨습니다.`;
+      try {
+        await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            targets: [{ name: _norCurrentDriverName, phone: _norCurrentDriverPhone }],
+            text: praiseText,
+            from: '01024763473'
+          })
+        });
+      } catch (smsErr) {
+        console.warn('칭찬 문자 발송 실패:', smsErr.message);
+      }
+    }
+
+    msgEl.style.color = '#276749';
+    msgEl.textContent = withPraise ? '✅ 칭찬 문자가 발송되었습니다!' : '✅ 확인 처리되었습니다.';
+
+    setTimeout(() => {
+      closeNorModal();
+      loadNoOrderResponses();
+    }, 1200);
+
+  } catch (e) {
+    msgEl.style.color = '#c53030';
+    msgEl.textContent = '❌ 실패: ' + e.message;
+    confirmBtn.disabled = false;
+    praiseBtn.disabled = false;
+  }
+}
+
+// 모달 바깥 클릭 시 닫기
+document.getElementById('norConfirmModal').addEventListener('click', function(e) {
+  if (e.target === this) closeNorModal();
+});
+
+// 수신함 초기 로드
+loadNoOrderResponses();
 
 window.resetAllSalesData = async function() {
   if (!confirm('daily_sales, monthly_stats 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) return;
