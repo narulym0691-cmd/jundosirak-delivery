@@ -170,12 +170,20 @@ function renderSummaryCards() {
   `;
 }
 
-function renderAdminTeamRanking() {
+async function renderAdminTeamRanking() {
   const container = document.getElementById('adminRankingTable');
   if (!allTeamsData.length) {
     container.innerHTML = '<div class="empty-msg">데이터가 없습니다.</div>';
     return;
   }
+
+  // 이번달 정성평가 점수 로드
+  const ym = getCurrentYearMonth();
+  let evalScores = {};
+  try {
+    const evalSnap = await db.collection('team_evaluations').doc(ym).collection('teams').get();
+    evalSnap.forEach(doc => { evalScores[doc.id] = doc.data().totalScore ?? null; });
+  } catch(e) { /* 평가 데이터 없으면 무시 */ }
 
   const ranked = allTeamsData.map(t => {
     const s = allStatsData[t.id] || {};
@@ -185,10 +193,11 @@ function renderAdminTeamRanking() {
     const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0)) : 0;
     const dailyAvgDiff = hasStats ? Math.round(s.dailyAvgDiff || 0) : 0;
     const baselineCumul = hasStats ? (s.baselineCumulative || 0) : 0;
-    const cumulDiff = cumul - baselineCumul; // 누적 차이
+    const cumulDiff = cumul - baselineCumul;
     const grade = hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t);
     const baseline = t.baselineDailyAvg || 0;
-    return { ...t, cumul, dailyAvg, dailyAvgDiff, cumulDiff, grade, bizDays, baseline };
+    const evalScore = evalScores[t.id] ?? null;
+    return { ...t, cumul, dailyAvg, dailyAvgDiff, cumulDiff, grade, bizDays, baseline, evalScore };
   }).sort((a, b) => b.cumulDiff - a.cumulDiff);
 
   const rows = ranked.map((t, i) => {
@@ -201,6 +210,8 @@ function renderAdminTeamRanking() {
       : `<span class="grade-badge-sm" style="background:${gColor}">${t.grade}</span>`;
     const diffStr = t.cumulDiff >= 0 ? `+${numFormat(t.cumulDiff)}` : numFormat(t.cumulDiff);
     const diffColor = t.cumulDiff >= 0 ? '#276749' : '#e53e3e';
+    const evalStr = t.evalScore !== null ? `${t.evalScore}점` : '-';
+    const evalColor = t.evalScore !== null ? (t.evalScore >= 80 ? '#276749' : t.evalScore >= 60 ? '#c05621' : '#c53030') : '#a0aec0';
     return `
       <tr>
         <td>${i + 1}</td>
@@ -208,6 +219,7 @@ function renderAdminTeamRanking() {
         <td style="cursor:pointer;text-decoration:underline dotted;color:var(--primary);" onclick="showCumExplain('${t.name}',${t.cumul},${t.dailyAvg},${t.bizDays},${t.dailyAvgDiff},${t.baseline})">${numFormat(t.cumul)}</td>
         <td>${t.dailyAvg}</td>
         <td style="font-weight:700;color:${diffColor}">${diffStr}</td>
+        <td style="font-weight:700;color:${evalColor}">${evalStr}</td>
         <td>${gradeBadge}</td>
       </tr>
     `;
@@ -216,7 +228,7 @@ function renderAdminTeamRanking() {
   container.innerHTML = `
     <table class="admin-table">
       <thead>
-        <tr><th>순위</th><th>팀명</th><th>누적수량</th><th>일평균</th><th>기준대비</th><th>등급</th></tr>
+        <tr><th>순위</th><th>팀명</th><th>누적수량</th><th>일평균</th><th>기준대비</th><th>평가점수</th><th>등급</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
