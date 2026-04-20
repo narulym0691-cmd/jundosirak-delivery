@@ -555,7 +555,7 @@
     <textarea id="feedbackExtra" placeholder="추가 내용 (선택사항)" style="width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;resize:none;height:64px;box-sizing:border-box;margin-bottom:12px;"></textarea>
     <div style="display:flex;gap:8px;">
       <button onclick="closeFeedbackModal()" style="flex:1;padding:11px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;cursor:pointer;">취소</button>
-      <button onclick="submitFeedback()" style="flex:2;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">제출</button>
+      <button onclick="submitFeedbackModal()" style="flex:2;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">제출</button>
     </div>
   </div>
 </div>
@@ -1069,7 +1069,7 @@
     btn.style.color = '#fff';
   };
 
-  window.submitFeedback = async function() {
+  window.submitFeedbackModal = async function() {
     if (!_feedbackSelected) {
       alert('사유를 선택해 주세요.');
       return;
