@@ -88,6 +88,14 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "driverName", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "no_order_responses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "driverName", "order": "ASCENDING" },
         { "fieldPath": "date", "order": "DESCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
