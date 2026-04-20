@@ -1130,15 +1130,22 @@ window.showAdminFvDetail = function(v) {
     </div>`;
 };
 
-// ── 경보 팀장 문자 수동 발송 ──────────────────────────────────
+// ── 경보 팀장 + 기사 문자 수동 발송 ─────────────────────────
 window.sendAlertSms = async (alertId, name, level, days, teamId) => {
   const levelLabel = level === 'urgent' ? '🚨 즉시경보' : level === 'watch' ? '⚠️ 주시경보' : '확인보고';
-  const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${name}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+  const leaderText = `[준도시락 배송관리] ${levelLabel}\n거래처: ${name}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+  const driverText = `[준도시락 배송관리] 미주문 알림\n거래처: ${name}\n오늘 미주문입니다. 확인 후 시스템에 사유를 입력해주세요.`;
 
-  if (!confirm(`팀장에게 경보 문자를 발송하시겠습니까?\n\n[메시지]\n${text}`)) return;
+  if (!confirm(`팀장 + 담당 기사에게 경보 문자를 발송하시겠습니까?\n\n[팀장]\n${leaderText}\n\n[기사]\n${driverText}`)) return;
 
   try {
-    let targets = [];
+    // 경보 문서에서 courseId 가져오기
+    const alertDoc = await db.collection('alerts').doc(alertId).get();
+    const alertData = alertDoc.data() || {};
+    const courseId = alertData.courseId || null;
+
+    // 팀장 조회
+    let leaderTargets = [];
     if (teamId) {
       const snap = await db.collection('users')
         .where('teamId', '==', teamId)
@@ -1146,31 +1153,61 @@ window.sendAlertSms = async (alertId, name, level, days, teamId) => {
         .get();
       snap.forEach(doc => {
         const u = doc.data();
-        if (u.phone && u.active !== false) targets.push({ name: u.name, phone: u.phone });
+        if (u.phone && u.active !== false) leaderTargets.push({ name: u.name + '(팀장)', phone: u.phone });
       });
     }
 
-    if (!targets.length) {
-      alert('해당 팀 팀장의 전화번호가 등록되어 있지 않습니다.');
+    // 담당 기사 조회 (courseId 기준)
+    let driverTargets = [];
+    if (courseId) {
+      const snap = await db.collection('users')
+        .where('courseId', '==', courseId)
+        .where('role', '==', 'driver')
+        .get();
+      snap.forEach(doc => {
+        const u = doc.data();
+        if (u.phone && u.active !== false) driverTargets.push({ name: u.name + '(기사)', phone: u.phone });
+      });
+    }
+
+    if (!leaderTargets.length && !driverTargets.length) {
+      alert('팀장 및 담당 기사의 전화번호가 등록되어 있지 않습니다.');
       return;
     }
 
-    const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targets, text })
-    });
-    const data = await res.json();
+    let sentNames = [];
 
-    if (data.ok && data.sent > 0) {
+    // 팀장 발송
+    if (leaderTargets.length) {
+      const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets: leaderTargets, text: leaderText })
+      });
+      const data = await res.json();
+      if (data.ok && data.sent > 0) sentNames = sentNames.concat(leaderTargets.map(t => t.name));
+    }
+
+    // 기사 발송
+    if (driverTargets.length) {
+      const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets: driverTargets, text: driverText })
+      });
+      const data = await res.json();
+      if (data.ok && data.sent > 0) sentNames = sentNames.concat(driverTargets.map(t => t.name));
+    }
+
+    if (sentNames.length > 0) {
       await db.collection('alerts').doc(alertId).update({
         smsSentAt: firebase.firestore.FieldValue.serverTimestamp(),
-        smsSentTo: targets.map(t => t.name).join(', ')
+        smsSentTo: sentNames.join(', ')
       });
-      alert('✅ ' + targets.map(t=>t.name).join(', ') + '에게 문자 발송 완료!');
+      alert('✅ ' + sentNames.join(', ') + '에게 문자 발송 완료!');
       loadAdminAlerts();
     } else {
-      alert('❌ 문자 발송 실패: ' + (data.error || '알 수 없는 오류'));
+      alert('❌ 문자 발송 실패');
     }
   } catch (e) {
     alert('❌ 오류: ' + e.message);

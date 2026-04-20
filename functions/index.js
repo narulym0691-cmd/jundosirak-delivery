@@ -627,7 +627,7 @@ exports.deliveryComplete = functions
     }
   });
 
-// ─── 경보 생성 시 팀장 자동 문자 발송 ────────────────────────
+// ─── 경보 생성 시 팀장 + 담당 기사 자동 문자 발송 ───────────
 exports.onAlertCreated = functions
   .region('us-central1')
   .firestore.document('alerts/{alertId}')
@@ -639,10 +639,11 @@ exports.onAlertCreated = functions
     const levelLabel = level === 'urgent' ? '🚨 즉시경보' : '⚠️ 주시경보';
 
     try {
-      let leaderPhone = null;
-      let leaderName = null;
       const targetTeamId = teamId || (courseId && COURSE_TEAM_MAP[courseId] ? COURSE_TEAM_MAP[courseId].teamId : null);
 
+      // ── 팀장 조회 ──
+      let leaderPhone = null;
+      let leaderName = null;
       if (targetTeamId) {
         const usersSnap = await db.collection('users')
           .where('teamId', '==', targetTeamId)
@@ -656,32 +657,72 @@ exports.onAlertCreated = functions
         }
       }
 
-      if (!leaderPhone) {
-        console.log(`경보 발생(${clientName}) - 팀장 전화번호 없음, 문자 미발송`);
+      // ── 담당 기사 조회 (courseId 기준) ──
+      let driverPhone = null;
+      let driverName = null;
+      if (courseId) {
+        const driverSnap = await db.collection('users')
+          .where('courseId', '==', courseId)
+          .where('role', '==', 'driver')
+          .where('active', '==', true)
+          .get();
+        if (!driverSnap.empty) {
+          const driver = driverSnap.docs[0].data();
+          driverPhone = driver.phone || null;
+          driverName = driver.name || '기사';
+        }
+      }
+
+      if (!leaderPhone && !driverPhone) {
+        console.log(`경보 발생(${clientName}) - 팀장/기사 전화번호 없음, 문자 미발송`);
         return null;
       }
 
-      const text = `[준도시락 배송관리] ${levelLabel}\n거래처: ${clientName}\n${consecutiveDays ? consecutiveDays + '일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
-      const result = await sendOneSms(leaderPhone, text);
+      const smsSentNames = [];
 
-      await db.collection('sms_logs').add({
-        type: 'alert_auto',
-        alertId: context.params.alertId,
-        clientName,
-        level,
-        targets: [leaderName],
-        text,
-        sent: result.ok ? 1 : 0,
-        failed: result.ok ? 0 : 1,
-        sentAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      // ── 팀장 문자 발송 ──
+      if (leaderPhone) {
+        const leaderText = `[준도시락 배송관리] ${levelLabel}\n거래처: ${clientName}\n${consecutiveDays ? consecutiveDays + '일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
+        const result = await sendOneSms(leaderPhone, leaderText);
+        if (result.ok) smsSentNames.push(leaderName + '(팀장)');
+        await db.collection('sms_logs').add({
+          type: 'alert_auto',
+          alertId: context.params.alertId,
+          clientName, level,
+          targets: [leaderName + '(팀장)'],
+          text: leaderText,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`팀장 문자 ${result.ok ? '완료' : '실패'}: ${clientName} → ${leaderName}(${leaderPhone})`);
+      }
 
-      await snap.ref.update({
-        smsSentAt: admin.firestore.FieldValue.serverTimestamp(),
-        smsSentTo: leaderName,
-      });
+      // ── 담당 기사 문자 발송 ──
+      if (driverPhone) {
+        const driverText = `[준도시락 배송관리] 미주문 알림\n거래처: ${clientName}\n오늘 미주문입니다. 확인 후 시스템에 사유를 입력해주세요.`;
+        const result = await sendOneSms(driverPhone, driverText);
+        if (result.ok) smsSentNames.push(driverName + '(기사)');
+        await db.collection('sms_logs').add({
+          type: 'alert_auto_driver',
+          alertId: context.params.alertId,
+          clientName, level,
+          targets: [driverName + '(기사)'],
+          text: driverText,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`기사 문자 ${result.ok ? '완료' : '실패'}: ${clientName} → ${driverName}(${driverPhone})`);
+      }
 
-      console.log(`경보 자동문자 발송 ${result.ok ? '완료' : '실패'}: ${clientName} → ${leaderName}(${leaderPhone})`);
+      if (smsSentNames.length > 0) {
+        await snap.ref.update({
+          smsSentAt: admin.firestore.FieldValue.serverTimestamp(),
+          smsSentTo: smsSentNames.join(', '),
+        });
+      }
+
     } catch (e) {
       console.error('경보 자동문자 발송 실패:', e);
     }
