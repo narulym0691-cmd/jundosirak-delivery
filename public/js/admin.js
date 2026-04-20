@@ -20,7 +20,8 @@ async function initAdmin() {
     loadDeliveryLogs(),
     loadVehicleStatus(),
     loadNewClientsCard(),
-    loadFeedbackStats()
+    loadFeedbackStats(),
+    loadSalesMissingCard()
   ]);
 }
 
