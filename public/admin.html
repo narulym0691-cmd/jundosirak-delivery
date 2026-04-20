@@ -1434,6 +1434,8 @@
   function parseClientOrderData(wb) {
     const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부','밥','국'];
     const MENUS_EXCLUDE = ['밥','국']; // 총수량 합산 제외 메뉴
+    // 헤더행 스킵 키워드
+    const SKIP_HEADER_KW = ['번호','순서','이름','거래처1','거래처2','거래처3','거래처4','거래처5','거래처6','거래처7','거래처8','거래처9','기사명','합계'];
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
     const clientOrderMap = {}; // clientName → { total, driverName, courseId }
@@ -1442,7 +1444,19 @@
       const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
       if (rows.length < 45) continue;
       const hdr = rows[43] || [];
-      if (!String(hdr[10]||'').includes('거래처') && !String(hdr[3]||'').includes('이름')) continue;
+      // 헤더행에서 업체명 컬럼 위치 동적 탐색
+      // - hdr[10]='거래처' → colClient=10 (구형)
+      // - hdr[13]='거래처' → colClient=13 (신형 일일장부)
+      let colClient = -1;
+      for (let j = 0; j < hdr.length; j++) {
+        const h = String(hdr[j]||'').trim();
+        if (h === '거래처') { colClient = j; break; }
+      }
+      if (colClient < 0) {
+        // 헤더에 '거래처' 없으면 기존 방식으로 폴백
+        if (!String(hdr[10]||'').includes('거래처') && !String(hdr[3]||'').includes('이름')) continue;
+        colClient = 10;
+      }
       let currentCourseId = '';
       for (let i = 44; i < rows.length; i++) {
         const row = rows[i];
@@ -1451,8 +1465,10 @@
           currentCourseId = String(row[2]||'').replace(/배송코스/g,'').trim() || String(row[1]||'').trim();
           continue;
         }
-        const clientName = String(row[10]||'').trim();
+        const clientName = String(row[colClient]||'').trim();
         if (!clientName) continue;
+        // 헤더행 스킵 (거래처1~9, 번호, 순서 등)
+        if (SKIP_HEADER_KW.some(k => clientName === k || clientName.startsWith('거래처'))) continue;
         const driverName = String(row[3]||'').trim();
         let total = 0;
         const menuQtys = {};
@@ -1462,15 +1478,27 @@
           if (!MENUS_EXCLUDE.includes(menu)) total += qty; // 밥/국 제외
         });
         if (total > 0) {
-          orderedClients.push(clientName);
-          clientOrderMap[clientName] = { total, driverName, courseId: currentCourseId };
-          if (driverName) {
-            if (!driverStats[driverName]) { driverStats[driverName] = { total:0 }; MENUS.forEach(m => driverStats[driverName][m] = 0); }
-            driverStats[driverName].total += total;
-            MENUS.forEach(m => driverStats[driverName][m] += menuQtys[m]);
+          // 같은 업체 중복 행(뷔페 등) 합산 처리
+          if (clientOrderMap[clientName]) {
+            clientOrderMap[clientName].total += total;
+            MENUS.forEach(m => { /* 기존 driverStats에 추가 */
+              if (driverName && driverStats[driverName]) driverStats[driverName][m] += menuQtys[m];
+            });
+            if (driverName && driverStats[driverName]) driverStats[driverName].total += total;
+          } else {
+            orderedClients.push(clientName);
+            clientOrderMap[clientName] = { total, driverName, courseId: currentCourseId };
+            if (driverName) {
+              if (!driverStats[driverName]) { driverStats[driverName] = { total:0 }; MENUS.forEach(m => driverStats[driverName][m] = 0); }
+              driverStats[driverName].total += total;
+              MENUS.forEach(m => driverStats[driverName][m] += menuQtys[m]);
+            }
           }
         } else {
-          notOrderedClients.push(clientName);
+          // 수량 0인 행: 이미 주문 있는 업체면 스킵 (뷔페 0 같은 케이스)
+          if (!clientOrderMap[clientName] && !orderedClients.includes(clientName)) {
+            notOrderedClients.push(clientName);
+          }
         }
       }
       if (orderedClients.length || notOrderedClients.length) break;
