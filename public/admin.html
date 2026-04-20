@@ -1796,6 +1796,8 @@
   async function createAlertsFromSales(date, driverRows) {
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1; // 0=월 1=화 ... 4=금
+    // orderDays 문자열('mon'~'sun') → 숫자(0~6) 변환 맵
+    const DOW_STR = ['mon','tue','wed','thu','fri','sat','sun'];
 
     // ── 오늘 주문한 거래처 (정규화) ──
     const orderedNorm = new Set();
@@ -1854,8 +1856,9 @@
       const { name, orderDays, dailyAvg, teamId, courseId } = client;
       if (!orderDays || !Array.isArray(orderDays)) continue;
 
-      // 오늘 주문 요일인가?
-      if (!orderDays.includes(dowIndex)) continue;
+      // 오늘 주문 요일인가? (숫자 또는 문자열 'mon'~'sun' 둘 다 지원)
+      const orderDaysNorm = orderDays.map(d => typeof d === 'string' ? DOW_STR.indexOf(d) : d);
+      if (!orderDaysNorm.includes(dowIndex)) continue;
 
       // 실제 주문했는가? (부분일치 비교)
       if (isOrderedPartialMatch(name, orderedNorm)) continue;

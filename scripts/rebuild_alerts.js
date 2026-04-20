@@ -9,6 +9,7 @@ async function createAlerts(date, orderedClients, existingAlerts) {
   const ordered = new Set(orderedClients);
   const dow = new Date(date).getDay();
   const dowIndex = dow === 0 ? 6 : dow - 1;
+  const DOW_STR = ['mon','tue','wed','thu','fri','sat','sun'];
 
   const clientsSnap = await db.collection('clients').get();
   let alertCount = 0, urgentCnt = 0, watchCnt = 0, checkCnt = 0;
@@ -18,7 +19,8 @@ async function createAlerts(date, orderedClients, existingAlerts) {
     const c = doc.data();
     const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = c;
     if (!orderDays || !Array.isArray(orderDays)) continue;
-    if (!orderDays.includes(dowIndex)) continue;
+    const orderDaysNorm = orderDays.map(d => typeof d === 'string' ? DOW_STR.indexOf(d) : d);
+    if (!orderDaysNorm.includes(dowIndex)) continue;
     if (ordered.has(clientName)) continue;
 
     // 중복체크 (메모리에서)
