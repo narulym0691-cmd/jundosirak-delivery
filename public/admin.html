@@ -1347,9 +1347,9 @@
       const team = COURSE_NUM_TEAM[courseNum];
       if (!team) continue; // 조식배송(20번 이상) 등 팀 미배정 코스는 제외
       const name = cell.replace(/^\d+\.\s+/, '').trim();
-      // index14~20 = 뜨/프/샐/품/덮/샌/세트
+      // index15~22 = 뜨/프/샐/품/덮/샌/세트/유부 (index14=기사명, index23=밥, index24=국 제외)
       let total = 0;
-      for (let j = 14; j <= 20; j++) total += Number(row[j]||0);
+      for (let j = 15; j <= 22; j++) total += Number(row[j]||0);
       if (!driverMap[name]) driverMap[name] = { name, team, total: 0, revenue: 0, clients: [] };
       driverMap[name].total += total;
       teamTotalsMap[team] = (teamTotalsMap[team]||0) + total;
