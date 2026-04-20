@@ -22,7 +22,8 @@ async function initAdmin() {
     loadNewClientsCard(),
     loadFeedbackStats(),
     loadSalesMissingCard(),
-    loadNewClientTracking()
+    loadNewClientTracking(),
+    loadNoOrderTracking()
   ]);
 }
 
