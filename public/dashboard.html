@@ -1690,8 +1690,10 @@ async function loadLbTeamRank() {
       return {
         teamId: tid,
         teamName: LB_TEAM_NAMES[tid],
-        total: td.total || td.cumulative || 0,
-        avg: td.avg || td.dailyAvg || 0
+        total: td.cumulativeTotal || td.total || td.cumulative || 0,
+        avg: td.dailyAvgDiff || td.avg || td.dailyAvg || 0,
+        grade: td.grade || '',
+        bizDays: td.bizDays || 0
       };
     });
 
