@@ -98,7 +98,9 @@ async function loadAdminData() {
     ]);
     allTeamsData = [];
     teamsSnap.forEach(doc => allTeamsData.push({ id: doc.id, ...doc.data() }));
-    allStatsData = statsDoc.exists ? statsDoc.data() : {};
+    // teamStats 하위 구조 지원: { teamStats: { team1: {...} } } 또는 { team1: {...} } 둘 다 대응
+    const rawStats = statsDoc.exists ? statsDoc.data() : {};
+    allStatsData = rawStats.teamStats ? rawStats.teamStats : rawStats;
     renderSummaryCards();
     renderAdminTeamRanking();
   } catch (e) {
@@ -176,7 +178,7 @@ function renderAdminTeamRanking() {
   const ranked = allTeamsData.map(t => {
     const s = allStatsData[t.id] || {};
     const hasStats = Object.keys(s).length > 0;
-    const bizDays = hasStats ? (s.bizDays || 0) : 0;
+    const bizDays = hasStats ? (s.bizDays || s.workingDays || 0) : 0;
     const cumul = hasStats ? (s.cumulativeTotal || 0) : 0;
     const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0)) : 0;
     const dailyAvgDiff = hasStats ? Math.round(s.dailyAvgDiff || 0) : 0;
