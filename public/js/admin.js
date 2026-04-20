@@ -184,21 +184,23 @@ function renderAdminTeamRanking() {
     const cumul = hasStats ? (s.cumulativeTotal || 0) : 0;
     const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0)) : 0;
     const dailyAvgDiff = hasStats ? Math.round(s.dailyAvgDiff || 0) : 0;
+    const baselineCumul = hasStats ? (s.baselineCumulative || 0) : 0;
+    const cumulDiff = cumul - baselineCumul; // 누적 차이
     const grade = hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t);
     const baseline = t.baselineDailyAvg || 0;
-    return { ...t, cumul, dailyAvg, dailyAvgDiff, grade, bizDays, baseline };
-  }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
+    return { ...t, cumul, dailyAvg, dailyAvgDiff, cumulDiff, grade, bizDays, baseline };
+  }).sort((a, b) => b.cumulDiff - a.cumulDiff);
 
   const rows = ranked.map((t, i) => {
     const gColor = gradeColor(t.grade);
     const isAdmin = adminUser && (adminUser.role === 'admin' || adminUser.role === 'manager');
     const gradeBadge = isAdmin
       ? `<span class="grade-badge-sm" style="background:${gColor};cursor:pointer;"
-           onclick="alert('[ ${t.name} 등급 상세 ]\\n등급: ${t.grade}\\n일평균: ${t.dailyAvg}개\\n기준: ${t.baselineDailyAvg}개\\n기준대비: ${t.dailyAvgDiff >= 0 ? '+' : ''}${t.dailyAvgDiff}개')"
+           onclick="alert('[ ${t.name} 등급 상세 ]\\n등급: ${t.grade}\\n일평균: ${t.dailyAvg}개\\n기준: ${t.baselineDailyAvg}개\\n기준대비(누적): ${t.cumulDiff >= 0 ? '+' : ''}${t.cumulDiff}개')"
          >${t.grade}</span>`
       : `<span class="grade-badge-sm" style="background:${gColor}">${t.grade}</span>`;
-    const diffStr = t.dailyAvgDiff >= 0 ? `+${t.dailyAvgDiff}` : `${t.dailyAvgDiff}`;
-    const diffColor = t.dailyAvgDiff >= 0 ? '#276749' : '#e53e3e';
+    const diffStr = t.cumulDiff >= 0 ? `+${numFormat(t.cumulDiff)}` : numFormat(t.cumulDiff);
+    const diffColor = t.cumulDiff >= 0 ? '#276749' : '#e53e3e';
     return `
       <tr>
         <td>${i + 1}</td>
