@@ -472,7 +472,106 @@ exports.scheduledSmsAtDawn = functions
       
       // ── 신규업체 고객관리 기록 체크 ──
       await checkNewClientFeedback();
-      
+
+      // ── 미주문 업체 담당 기사 알림 ──────────────────────────────
+      try {
+        console.log('=== 미주문 업체 기사 알림 시작 ===');
+
+        // 어제 sales_daily 조회
+        const salesDoc = await db.collection('sales_daily').doc(yesterdayStr).get();
+        if (salesDoc.exists) {
+          const salesData = salesDoc.data();
+          const orderedSet = new Set((salesData.orderedClients || []).map(c => typeof c === 'string' ? c : (c.clientName || c.name || '')));
+
+          // clients 전체 조회
+          const clientsSnap = await db.collection('users').where('active', '==', true).get();
+          const usersMap = {};
+          clientsSnap.forEach(d => { const u = d.data(); if (u.name) usersMap[u.name] = u; });
+
+          const allClientsSnap = await db.collection('clients').get();
+
+          // 어제 요일 계산
+          const yDate = new Date(yesterdayStr);
+          const yDow = yDate.getDay();
+          const yDowIndex = yDow === 0 ? 6 : yDow - 1;
+          const DOW_STR_LOCAL = ['mon','tue','wed','thu','fri','sat','sun'];
+
+          // 기사별 미주문 업체 묶기
+          const driverMissingMap = {}; // driverName → [clientName, ...]
+
+          allClientsSnap.forEach(doc => {
+            const c = doc.data();
+            const { name, orderDays, courseId } = c;
+            if (!name || !orderDays || !Array.isArray(orderDays)) return;
+
+            // 어제 주문 요일인지 확인
+            const odNorm = orderDays.map(d => typeof d === 'string' ? DOW_STR_LOCAL.indexOf(d) : d);
+            if (!odNorm.includes(yDowIndex)) return;
+
+            // 실제 주문했으면 스킵
+            if (orderedSet.has(name)) return;
+
+            // courseId로 담당 기사 찾기
+            if (!courseId) return;
+
+            // users에서 courseId 매칭 기사 찾기 (usersMap은 name기준 → 별도 courseMap 필요)
+            // → c.courseId 기반으로 아래에서 처리
+            if (!driverMissingMap[courseId]) driverMissingMap[courseId] = [];
+            driverMissingMap[courseId].push(name);
+          });
+
+          // courseId → driver 매핑
+          const courseDriverMap = {};
+          const driversSnap = await db.collection('users')
+            .where('role', '==', 'driver')
+            .where('active', '==', true)
+            .get();
+          driversSnap.forEach(d => {
+            const u = d.data();
+            if (u.courseId && u.phone) courseDriverMap[u.courseId] = { name: u.name, phone: u.phone };
+          });
+
+          let noOrderSmsSent = 0, noOrderSmsFailed = 0;
+
+          for (const [courseId, clients] of Object.entries(driverMissingMap)) {
+            const driver = courseDriverMap[courseId];
+            if (!driver || !driver.phone) continue;
+
+            const clientList = clients.map(c => `  · ${c}`).join('\n');
+            const text = `[준도시락 배송관리] 미주문 알림\n${driver.name} 기사님, 어제(${yesterdayStr}) 담당 거래처 미주문입니다.\n\n${clientList}\n\n오늘 확인 후 시스템에 사유를 입력해주세요.`;
+
+            const result = await sendOneSms(driver.phone, text);
+            await db.collection('sms_logs').add({
+              type: 'no_order_morning',
+              driverName: driver.name,
+              courseId,
+              date: yesterdayStr,
+              clientCount: clients.length,
+              clients,
+              text,
+              phone: driver.phone,
+              sent: result.ok ? 1 : 0,
+              failed: result.ok ? 0 : 1,
+              sentAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            if (result.ok) {
+              console.log(`✅ 미주문 알림: ${driver.name}(${clients.length}건)`);
+              noOrderSmsSent++;
+            } else {
+              console.log(`❌ 미주문 알림 실패: ${driver.name}`);
+              noOrderSmsFailed++;
+            }
+          }
+
+          console.log(`=== 미주문 알림 완료: ${noOrderSmsSent}명 발송, ${noOrderSmsFailed}명 실패 ===`);
+        } else {
+          console.log(`어제(${yesterdayStr}) sales_daily 없음 — 미주문 알림 스킵`);
+        }
+      } catch (e) {
+        console.error('미주문 기사 알림 오류(무시):', e.message);
+      }
+
     } catch (e) {
       console.error('scheduledSmsAtDawn 오류:', e);
     }
