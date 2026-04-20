@@ -458,6 +458,15 @@
     </div>
   </div>
 
+  <!-- 판매수량 미입력 현황 카드 -->
+  <div class="card" id="salesMissingCard" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <div class="card-title" style="margin:0;color:#c53030;">⚠️ 판매수량 미입력 현황</div>
+      <button onclick="loadSalesMissingCard()" style="padding:4px 10px;background:#edf2f7;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">🔄 새로고침</button>
+    </div>
+    <div id="salesMissingList"></div>
+  </div>
+
   <!-- 배송완료 현황 -->
   <div class="card">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -4086,8 +4095,66 @@ window.showSalesAlarmModal = function() {
   modal.addEventListener('click', e => { if(e.target===modal) modal.remove(); });
 };
 
+// 판매수량 미입력 카드 (대시보드 상시 표시)
+async function loadSalesMissingCard() {
+  const card = document.getElementById('salesMissingCard');
+  const listEl = document.getElementById('salesMissingList');
+  if (!card || !listEl) return;
+
+  const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
+  const mins = now.getHours()*60+now.getMinutes();
+  if (mins < 9*60) { card.style.display='none'; return; } // 9시 전엔 숨김
+
+  const today = getTodaySalesKey();
+  const [salesSnap, usersSnap] = await Promise.all([
+    db.collection('driver_sales').where('date','==',today).get(),
+    db.collection('users').get()
+  ]);
+
+  const submittedUids = new Set();
+  salesSnap.forEach(d => submittedUids.add(d.data().driverId));
+
+  const missing = [];
+  usersSnap.forEach(doc => {
+    const u = doc.data();
+    if ((u.role==='driver'||u.role==='leader') && u.active!==false && !submittedUids.has(doc.id)) {
+      missing.push({ name: u.name, teamId: u.teamId, phone: u.phone||'' });
+    }
+  });
+
+  if (missing.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  // 팀별 그룹핑
+  const byTeam = {};
+  missing.forEach(m => {
+    const t = SALES_TEAM_NAMES[m.teamId] || m.teamId || '미배정';
+    if (!byTeam[t]) byTeam[t] = [];
+    byTeam[t].push(m);
+  });
+
+  let html = `<div style="font-size:12px;color:#718096;margin-bottom:8px;">${today} 기준 · 총 ${missing.length}명 미입력</div>`;
+  Object.entries(byTeam).sort().forEach(([team, members]) => {
+    html += `<div style="margin-bottom:8px;">
+      <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:4px;">${team}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${members.map(m => `
+          <span style="background:#fff5f5;border:1px solid #fed7d7;color:#c53030;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;">
+            ${m.name}${m.phone ? ` <a href="tel:${m.phone}" style="color:#c53030;text-decoration:none;">📞</a>` : ''}
+          </span>`).join('')}
+      </div>
+    </div>`;
+  });
+  listEl.innerHTML = html;
+}
+
 initAdmin();
 initSalesAlarm();
+loadSalesMissingCard();
 
 // ── 미주문 사유 수신함 ──────────────────────────────────────────────────
 let _norCurrentDocId = '';
