@@ -1164,6 +1164,15 @@
   </div>
 </div>
 
+<!-- 신규업체 30일 추적 카드 -->
+<div style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);" id="newClientTrackingCard">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div style="font-size:15px;font-weight:800;color:#1a4731;">🆕 신규업체 30일 추적</div>
+    <button onclick="loadNewClientTracking()" style="padding:5px 12px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">🔄 새로고침</button>
+  </div>
+  <div id="newClientTrackingList"><div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div></div>
+</div>
+
 <!-- 미주문 사유 수신함 카드 -->
 <div style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
@@ -2207,6 +2216,62 @@
           });
         }
         await db.collection('sales_daily').doc(date).update({ newClients });
+
+        // new_client_tracking: 신규업체 자동 등록 (없으면 신규 생성)
+        for (const nc of newClients) {
+          if (!nc.clientName) continue;
+          const trackId = `${nc.clientName}_${date}`;
+          const trackRef = db.collection('new_client_tracking').doc(trackId);
+          const trackSnap = await trackRef.get();
+          if (!trackSnap.exists) {
+            const trackUntil = new Date(date);
+            trackUntil.setDate(trackUntil.getDate() + 30);
+            const trackUntilStr = trackUntil.toISOString().slice(0,10);
+            await trackRef.set({
+              clientName: nc.clientName,
+              phone: nc.phone || '',
+              driverName: nc.driverName || '',
+              courseId: nc.courseId || '',
+              registeredAt: date,
+              trackingUntil: trackUntilStr,
+              orderDates: [date],
+              noOrderDates: [],
+              totalOrderDays: 1,
+              totalNoOrderDays: 0,
+              status: 'active',
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
+
+        // new_client_tracking: 오늘 주문/미주문 업데이트
+        try {
+          const trackSnap = await db.collection('new_client_tracking')
+            .where('status', '==', 'active')
+            .where('registeredAt', '<=', date)
+            .where('trackingUntil', '>=', date)
+            .get();
+          const batch = db.batch();
+          trackSnap.forEach(doc => {
+            const td = doc.data();
+            const ordered = _salesData.clientOrderMap && _salesData.clientOrderMap[td.clientName];
+            const orderDates = td.orderDates || [];
+            const noOrderDates = td.noOrderDates || [];
+            if (ordered && !orderDates.includes(date)) {
+              orderDates.push(date);
+              batch.update(doc.ref, { orderDates, totalOrderDays: orderDates.length });
+            } else if (!ordered && !noOrderDates.includes(date)) {
+              noOrderDates.push(date);
+              batch.update(doc.ref, { noOrderDates, totalNoOrderDays: noOrderDates.length });
+            }
+            // 30일 완료 체크
+            if (date >= td.trackingUntil) {
+              batch.update(doc.ref, { status: 'completed' });
+            }
+          });
+          await batch.commit();
+        } catch(e) { console.warn('30일추적 업데이트 오류(무시):', e.message); }
+
       } catch(e) { console.warn('신규업체 감지 오류(무시):', e.message); }
 
       const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
@@ -4154,6 +4219,53 @@ async function loadSalesMissingCard() {
 
 initAdmin();
 initSalesAlarm();
+
+// ── 신규업체 30일 추적 ──────────────────────────────────────────────────
+async function loadNewClientTracking() {
+  const listEl = document.getElementById('newClientTrackingList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
+  try {
+    const snap = await db.collection('new_client_tracking')
+      .where('status', '==', 'active')
+      .orderBy('registeredAt', 'desc')
+      .limit(50)
+      .get();
+
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">추적 중인 신규업체가 없습니다.</div>';
+      return;
+    }
+
+    const today = new Date().toISOString().slice(0,10);
+    let html = '';
+    snap.forEach(doc => {
+      const d = doc.data();
+      const regDate = d.registeredAt || '';
+      const untilDate = d.trackingUntil || '';
+      const orderDays = (d.orderDates || []).length;
+      const noOrderDays = (d.noOrderDates || []).length;
+      const totalDays = orderDays + noOrderDays;
+      const rate = totalDays > 0 ? Math.round(orderDays / totalDays * 100) : 0;
+      const daysLeft = Math.max(0, Math.ceil((new Date(untilDate) - new Date(today)) / 86400000));
+      const rateColor = rate >= 80 ? '#276749' : rate >= 50 ? '#c05621' : '#c53030';
+      html += `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;margin-bottom:6px;background:#f7fafc;border:1px solid #e2e8f0;">
+          <div>
+            <div style="font-weight:700;font-size:13px;">${d.clientName}</div>
+            <div style="font-size:11px;color:#718096;margin-top:2px;">${d.driverName||'-'} · 등록 ${regDate} · ${daysLeft}일 남음</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-weight:800;font-size:14px;color:${rateColor};">${rate}%</div>
+            <div style="font-size:11px;color:#718096;">${orderDays}일 주문 / ${noOrderDays}일 미주문</div>
+          </div>
+        </div>`;
+    });
+    listEl.innerHTML = html;
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:#c53030;padding:12px;font-size:13px;">오류: ${e.message}</div>`;
+  }
+}
 
 // ── 미주문 사유 수신함 ──────────────────────────────────────────────────
 let _norCurrentDocId = '';

@@ -21,7 +21,8 @@ async function initAdmin() {
     loadVehicleStatus(),
     loadNewClientsCard(),
     loadFeedbackStats(),
-    loadSalesMissingCard()
+    loadSalesMissingCard(),
+    loadNewClientTracking()
   ]);
 }
 
