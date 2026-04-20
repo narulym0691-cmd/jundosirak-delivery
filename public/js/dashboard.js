@@ -15,6 +15,11 @@ async function initDashboard() {
   // 현재 탭 표시
   showTab('home');
 
+  // 알림 뱃지 초기화 (driver 역할만)
+  if (currentUser.role === 'driver' || currentUser.role === 'leader') {
+    setTimeout(() => { if (typeof initNotifBadge === 'function') initNotifBadge(); }, 1000);
+  }
+
   // 데이터 로드
   await Promise.all([
     loadTeamData(),

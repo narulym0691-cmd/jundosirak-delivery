@@ -746,7 +746,16 @@
     </div>
   </div>
 
-  <!-- 전체 현황 탭 섹션 -->
+  <!-- 알림함 탭 섹션 -->
+  <div class="tab-section" data-tab="notifications">
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">🔔 알림함</div>
+      <div id="notifMissing" style="margin-bottom:12px;"></div>
+      <div id="notifList"><div style="text-align:center;padding:24px;color:#718096;font-size:13px;">로딩 중...</div></div>
+    </div>
+  </div>
+
+<!-- 전체 현황 탭 섹션 -->
   <div class="tab-section" data-tab="leaderboard">
 
     <!-- ① 이번 달 팀별 판매 순위 -->
@@ -810,6 +819,11 @@
   <button class="tab-btn" data-tab="myinfo" onclick="showTab('myinfo')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
     내정보
+  </button>
+  <button class="tab-btn" id="tabBtn-notifications" data-tab="notifications" onclick="showTab('notifications')" style="position:relative;">
+    <span style="font-size:20px;">🔔</span>
+    <div style="font-size:10px;">알림</div>
+    <span id="notifBadge" style="display:none;position:absolute;top:4px;right:4px;background:#e53e3e;color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;line-height:16px;text-align:center;"></span>
   </button>
   <button class="tab-btn" data-tab="leaderboard" onclick="showTab('leaderboard')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L12 15.45 7.77 18l1.12-4.81-3.73-3.23 4.92-.42L12 5l1.92 4.53 4.92.42-3.73 3.23L16.23 18z"/></svg>
@@ -918,6 +932,7 @@
     if (tabName === 'fieldvisit') loadFieldVisits();
     if (tabName === 'feedback') loadFeedbackTab();
     if (tabName === 'leaderboard') loadLeaderboardTab();
+    if (tabName === 'notifications') loadNotificationsTab();
   };
 
   function applyEvalTabVisibility() {
@@ -1646,6 +1661,139 @@ async function loadEvalResult() {
   } catch (e) {
     container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
   }
+}
+
+// ── 알림함 탭 (notifications) ────────────────────────────────────────
+async function loadNotificationsTab() {
+  const listEl = document.getElementById('notifList');
+  const missingEl = document.getElementById('notifMissing');
+  if (!listEl) return;
+  if (!currentUser) { listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#718096;">로그인이 필요합니다.</div>'; return; }
+
+  const driverName = currentUser.name;
+  const courseId = currentUser.courseId || '';
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+
+  try {
+    // 1. 내가 입력한 사유 목록 (최근 30일)
+    const respSnap = await db.collection('no_order_responses')
+      .where('driverName', '==', driverName)
+      .orderBy('createdAt', 'desc')
+      .limit(30)
+      .get();
+
+    // 2. 나에게 발송된 미주문 문자 (이번 달) — 미입력 건 파악용
+    const smsSnap = await db.collection('sms_logs')
+      .where('driverName', '==', driverName)
+      .where('type', '==', 'no_order_morning')
+      .where('date', '>=', monthStart)
+      .get();
+
+    // 입력된 날짜 Set
+    const respondedDates = new Set();
+    respSnap.forEach(d => respondedDates.add(d.data().date));
+
+    // 미입력 건
+    const missingItems = [];
+    smsSnap.forEach(d => {
+      const sd = d.data();
+      if (!respondedDates.has(sd.date)) {
+        missingItems.push({ date: sd.date, clients: sd.clients || [], courseId: sd.courseId || courseId });
+      }
+    });
+
+    // 미입력 건 표시
+    if (missingItems.length > 0) {
+      missingEl.innerHTML = `
+        <div style="background:#fff5f5;border:1px solid #fc8181;border-radius:8px;padding:12px;margin-bottom:8px;">
+          <div style="font-weight:700;color:#c53030;margin-bottom:8px;">⚠️ 사유 미입력 ${missingItems.length}건</div>
+          ${missingItems.map(m => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #fed7d7;">
+              <div style="font-size:13px;color:#2d3748;">${m.date} (${m.clients.length}개 업체)</div>
+              <a href="/no-order-response.html?driver=${encodeURIComponent(driverName)}&course=${encodeURIComponent(m.courseId)}&date=${m.date}"
+                style="background:#e53e3e;color:#fff;border-radius:6px;padding:4px 10px;font-size:12px;text-decoration:none;font-weight:700;">지금 입력</a>
+            </div>
+          `).join('')}
+        </div>`;
+    } else {
+      missingEl.innerHTML = '';
+    }
+
+    // 뱃지 업데이트
+    const badge = document.getElementById('notifBadge');
+    const unconfirmed = [];
+    respSnap.forEach(d => { if (!d.data().confirmedAt) unconfirmed.push(d); });
+    const totalAlert = missingItems.length + unconfirmed.length;
+    if (badge) {
+      if (totalAlert > 0) { badge.style.display = 'block'; badge.textContent = totalAlert > 9 ? '9+' : totalAlert; }
+      else { badge.style.display = 'none'; }
+    }
+
+    // 입력한 사유 목록
+    if (respSnap.empty) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#718096;font-size:13px;">최근 입력한 사유가 없습니다.</div>';
+      return;
+    }
+
+    let html = '';
+    respSnap.forEach(doc => {
+      const d = doc.data();
+      let statusHtml = '';
+      if (d.isPraised) {
+        statusHtml = `<div style="color:#d69e2e;font-weight:700;margin-top:6px;">🏆 대표님이 칭찬하셨습니다!</div>`;
+      } else if (d.confirmedAt) {
+        statusHtml = `<div style="color:#38a169;font-weight:600;margin-top:6px;">✅ 대표님이 확인하셨습니다</div>`;
+      } else {
+        statusHtml = `<div style="color:#a0aec0;margin-top:6px;">⏳ 대표님 확인 대기 중</div>`;
+      }
+      const commentHtml = d.comment ? `
+        <div style="background:#f0fff4;border-left:3px solid #38a169;padding:8px 10px;margin-top:8px;border-radius:0 6px 6px 0;font-size:13px;color:#276749;">
+          💬 ${d.comment}
+        </div>` : '';
+      html += `
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+            <div>
+              <div style="font-weight:700;color:#1a202c;font-size:14px;">${d.clientName || '전체'}</div>
+              <div style="font-size:12px;color:#718096;margin-top:2px;">${d.date} · ${d.reason || ''}</div>
+            </div>
+          </div>
+          ${statusHtml}
+          ${commentHtml}
+        </div>`;
+    });
+    listEl.innerHTML = html;
+
+  } catch(e) {
+    console.error('알림함 로드 오류:', e);
+    listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#e53e3e;font-size:13px;">로드 오류: ' + e.message + '</div>';
+  }
+}
+
+// 페이지 로드 후 뱃지 초기 확인
+async function initNotifBadge() {
+  if (!currentUser) return;
+  try {
+    const badge = document.getElementById('notifBadge');
+    if (!badge) return;
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+    const smsSnap = await db.collection('sms_logs')
+      .where('driverName', '==', currentUser.name)
+      .where('type', '==', 'no_order_morning')
+      .where('date', '>=', monthStart)
+      .get();
+    const respSnap = await db.collection('no_order_responses')
+      .where('driverName', '==', currentUser.name)
+      .orderBy('createdAt', 'desc')
+      .limit(50)
+      .get();
+    const respondedDates = new Set();
+    respSnap.forEach(d => respondedDates.add(d.data().date));
+    let missing = 0;
+    smsSnap.forEach(d => { if (!respondedDates.has(d.data().date)) missing++; });
+    if (missing > 0) { badge.style.display = 'block'; badge.textContent = missing > 9 ? '9+' : missing; }
+  } catch(e) { /* 무시 */ }
 }
 
 // ── 전체 현황 탭 (leaderboard) ────────────────────────────────────────
