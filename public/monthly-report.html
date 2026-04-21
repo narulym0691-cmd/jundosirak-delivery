@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>월간 리포트 — 준도시락 배송관리</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<style>
+:root { --green:#1a4731; --green-mid:#2d6a4f; --white:#fff; --gray:#f7fafc; --border:#e2e8f0; }
+* { box-sizing:border-box; margin:0; padding:0; font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; }
+body { background:#f0f4f1; color:#1a202c; }
+
+/* 헤더 */
+.header { background:var(--green); color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+.header h1 { font-size:16px; font-weight:800; }
+.header-right { display:flex; gap:8px; align-items:center; }
+.btn-print { background:rgba(255,255,255,0.2); border:1px solid rgba(255,255,255,0.4); color:#fff; padding:6px 14px; border-radius:8px; font-size:13px; cursor:pointer; font-weight:700; }
+.btn-print:hover { background:rgba(255,255,255,0.3); }
+.btn-back { background:none; border:none; color:#fff; font-size:13px; cursor:pointer; opacity:0.8; }
+
+/* 월 선택 */
+.month-selector { background:#fff; padding:12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:10px; }
+.month-selector select { padding:8px 12px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-weight:600; color:var(--green); }
+.btn-load { background:var(--green); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; }
+
+/* 카드 */
+.section { margin:14px; }
+.card { background:#fff; border-radius:12px; padding:16px; margin-bottom:12px; box-shadow:0 2px 8px rgba(26,71,49,0.07); }
+.card-title { font-size:15px; font-weight:800; color:var(--green); margin-bottom:12px; }
+.card-sub { font-size:12px; color:#718096; margin-top:4px; }
+
+/* 요약 카드 */
+.summary-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; margin-bottom:12px; }
+.summary-item { background:var(--gray); border-radius:10px; padding:14px; text-align:center; }
+.summary-val { font-size:22px; font-weight:900; color:var(--green); }
+.summary-label { font-size:11px; color:#718096; margin-top:4px; }
+.summary-diff { font-size:12px; font-weight:700; margin-top:4px; }
+.positive { color:#276749; }
+.negative { color:#c53030; }
+
+/* 테이블 */
+.tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th { background:#f0f4f1; padding:8px 6px; text-align:center; color:#4a5568; font-weight:700; border-bottom:2px solid var(--border); }
+.tbl td { padding:8px 6px; text-align:center; border-bottom:1px solid var(--border); }
+.tbl tbody tr:hover { background:#f7fafc; }
+.tbl td:first-child, .tbl th:first-child { text-align:left; }
+.rank-badge { display:inline-block; width:22px; height:22px; border-radius:50%; background:var(--green); color:#fff; font-size:11px; font-weight:800; line-height:22px; text-align:center; }
+
+/* 등급 뱃지 */
+.grade { display:inline-block; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:800; }
+.grade-S { background:#ebf8ff; color:#2b6cb0; }
+.grade-A { background:#f0fff4; color:#276749; }
+.grade-B { background:#fffff0; color:#744210; }
+.grade-C { background:#fff5f5; color:#c53030; }
+.grade-D { background:#f7fafc; color:#718096; }
+
+/* 경보 박스 */
+.alert-box { background:#fff5f5; border:1px solid #feb2b2; border-radius:10px; padding:14px; margin-bottom:12px; }
+.alert-box .alert-title { color:#c53030; font-weight:800; font-size:14px; margin-bottom:6px; }
+
+/* 급여 입력 */
+.salary-input-area { background:var(--gray); border-radius:10px; padding:14px; margin-bottom:12px; }
+.salary-input-area table { width:100%; border-collapse:collapse; font-size:12px; }
+.salary-input-area td { padding:6px 4px; }
+.salary-input-area input { width:100%; padding:6px 8px; border:1px solid var(--border); border-radius:6px; font-size:12px; text-align:right; }
+.btn-calc { background:var(--green); color:#fff; border:none; padding:8px 18px; border-radius:8px; font-size:13px; font-weight:700; cursor:pointer; width:100%; margin-top:10px; }
+
+/* 인쇄 */
+@media print {
+  .header .btn-back, .month-selector, .btn-print, .salary-input-area .btn-calc { display:none !important; }
+  body { background:#fff; }
+  .card { box-shadow:none; border:1px solid #e2e8f0; page-break-inside:avoid; }
+  .header { position:static; }
+  .section { margin:8px; }
+}
+
+.empty-msg { text-align:center; color:#a0aec0; padding:30px; font-size:13px; }
+.loading { text-align:center; color:#718096; padding:30px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="btn-back" onclick="history.back()">← 뒤로</button>
+    <h1>📊 월간 리포트</h1>
+  </div>
+  <div class="header-right">
+    <button class="btn-print" onclick="window.print()">🖨️ 인쇄</button>
+  </div>
+</div>
+
+<div class="month-selector">
+  <label style="font-size:13px;font-weight:700;color:#4a5568;">기준 월:</label>
+  <select id="reportMonth"></select>
+  <button class="btn-load" onclick="loadReport()">불러오기</button>
+</div>
+
+<div class="section" id="reportContent">
+  <div class="empty-msg">월을 선택하고 불러오기를 눌러주세요.</div>
+</div>
+
+<script>
+// Firebase 설정
+const firebaseConfig = {
+  apiKey: "AIzaSyCMUqXPDxPyqnRIBRV2UIgxbShWzEUD5yg",
+  authDomain: "jundosirak-delivery-ae87f.firebaseapp.com",
+  projectId: "jundosirak-delivery-ae87f",
+  storageBucket: "jundosirak-delivery-ae87f.firebasestorage.app",
+  messagingSenderId: "758374011966",
+  appId: "1:758374011966:web:b379171e702e521830ed6f"
+};
+if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// 권한 확인
+const stored = localStorage.getItem('jd_user');
+if (!stored) { alert('로그인이 필요합니다.'); location.href = '/index.html'; }
+const loginUser = JSON.parse(stored);
+if (loginUser.role !== 'admin' && loginUser.role !== 'manager') {
+  alert('접근 권한이 없습니다.'); history.back();
+}
+
+const TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+};
+const BASELINE = { team1:488, team2:541, team3:349, team4:554, team5:483, team6:299, team7:460 };
+const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부'];
+const MENU_PRICE = { 뜨:8250, 프:7700, 샐:7150, 품:8250, 덮:7150, 샌:6600, 세트:0, 유부:0 };
+
+function numFmt(n) { return (n||0).toLocaleString(); }
+
+// 월 선택 옵션 생성
+function initMonthOptions() {
+  const sel = document.getElementById('reportMonth');
+  const now = new Date();
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+    const opt = document.createElement('option');
+    opt.value = ym;
+    opt.textContent = `${d.getFullYear()}년 ${d.getMonth()+1}월`;
+    sel.appendChild(opt);
+  }
+}
+initMonthOptions();
+
+// 리포트 로드
+async function loadReport() {
+  const ym = document.getElementById('reportMonth').value;
+  const content = document.getElementById('reportContent');
+  content.innerHTML = '<div class="loading">📊 데이터 불러오는 중...</div>';
+
+  try {
+    // 1. daily_sales 데이터
+    const salesSnap = await db.collection('daily_sales')
+      .where('date', '>=', ym + '-01')
+      .where('date', '<=', ym + '-31')
+      .get();
+
+    const dailySales = [];
+    salesSnap.forEach(doc => dailySales.push(doc.data()));
+    dailySales.sort((a,b) => a.date > b.date ? 1 : -1);
+
+    const bizDays = dailySales.length;
+    let totalQty = 0;
+    const menuTotals = {};
+    MENUS.forEach(m => menuTotals[m] = 0);
+
+    dailySales.forEach(d => {
+      (d.teamTotals ? Object.values(d.teamTotals) : []).forEach(t => {
+        MENUS.forEach(m => { menuTotals[m] += (t[m] || 0); totalQty += (t[m] || 0); });
+      });
+      // driverRows 방식
+      if (d.driverRows) {
+        d.driverRows.forEach(r => { totalQty += (r.total || 0); });
+      }
+    });
+
+    // 2. monthly_stats
+    let statsData = {};
+    try {
+      const statsSnap = await db.collection('monthly_stats').doc(ym).get();
+      if (statsSnap.exists) {
+        const raw = statsSnap.data();
+        statsData = raw.teamStats ? raw.teamStats : raw;
+      }
+    } catch(e) {}
+
+    // 3. driver_sales
+    const driverSnap = await db.collection('driver_sales')
+      .where('date', '>=', ym + '-01')
+      .where('date', '<=', ym + '-31')
+      .get();
+
+    const driverMap = {};
+    driverSnap.forEach(doc => {
+      const d = doc.data();
+      if (!driverMap[d.driverName]) driverMap[d.driverName] = { name: d.driverName, teamId: d.teamId, total: 0, days: 0 };
+      driverMap[d.driverName].total += (d.total || 0);
+      driverMap[d.driverName].days++;
+    });
+    const driverList = Object.values(driverMap).sort((a,b) => b.total - a.total);
+
+    // 4. 급여 데이터 (localStorage)
+    const salaryKey = `salary_${ym}`;
+    const savedSalary = JSON.parse(localStorage.getItem(salaryKey) || '{}');
+
+    // 렌더링
+    renderReport(ym, bizDays, totalQty, menuTotals, statsData, driverList, savedSalary);
+
+  } catch(e) {
+    content.innerHTML = `<div class="empty-msg">오류: ${e.message}</div>`;
+  }
+}
+
+function renderReport(ym, bizDays, totalQty, menuTotals, statsData, driverList, savedSalary) {
+  const [y, m] = ym.split('-');
+  const dailyAvg = bizDays > 0 ? Math.round(totalQty / bizDays) : 0;
+  const content = document.getElementById('reportContent');
+
+  // 팀별 데이터
+  const teamList = Object.entries(TEAM_NAMES).map(([id, name]) => {
+    const s = statsData[id] || {};
+    return {
+      id, name,
+      cumul: s.cumulativeTotal || 0,
+      baseline: BASELINE[id] || 0,
+      baselineCumul: (BASELINE[id] || 0) * bizDays,
+      grade: s.grade || '-',
+      dailyAvg: bizDays > 0 ? Math.round((s.cumulativeTotal || 0) / bizDays) : 0
+    };
+  }).sort((a,b) => b.cumul - a.cumul);
+
+  // 위기 경보
+  const alertTeams = teamList.filter(t => t.grade === 'D' || t.cumul < t.baselineCumul * 0.85);
+  const alertHtml = alertTeams.length > 0 ? `
+    <div class="alert-box">
+      <div class="alert-title">⚠️ 위기 경보</div>
+      ${alertTeams.map(t => `<div style="font-size:13px;margin-top:4px;">• ${t.name}: 기준대비 ${numFmt(t.cumul - t.baselineCumul)}개 (${t.grade}등급)</div>`).join('')}
+    </div>` : '';
+
+  // 포상/관리 대상
+  const topDrivers = driverList.slice(0, 5);
+  const bottomDrivers = driverList.filter(d => d.total > 0).slice(-5).reverse();
+
+  // 급여 효율 테이블 HTML
+  const salaryRows = driverList.map(d => {
+    const sal = savedSalary[d.name] || 0;
+    const perUnit = sal > 0 && d.total > 0 ? Math.round(sal / d.total) : 0;
+    const per10k = sal > 0 && d.total > 0 ? (d.total / sal * 10000).toFixed(1) : '-';
+    return `<tr>
+      <td style="text-align:left;font-weight:600;">${d.name}</td>
+      <td>${TEAM_NAMES[d.teamId] || '-'}</td>
+      <td>${numFmt(d.total)}</td>
+      <td>${bizDays > 0 ? Math.round(d.total/bizDays) : 0}</td>
+      <td><input type="number" placeholder="급여(원)" value="${sal||''}" onchange="saveSalary('${ym}','${d.name}',this.value)" style="width:100px;padding:4px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:11px;text-align:right;"></td>
+      <td id="per10k_${d.name}">${per10k}</td>
+      <td id="perUnit_${d.name}">${perUnit > 0 ? perUnit+'원' : '-'}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <!-- 1. 요약 -->
+    <div class="card">
+      <div class="card-title">📋 ${y}년 ${m}월 배송 요약</div>
+      ${alertHtml}
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="summary-val">${numFmt(totalQty)}</div>
+          <div class="summary-label">총 배송량</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-val">${bizDays}일</div>
+          <div class="summary-label">영업일</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-val">${numFmt(dailyAvg)}</div>
+          <div class="summary-label">일평균 배송</div>
+        </div>
+        <div class="summary-item">
+          <div class="summary-val">${driverList.length}명</div>
+          <div class="summary-label">입력 기사 수</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. 팀별 성과 -->
+    <div class="card">
+      <div class="card-title">🏆 팀별 성과 및 등급</div>
+      <table class="tbl">
+        <thead><tr><th>순위</th><th>팀명</th><th>누적수량</th><th>일평균</th><th>기준대비</th><th>등급</th></tr></thead>
+        <tbody>
+          ${teamList.map((t,i) => {
+            const diff = t.cumul - t.baselineCumul;
+            const diffStr = diff >= 0 ? `+${numFmt(diff)}` : numFmt(diff);
+            const diffColor = diff >= 0 ? '#276749' : '#c53030';
+            const gradeClass = `grade-${t.grade}`;
+            return `<tr>
+              <td><span class="rank-badge">${i+1}</span></td>
+              <td style="text-align:left;font-weight:700;">${t.name}</td>
+              <td>${numFmt(t.cumul)}</td>
+              <td>${numFmt(t.dailyAvg)}</td>
+              <td style="font-weight:700;color:${diffColor}">${diffStr}</td>
+              <td><span class="grade ${gradeClass}">${t.grade}</span></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 3. 기사별 성과 -->
+    <div class="card">
+      <div class="card-title">🚗 기사별 판매수량</div>
+      <table class="tbl">
+        <thead><tr><th>순위</th><th>기사명</th><th>소속팀</th><th>총 배송</th><th>일평균</th><th>입력일수</th></tr></thead>
+        <tbody>
+          ${driverList.map((d,i) => `<tr>
+            <td><span class="rank-badge" style="background:${i<3?'#c9a227':'#718096'}">${i+1}</span></td>
+            <td style="text-align:left;font-weight:700;">${d.name}</td>
+            <td>${TEAM_NAMES[d.teamId]||'-'}</td>
+            <td style="font-weight:700;">${numFmt(d.total)}</td>
+            <td>${bizDays > 0 ? Math.round(d.total/bizDays) : 0}</td>
+            <td>${d.days}일</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 4. 인사 액션 플랜 -->
+    <div class="card">
+      <div class="card-title">📋 인사 액션 플랜</div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:700;color:#276749;margin-bottom:8px;">🏆 포상 추천 (상위 5명)</div>
+        <table class="tbl">
+          <thead><tr><th>기사명</th><th>소속팀</th><th>총 배송</th><th>일평균</th></tr></thead>
+          <tbody>
+            ${topDrivers.map(d => `<tr>
+              <td style="text-align:left;font-weight:700;color:#276749;">${d.name}</td>
+              <td>${TEAM_NAMES[d.teamId]||'-'}</td>
+              <td style="font-weight:700;">${numFmt(d.total)}</td>
+              <td>${bizDays > 0 ? Math.round(d.total/bizDays) : 0}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#c53030;margin-bottom:8px;">⚠️ 면담·관리 대상 (하위 5명)</div>
+        <table class="tbl">
+          <thead><tr><th>기사명</th><th>소속팀</th><th>총 배송</th><th>일평균</th></tr></thead>
+          <tbody>
+            ${bottomDrivers.map(d => `<tr>
+              <td style="text-align:left;font-weight:700;color:#c53030;">${d.name}</td>
+              <td>${TEAM_NAMES[d.teamId]||'-'}</td>
+              <td style="font-weight:700;">${numFmt(d.total)}</td>
+              <td>${bizDays > 0 ? Math.round(d.total/bizDays) : 0}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 5. 급여 효율 분석 -->
+    <div class="card">
+      <div class="card-title">💰 급여 대비 배송 효율 분석</div>
+      <div class="salary-input-area">
+        <div style="font-size:12px;color:#718096;margin-bottom:8px;">💡 급여를 입력하면 만원당 배송량과 건당 인건비가 자동 계산됩니다. 입력값은 브라우저에 저장됩니다.</div>
+        <table class="tbl">
+          <thead><tr><th>기사명</th><th>소속팀</th><th>총배송</th><th>일평균</th><th>급여(원)</th><th>만원당</th><th>건당비용</th></tr></thead>
+          <tbody>${salaryRows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// 급여 저장
+function saveSalary(ym, name, val) {
+  const key = `salary_${ym}`;
+  const data = JSON.parse(localStorage.getItem(key) || '{}');
+  data[name] = parseInt(val) || 0;
+  localStorage.setItem(key, JSON.stringify(data));
+
+  // 실시간 재계산
+  const d = Object.values(JSON.parse(localStorage.getItem(key) || '{}')).reduce((acc, v, i) => acc, 0);
+  // 해당 기사 셀 업데이트
+  const salaryEl = document.querySelector(`input[onchange*="'${name}'"]`);
+  if (salaryEl) {
+    const salary = parseInt(val) || 0;
+    const row = salaryEl.closest('tr');
+    if (row) {
+      const totalCell = row.cells[2];
+      const total = parseInt((totalCell.textContent || '0').replace(/,/g,'')) || 0;
+      const per10kEl = document.getElementById(`per10k_${name}`);
+      const perUnitEl = document.getElementById(`perUnit_${name}`);
+      if (per10kEl) per10kEl.textContent = salary > 0 && total > 0 ? (total / salary * 10000).toFixed(1) : '-';
+      if (perUnitEl) perUnitEl.textContent = salary > 0 && total > 0 ? Math.round(salary / total) + '원' : '-';
+    }
+  }
+}
+</script>
+</body>
+</html>
