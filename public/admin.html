@@ -4181,10 +4181,9 @@ async function loadNoOrderTracking() {
       .where('resolved', '==', false)
       .get();
 
-    // 2. 1순위 업체 중 consecutiveMissed > 0 조회
+    // 2. 1순위 업체 전체 조회 후 클라이언트에서 필터
     const prioritySnap = await db.collection('clients')
       .where('isPriority', '==', true)
-      .where('consecutiveMissed', '>', 0)
       .get();
 
     // 경보 맵 생성 (clientName 기준)
@@ -4214,10 +4213,10 @@ async function loadNoOrderTracking() {
       };
     });
 
-    // 1순위 업체 추가 (경보 없어도)
+    // 1순위 업체 추가 (consecutiveMissed > 0 이고 경보 없는 것만)
     prioritySnap.forEach(doc => {
       const d = doc.data();
-      if (!trackMap[d.name]) {
+      if (!trackMap[d.name] && (d.consecutiveMissed || 0) > 0) {
         trackMap[d.name] = {
           clientName: d.name,
           teamId: d.teamId || '',
