@@ -1235,7 +1235,7 @@
 
 <script src="/js/firebase-config.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/admin.js?v=202604130803"></script>
+<script src="/js/admin.js?v=202604211556"></script>
 <script>
   // ── 코스 기준 팀 매핑 ──
   const DRIVER_COURSE_MAP = {
@@ -4585,9 +4585,6 @@ async function confirmNorResponse(withPraise) {
 document.getElementById('norConfirmModal').addEventListener('click', function(e) {
   if (e.target === this) closeNorModal();
 });
-
-// 수신함 초기 로드
-loadNoOrderResponses();
 
 window.resetAllSalesData = async function() {
   if (!confirm('daily_sales, monthly_stats 전체 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.')) return;

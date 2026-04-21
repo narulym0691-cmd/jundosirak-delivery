@@ -23,7 +23,8 @@ async function initAdmin() {
     loadFeedbackStats(),
     loadSalesMissingCard(),
     loadNewClientTracking(),
-    loadNoOrderTracking()
+    loadNoOrderTracking(),
+    loadNoOrderResponses()
   ]);
 }
 
