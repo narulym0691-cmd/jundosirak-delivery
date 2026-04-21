@@ -4396,8 +4396,6 @@ async function loadNoOrderResponses() {
 
     const snap = await db.collection('no_order_responses')
       .where('date', '>=', cutoffStr)
-      .orderBy('date', 'desc')
-      .orderBy('createdAt', 'desc')
       .limit(100)
       .get();
 
@@ -4414,6 +4412,13 @@ async function loadNoOrderResponses() {
       const d = doc.data();
       if (!d.confirmedBy) unconfirmed++;
       rows.push({ id: doc.id, ...d });
+    });
+    // 클라이언트 정렬: date desc, createdAt desc
+    rows.sort((a, b) => {
+      if (b.date !== a.date) return b.date > a.date ? 1 : -1;
+      const aT = a.createdAt?.seconds || 0;
+      const bT = b.createdAt?.seconds || 0;
+      return bT - aT;
     });
 
     // 뱃지 업데이트
