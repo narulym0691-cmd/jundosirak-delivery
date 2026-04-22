@@ -2203,10 +2203,23 @@
         const sheetText = await sheetResp.text();
         const sheetLines = sheetText.split('\n').slice(1);
 
+        // CSV 파서 (쉼표 포함 주소 처리)
+        function parseCSVLine(line) {
+          const result = [];
+          let cur = '', inQuote = false;
+          for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (ch === '"') { inQuote = !inQuote; }
+            else if (ch === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
+            else { cur += ch; }
+          }
+          result.push(cur.trim());
+          return result;
+        }
+
         const newClients = [];
         for (const line of sheetLines) {
-          // CSV 단순 split (구글시트 export는 기본 쉼표 구분)
-          const cols = line.split(',');
+          const cols = parseCSVLine(line);
           const rawDate = (cols[0]||'').replace(/\s/g,'');
           const clientName = (cols[1]||'').replace(/^"|"$/g,'').trim();
           const phone = (cols[2]||'').replace(/[^0-9]/g,'');
