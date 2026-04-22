@@ -2231,6 +2231,9 @@
           if (parts.length < 3) continue;
           const isoDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
           if (isoDate !== date) continue;
+          // 조건: 2026-04-20 이후 + 합계 8개 이상만 추적
+          if (isoDate < '2026-04-20') continue;
+          if (qty < 8) continue;
           const co = _salesData.clientOrderMap && _salesData.clientOrderMap[clientName];
           newClients.push({
             clientName,
