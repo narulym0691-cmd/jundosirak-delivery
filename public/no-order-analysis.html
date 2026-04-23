@@ -129,8 +129,8 @@ tr:hover td { background: #f7fafc; }
               <th>일평균</th>
               <th>1순위</th>
               <th>주문요일</th>
-              <th>이 기간 영업일수</th>
-              <th>마지막 주문일</th>
+              <th>이 기간 영업일수<br><span style="font-size:10px;color:#718096;font-weight:400;">(해당 월에 주문했어야 할 일수)</span></th>
+              <th>마지막 주문일<br><span style="font-size:10px;color:#718096;font-weight:400;">(이 업체가 최근 주문한 날짜)</span></th>
             </tr>
           </thead>
           <tbody id="result-tbody"></tbody>
@@ -380,40 +380,10 @@ async function selectPeriod(p) {
     }
   }
 
-  // 미주문 업체들의 마지막 주문일 조회 (구간 시작 이전 데이터)
-  if (noOrderClients.length > 0) {
-    // 구간 시작일 이전의 sales_daily 전체 조회 (최대 6개월)
-    const sixMonthsAgo = new Date(new Date(start));
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-    const lookbackStart = sixMonthsAgo.toISOString().slice(0, 10);
-    try {
-      const pastSnap = await db.collection('sales_daily')
-        .where(firebase.firestore.FieldPath.documentId(), '>=', lookbackStart)
-        .where(firebase.firestore.FieldPath.documentId(), '<', start)
-        .get();
-      const pastByDate = {};
-      const pastDates = [];
-      pastSnap.forEach(d => {
-        const data = d.data();
-        const dt = data.date || d.id;
-        pastByDate[dt] = buildOrderedSet(data.orderedClients||[]);
-        pastDates.push(dt);
-      });
-      pastDates.sort().reverse(); // 최신순
-
-      // 각 미주문 업체에 대해 마지막 주문일 찾기
-      for (const client of noOrderClients) {
-        for (const dt of pastDates) {
-          if (isOrdered(client.clientName, pastByDate[dt])) {
-            client.lastOrderDate = dt;
-            break;
-          }
-        }
-      }
-    } catch(e) {
-      console.warn('마지막 주문일 조회 실패:', e);
-    }
-  }
+  // 미주문 업체의 마지막 주문일 = 해당 월(=이번 조회 범위) 내 최종 주문일
+  // 여기서는 미주문 업체만 넣었으니 전부 "이번 월 무주문" 상태
+  // 단, bizDaysForClient 안에서 한 번이라도 있었으면 noOrderClients에 안 들어옴
+  // → 따라서 lastOrderDate는 null 유지 (= "해당 월 무주문")
 
   currentData = noOrderClients;
   document.getElementById('result-loading').style.display = 'none';
@@ -461,11 +431,17 @@ function renderTable() {
 
   // 마지막 주문일 포맷 + 경과일 계산
   const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })).toISOString().slice(0,10);
-  function formatLastOrder(dt) {
-    if (!dt) return '<span style="color:#c53030;font-weight:700;">❌ 6개월+</span>';
-    const [y,m,d] = dt.split('-').map(Number);
+  function formatLastOrder(dt, ym) {
+    if (!dt) {
+      // 해당 월에 주문 전혀 없음 → 이번 달 1일부터 오늘까지 경과일 계산
+      const monthStart = ym + '-01';
+      const daysAgo = Math.floor((new Date(today) - new Date(monthStart)) / 86400000);
+      const [y, m] = ym.split('-').map(Number);
+      return `<div style="font-size:12px;color:#c53030;font-weight:700;">${m}월 무주문</div><div style="font-size:10px;color:#c53030;font-weight:700;">최소 ${daysAgo}일+ 전</div>`;
+    }
+    const [y, m, d] = dt.split('-').map(Number);
     const daysAgo = Math.floor((new Date(today) - new Date(dt)) / 86400000);
-    const dayColor = daysAgo > 30 ? '#c53030' : daysAgo > 14 ? '#d97706' : '#276749';
+    const dayColor = daysAgo > 14 ? '#c53030' : daysAgo > 7 ? '#d97706' : '#276749';
     return `<div style="font-size:12px;">${m}/${d}</div><div style="font-size:10px;color:${dayColor};font-weight:700;">${daysAgo}일 전</div>`;
   }
 
@@ -478,7 +454,7 @@ function renderTable() {
       <td>${c.isPriority ? '🔴 예' : '⚪ 아니오'}</td>
       <td>${c.orderDays.map(d=>DOW_NAMES[d]).join('/')}</td>
       <td style="text-align:center">${c.bizDaysCount}일</td>
-      <td style="text-align:center">${formatLastOrder(c.lastOrderDate)}</td>
+      <td style="text-align:center">${formatLastOrder(c.lastOrderDate, currentYm)}</td>
     </tr>
   `).join('');
 }
@@ -502,10 +478,13 @@ function downloadExcel() {
     return (a.teamId||'').localeCompare(b.teamId||'');
   });
 
-  const rows = [['업체명','팀','코스','담당기사','일평균주문','1순위여부','주문요일','해당기간영업일수','마지막주문일','경과일']];
+  const rows = [['업체명','팀','코스','담당기사','일평균주문','1순위여부','주문요일','해당월영업일수(해당월에주문했어야할일수)','마지막주문일(이업체가최근주문한날짜)','경과일']];
   const todayStr = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'})).toISOString().slice(0,10);
+  const monthStartStr = currentYm + '-01';
   filtered.forEach(c => {
-    const daysAgo = c.lastOrderDate ? Math.floor((new Date(todayStr) - new Date(c.lastOrderDate)) / 86400000) : '';
+    const daysAgo = c.lastOrderDate
+      ? Math.floor((new Date(todayStr) - new Date(c.lastOrderDate)) / 86400000)
+      : Math.floor((new Date(todayStr) - new Date(monthStartStr)) / 86400000);
     rows.push([
       c.clientName,
       TEAM_NAMES[c.teamId]||c.teamId||'-',
@@ -515,8 +494,8 @@ function downloadExcel() {
       c.isPriority ? '1순위' : '일반',
       c.orderDays.map(d=>DOW_NAMES[d]).join('/'),
       c.bizDaysCount,
-      c.lastOrderDate || '6개월+ 미주문',
-      daysAgo
+      c.lastOrderDate || `${currentYm.split('-')[1]}월 무주문`,
+      c.lastOrderDate ? (daysAgo + '일 전') : ('최소 ' + daysAgo + '일+ 전')
     ]);
   });
 
