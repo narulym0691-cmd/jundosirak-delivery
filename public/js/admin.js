@@ -947,6 +947,12 @@ async function loadAdminFieldVisits() {
       });
     }
 
+    // 대시보드 요약+순위는 전체 기준으로 먼저 렌더링
+    const allItems = [];
+    snap.forEach(doc => allItems.push({ id: doc.id, ...doc.data() }));
+    if (typeof renderFvdSummary === 'function') renderFvdSummary(allItems);
+    if (typeof renderFvdRanking === 'function') renderFvdRanking(allItems);
+
     if (!items.length) {
       container.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">기록이 없습니다.</div>';
       renderFvmStat([]);
