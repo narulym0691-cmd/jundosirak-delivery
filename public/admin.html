@@ -3290,8 +3290,20 @@ let _fvAllData = [];
 let _fvStatsData = [];
 
 function showFieldVisitStatsModal() {
-  const card = document.getElementById('fieldActivityDashboard');
-  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // 월 선택 기본값: 이번 달
+  const monthSel = document.getElementById('fvm-month');
+  if (monthSel && !monthSel.value) {
+    const now = new Date();
+    const ym = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    monthSel.value = ym;
+  }
+  // 데이터 조회 (요약 카드 + 기사별 순위 + 상세 목록 모두 채워짐)
+  if (typeof loadAdminFieldVisits === 'function') loadAdminFieldVisits();
+  // 카드로 스크롤
+  setTimeout(() => {
+    const card = document.getElementById('fieldActivityDashboard');
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 200);
 }
 function closeFieldVisitStatsModal() {}
 
