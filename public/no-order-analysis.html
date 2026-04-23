@@ -6,6 +6,8 @@
 <title>미주문 업체 분석 — 준도시락</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js"></script>
 <script src="/js/firebase-config.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -155,7 +157,7 @@ const COURSE_DRIVER = {
   '코스17':'류대현','코스18':'최준은','코스19':'조홍철'
 };
 
-const db = firebase.firestore();
+// db는 firebase-config.js에서 이미 선언됨
 let _reasons = {}; // key → {label, color, autoAction}
 
 // 권한 확인
