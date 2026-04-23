@@ -326,7 +326,7 @@ async function loadAdminAlerts() {
       const smsSent = a.smsSentAt ? `<span style="font-size:10px;color:#276749;margin-left:4px;">📱발송완료</span>` : '';
       const smsBtn = `<button onclick="event.stopPropagation();sendAlertSms('${a.id}','${a.name}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}')" style="font-size:10px;padding:2px 7px;background:#1a4731;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:6px;">📱문자</button>`;
       const teamLabel = teamNames[a.teamId] || a.teamId || '';
-      const isPriority = a.isPriority || (a.dailyAvg||0) >= 8;
+      const isPriority = a.isPriority || (a.dailyAvg||0) >= 6;
       return `<div class="alert-row ${levelClass}" style="display:flex;align-items:center;gap:4px;cursor:pointer;" onclick="showAlertDetail('${a.id}','${(a.name||'').replace(/'/g,"\\'")}','${a.level}',${a.consecutiveDays||0},'${a.teamId||''}','${a.courseId||''}',${a.dailyAvg||0},'${a.date||''}',${isPriority})"><span class="alert-badge ${levelClass}">${levelLabel}</span><span class="alert-client">${a.name}</span>${isPriority?'<span style="font-size:10px;background:#744210;color:#fff;padding:1px 5px;border-radius:8px;margin-left:3px;">⭐</span>':''}<span style="font-size:11px;color:#718096;margin-left:2px;">${teamLabel}</span><span class="alert-days-sm" style="margin-left:4px;">${a.consecutiveDays||0}일</span>${smsSent}${smsBtn}</div>`;
     }).join('');
   } catch(e) {
@@ -565,10 +565,10 @@ async function saveNewClient() {
   try {
     const existing = await db.collection('clients').where('name','==',name).limit(1).get();
     if(!existing.empty) {
-      await existing.docs[0].ref.update({ courseId:course, teamId, dailyAvg:avg, isPriority:avg>=8, orderDays, note, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
+      await existing.docs[0].ref.update({ courseId:course, teamId, dailyAvg:avg, isPriority:avg>=6, orderDays, note, updatedAt:firebase.firestore.FieldValue.serverTimestamp() });
       msg.textContent='✅ 기존 거래처 업데이트 완료: '+name; msg.style.color='#276749';
     } else {
-      await db.collection('clients').add({ name:name, courseId:course, teamId, dailyAvg:avg, isPriority:avg>=8, orderDays, note, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
+      await db.collection('clients').add({ name:name, courseId:course, teamId, dailyAvg:avg, isPriority:avg>=6, orderDays, note, createdAt:firebase.firestore.FieldValue.serverTimestamp() });
       msg.textContent='✅ 신규 거래처 추가 완료: '+name; msg.style.color='#276749';
     }
     // 입력 초기화
@@ -1272,7 +1272,7 @@ window.showAlertDetail = function(id, name, level, consecutiveDays, teamId, cour
   const levelLabel = level==='urgent'?'🔴 즉시경보':level==='watch'?'🟡 주시':'🟠 확인보고';
   const levelColor = level==='urgent'?'#e53e3e':level==='watch'?'#dd6b20':'#c05621';
   const bgColor    = level==='urgent'?'#fff5f5':level==='watch'?'#fffaf0':'#fffbf5';
-  const priorityLabel = isPriority ? '⭐ 1순위 (8개↑)' : '일반 업체';
+  const priorityLabel = isPriority ? '⭐ 1순위 (6개↑)' : '일반 업체';
 
   // 기존 모달 제거
   const old = document.getElementById('alertDetailModal');

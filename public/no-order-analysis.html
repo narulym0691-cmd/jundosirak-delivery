@@ -389,7 +389,7 @@ async function selectPeriod(p) {
         teamId: teamId||'',
         courseId: courseId||'',
         dailyAvgOrder: dailyAvg||0,
-        isPriority: (dailyAvg||0) >= 8,
+        isPriority: (dailyAvg||0) >= 6,
         orderDays: orderDays||[],
         bizDaysCount: bizDaysForClient.length,
         driver: COURSE_DRIVER[courseId] || '-',
