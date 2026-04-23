@@ -1622,11 +1622,17 @@
       try {
         const existSnap = await db.collection('sales_daily').doc(fullDate).get();
         if (existSnap.exists) {
-          alert('이미 업로드된 날짜입니다.');
-          input.value = '';
-          document.getElementById('su-filename').textContent = '선택 안 됨';
-          document.getElementById('su-msg').textContent = '';
-          return;
+          const existData = existSnap.data();
+          const orderedCount = (existData.orderedClients || []).length;
+          const msg = orderedCount === 0
+            ? `⚠️ ${fullDate} 은 이미 업로드되었으나 업체명이 비어있습니다.\n\n재업로드하여 업체명을 복원하시겠습니까?`
+            : `⚠️ ${fullDate} 은 이미 업로드되어 있습니다. (업체 ${orderedCount}개)\n\n덮어쓰시겠습니까?`;
+          if (!confirm(msg)) {
+            input.value = '';
+            document.getElementById('su-filename').textContent = '선택 안 됨';
+            document.getElementById('su-msg').textContent = '';
+            return;
+          }
         }
       } catch(e) { console.warn('중복 체크 오류(무시):', e.message); }
     }
