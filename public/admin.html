@@ -4215,28 +4215,33 @@ async function loadNoOrderTracking() {
   listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
 
   try {
-    // 오늘/어제 날짜 계산 (한국시간)
+    // 오늘 날짜 계산 (한국시간)
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
     const todayStr = now.toISOString().slice(0, 10);
-    const yest = new Date(now); yest.setDate(yest.getDate() - 1);
-    // 어제가 일요일이면 금요일로 (주말 건너뜀)
-    if (yest.getDay() === 0) yest.setDate(yest.getDate() - 2);
-    if (yest.getDay() === 6) yest.setDate(yest.getDate() - 1);
-    const yesterdayStr = yest.toISOString().slice(0, 10);
 
-    // 오늘/어제 sales_daily + clients 병렬 로드
-    const [todaySnap, yesterdaySnap, clientsSnap] = await Promise.all([
-      db.collection('sales_daily').doc(todayStr).get(),
-      db.collection('sales_daily').doc(yesterdayStr).get(),
-      db.collection('clients').get()
-    ]);
+    // sales_daily에서 최근 2건 조회 (날짜 내림차순)
+    const recentSnap = await db.collection('sales_daily')
+      .orderBy(firebase.firestore.FieldPath.documentId(), 'desc')
+      .limit(5)
+      .get();
 
-    const todayOrdered   = new Set((todaySnap.exists   ? todaySnap.data().orderedClients   || [] : []));
-    const yesterdayOrdered = new Set((yesterdaySnap.exists ? yesterdaySnap.data().orderedClients || [] : []));
+    // 오늘 doc과 직전 업로드 doc 찾기
+    let todaySnap = null, prevSnap = null;
+    recentSnap.forEach(doc => {
+      if (doc.id === todayStr && !todaySnap) todaySnap = doc;
+      else if (doc.id < todayStr && !prevSnap) prevSnap = doc;
+    });
 
-    // 어제 주문 O → 오늘 주문 X 인 업체
+    const todayOrdered = new Set(todaySnap ? todaySnap.data().orderedClients || [] : []);
+    const prevOrdered  = new Set(prevSnap  ? prevSnap.data().orderedClients  || [] : []);
+    const prevDateStr  = prevSnap ? prevSnap.id : '';
+
+    // clients 로드
+    const clientsSnap = await db.collection('clients').get();
+
+    // 직전 업로드 주문O → 오늘 주문X 인 업체
     const missedClients = [];
-    yesterdayOrdered.forEach(name => {
+    prevOrdered.forEach(name => {
       if (!todayOrdered.has(name)) missedClients.push(name);
     });
 
@@ -4265,9 +4270,11 @@ async function loadNoOrderTracking() {
     const totalCount = Object.values(byDriver).reduce((s, arr) => s + arr.length, 0);
 
     if (totalCount === 0) {
-      const msg = !todaySnap.exists
+      const msg = !todaySnap
         ? '오늘 엑셀 업로드 전입니다'
-        : '⭕ 어제 대비 미주문 업체 없음';
+        : !prevSnap
+          ? '비교할 이전 업로드 데이터가 없습니다'
+          : `⭕ ${prevDateStr} 대비 미주문 업체 없음`;
       listEl.innerHTML = `<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">${msg}</div>`;
       return;
     }
@@ -4282,7 +4289,7 @@ async function loadNoOrderTracking() {
     let html = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:13px;color:#4a5568;">
-          어제(${yesterdayStr}) 주문 → 오늘(${todayStr}) 미주문
+          직전 업로드(${prevDateStr}) 주문 → 오늘(${todayStr}) 미주문
           <strong style="color:#c53030;margin-left:4px;">총 ${totalCount}개 업체</strong>
           ${priorityCount > 0 ? `<span style="color:#c53030;font-size:12px;"> (8개↑ ${priorityCount}건)</span>` : ''}
         </div>
