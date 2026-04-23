@@ -319,13 +319,17 @@ async function selectPeriod(p) {
   const periods = getPeriods(currentYm);
   const { label, start, end } = periods[p];
 
-  // sales_daily 조회 (최신 데이터 소스)
+  // sales_daily 조회 (docId가 YYYY-MM-DD)
+  // docId 기준 날짜 범위로 직접 조회 (date 필드 없는 문서 호환)
   const salesSnap = await db.collection('sales_daily')
-    .where('date','>=',start).where('date','<=',end).get();
+    .where(firebase.firestore.FieldPath.documentId(), '>=', start)
+    .where(firebase.firestore.FieldPath.documentId(), '<=', end)
+    .get();
   const byDate = {};
   salesSnap.forEach(d => {
     const data = d.data();
-    byDate[data.date] = buildOrderedSet(data.orderedClients||[]);
+    const dt = data.date || d.id; // date 필드 없으면 docId 사용
+    byDate[dt] = buildOrderedSet(data.orderedClients||[]);
   });
   const availDates = Object.keys(byDate).sort();
 
