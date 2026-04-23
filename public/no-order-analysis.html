@@ -175,12 +175,66 @@ let currentData = [];
 let currentPeriod = null;
 let currentYm = '';
 
-function normName(n) { return String(n||'').replace(/\s/g,''); }
-function isOrdered(clientName, orderedSet) {
+// 집계행 필터링
+const AGG_NAMES = new Set(['소계','합계','총계','계','중계','subtotal','total']);
+
+// 이름 정규화: 공백 제거, 소문자, "주식회사/(주)" prefix 제거
+function normName(n) {
+  let s = String(n||'').trim();
+  if (!s) return '';
+  // "주식회사 ", "(주)", "주)" prefix 제거
+  s = s.replace(/^\s*(주식회사|\(주\)|주\))\s*/g, '');
+  // 공백/특수문자 제거 후 소문자
+  s = s.replace(/\s+/g, '').toLowerCase();
+  return s;
+}
+
+// 지역 suffix 제거 ("_해운대구", "_부산진구" 등)
+function stripRegionSuffix(n) {
+  return n.replace(/_[가-힣]+[구군동]\b/g, '')
+          .replace(/_[가-힣]{2,10}$/g, '');
+}
+
+// 뷔페형 하위 주문(_이름) 본체만 추출
+function stripPersonSuffix(n) {
+  // 첫 언더스코어 이후 제거 (예: 부산베스트내과_안미연 → 부산베스트내과)
+  const idx = n.indexOf('_');
+  return idx > 0 ? n.substring(0, idx) : n;
+}
+
+// 5단계 매칭: orderedSet은 미리 정규화된 값들의 Map (원본 보존용)
+// 반환값: 매칭되면 true
+function isOrdered(clientName, normalizedOrderedSet) {
   const cn = normName(clientName);
-  if (orderedSet.has(cn)) return true;
-  for (const o of orderedSet) { if (cn.includes(o) || o.includes(cn)) return true; }
+  if (!cn) return false;
+  // 1단계: 완전 일치
+  if (normalizedOrderedSet.has(cn)) return true;
+  // 2단계: 지역 suffix 제거 후 매칭
+  const cn2 = stripRegionSuffix(cn);
+  if (cn2 !== cn && normalizedOrderedSet.has(cn2)) return true;
+  // 3단계: 본체 prefix 매칭 (부산베스트내과_xxx 같은 케이스)
+  const cnBase = stripPersonSuffix(cn);
+  // 4단계: orderedSet 안에 본체 이름 포함 매칭 (뷔페형)
+  for (const o of normalizedOrderedSet) {
+    if (cn === o) return true;
+    if (cn2 === o || cn2 === stripRegionSuffix(o)) return true;
+    // 본체 일치 (부산베스트내과 vs 부산베스트내과_안미연)
+    if (cnBase && o.startsWith(cnBase + '_')) return true;
+    if (cn.startsWith(stripPersonSuffix(o) + '_')) return true;
+  }
   return false;
+}
+
+// orderedClients 배열 → 정규화된 Set (집계행 제외)
+function buildOrderedSet(names) {
+  const set = new Set();
+  (names||[]).forEach(n => {
+    const raw = String(n||'').trim();
+    if (!raw) return;
+    if (AGG_NAMES.has(raw.toLowerCase())) return; // 집계행 제외
+    set.add(normName(raw));
+  });
+  return set;
 }
 
 function getLastDay(ym) {
@@ -271,7 +325,7 @@ async function selectPeriod(p) {
   const byDate = {};
   salesSnap.forEach(d => {
     const data = d.data();
-    byDate[data.date] = new Set((data.orderedClients||[]).map(c => normName(c)));
+    byDate[data.date] = buildOrderedSet(data.orderedClients||[]);
   });
   const availDates = Object.keys(byDate).sort();
 
