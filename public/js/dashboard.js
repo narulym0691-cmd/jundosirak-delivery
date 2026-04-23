@@ -191,16 +191,35 @@ function renderTeamRanking() {
 // 카드 3: 거래처 경보 로드
 async function loadAlerts() {
   const container = document.getElementById('alertsCard');
-  if (!currentUser.teamId) {
-    container.innerHTML = '<div class="empty-msg">담당 팀이 없습니다.</div>';
-    return;
-  }
 
   try {
-    const snap = await db.collection('alerts')
-      .where('teamId','==',currentUser.teamId)
-      .where('resolved','==',false)
-      .get();
+    // 역할별 필터링:
+    // - admin/manager: 전체 경보
+    // - leader(팀장): 자기 팀 전체 경보
+    // - driver(기사): 자기 courseId만
+    let snap;
+    if (currentUser.role === 'admin' || currentUser.role === 'manager') {
+      snap = await db.collection('alerts').where('resolved','==',false).get();
+    } else if (currentUser.role === 'leader') {
+      if (!currentUser.teamId) {
+        container.innerHTML = '<div class="empty-msg">담당 팀이 없습니다.</div>';
+        return;
+      }
+      snap = await db.collection('alerts')
+        .where('teamId','==',currentUser.teamId)
+        .where('resolved','==',false)
+        .get();
+    } else {
+      // driver: 자기 courseId만
+      if (!currentUser.courseId) {
+        container.innerHTML = '<div class="empty-msg">담당 코스가 없습니다.</div>';
+        return;
+      }
+      snap = await db.collection('alerts')
+        .where('courseId','==',currentUser.courseId)
+        .where('resolved','==',false)
+        .get();
+    }
 
     const items = [];
     snap.forEach(doc => {
@@ -221,22 +240,7 @@ async function loadAlerts() {
       let levelLabel, levelClass;
       if (a.grade === 'urgent') { levelLabel = '🔴 즉시경보'; levelClass = 'alert-urgent'; }
       else if (a.grade === 'watch') { levelLabel = '🟡 주시'; levelClass = 'alert-watch'; }
-      else { levelLabel = '🔴 확인보고'; levelClass = 'alert-check'; }
-
-      const isCheck = a.grade === 'check';
-      const hasFeedback = a.feedback && a.feedback.text;
-
-      const feedbackSection = isCheck ? (hasFeedback ? `
-        <div style="margin-top:8px;background:#f0fff4;border-radius:6px;padding:8px 10px;font-size:12px;color:#276749;">
-          ✅ 피드백 완료: ${a.feedback.text}
-          <span style="color:#a0aec0;margin-left:6px;">${a.feedback.submittedAt ? new Date(a.feedback.submittedAt.toDate()).toLocaleDateString('ko-KR') : ''}</span>
-        </div>` : `
-        <div style="margin-top:8px;">
-          <button onclick="openFeedbackModal('${a.id}','${(a.name||'').replace(/'/g,"\\'")}')"
-            style="width:100%;padding:9px;background:#e53e3e;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
-            📝 사유 입력 필요
-          </button>
-        </div>`) : '';
+      else { levelLabel = '🟠 확인보고'; levelClass = 'alert-check'; }
 
       return `
         <div class="alert-item ${levelClass}">
@@ -249,7 +253,12 @@ async function loadAlerts() {
             <span class="alert-days">${a.consecutiveDays||1}일째</span>
             <span class="alert-date">${a.lastOrderDate || ''}</span>
           </div>
-          ${feedbackSection}
+          <div style="margin-top:8px;">
+            <button onclick="openDriverResolveModal('${a.id}')"
+              style="width:100%;padding:9px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">
+              📝 사유 선택하기
+            </button>
+          </div>
         </div>
       `;
     }).join('');
@@ -261,6 +270,213 @@ async function loadAlerts() {
     container.innerHTML = '<div class="card-error">경보 데이터를 불러오지 못했습니다.</div>';
   }
 }
+
+// ── 기사용 경보 해제 모달 (체크박스 사유) ──
+let _driverResolveState = { alertId: null, alertData: null, reasons: [], selectedKey: null, selectedDow: [] };
+
+async function openDriverResolveModal(alertId) {
+  try {
+    const doc = await db.collection('alerts').doc(alertId).get();
+    if (!doc.exists) { alert('경보를 찾을 수 없습니다.'); return; }
+    const data = doc.data();
+
+    const reasonsSnap = await db.collection('alert_reasons').orderBy('order').get();
+    const reasons = [];
+    reasonsSnap.forEach(d => reasons.push({ key: d.id, ...d.data() }));
+    if (!reasons.length) {
+      reasons.push(
+        { key: 'regular_off', label: '정기휴무', color: '#3182ce', autoAction: 'remove_orderday' },
+        { key: 'dinner', label: '회식', color: '#38a169', autoAction: 'none' },
+        { key: 'complaint', label: '불만', color: '#d97706', autoAction: 'notify_admin' },
+        { key: 'terminated', label: '거래종료', color: '#c53030', autoAction: 'deactivate_client' },
+        { key: 'other', label: '기타', color: '#718096', autoAction: 'none', requireInput: true }
+      );
+    }
+
+    _driverResolveState = { alertId, alertData: data, reasons, selectedKey: null, selectedDow: [] };
+
+    // 모달 HTML 동적 생성 (dashboard.html에 없을 수 있으니 매번 삽입)
+    let modal = document.getElementById('driverResolveModal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'driverResolveModal';
+      modal.style.cssText = 'display:flex;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:1200;align-items:center;justify-content:center;padding:16px;';
+      document.body.appendChild(modal);
+    } else {
+      modal.style.display = 'flex';
+    }
+    modal.innerHTML = `
+      <div style="background:#fff;max-width:420px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <div style="font-size:16px;font-weight:800;color:#1a4731;">📝 경보 사유 선택</div>
+          <button onclick="closeDriverResolveModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#718096;">✕</button>
+        </div>
+        <div style="background:#f7fafc;border-radius:8px;padding:12px;margin-bottom:14px;font-size:13px;color:#2d3748;">
+          <div style="font-weight:700;">${data.name || data.clientName || '-'}</div>
+          <div style="font-size:11px;color:#718096;margin-top:3px;">
+            ${data.grade === 'urgent' ? '🔴 즉시경보' : data.grade === 'watch' ? '🟡 주시' : '🟠 확인보고'}
+            · 미주문 ${data.consecutiveDays || 1}일째
+            · 일평균 ${data.dailyAvg || 0}개
+          </div>
+        </div>
+        <div style="font-size:13px;font-weight:700;color:#4a5568;margin-bottom:10px;">사유를 선택해주세요</div>
+        <div id="drv-reason-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;">
+          ${reasons.map(r => `
+            <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:2px solid #e2e8f0;border-radius:8px;cursor:pointer;" data-reason-key="${r.key}">
+              <input type="radio" name="drv-reason" value="${r.key}" style="cursor:pointer;">
+              <span style="font-weight:600;color:${r.color || '#2d3748'};">${r.label}</span>
+            </label>
+          `).join('')}
+        </div>
+        <div id="drv-custom-input" style="display:none;margin-bottom:12px;">
+          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">기타 사유 직접 입력 *</label>
+          <textarea id="drv-custom-text" rows="2" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;box-sizing:border-box;" placeholder="사유를 입력하세요..."></textarea>
+        </div>
+        <div id="drv-regular-dow" style="display:none;background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:10px;margin-bottom:12px;">
+          <div style="font-size:12px;font-weight:700;color:#2b6cb0;margin-bottom:6px;">정기휴무 요일 선택</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;" id="drv-dow-btns">
+            ${[['mon','월'],['tue','화'],['wed','수'],['thu','목'],['fri','금'],['sat','토'],['sun','일']].map(([k,label]) => `
+              <button type="button" data-dow="${k}" onclick="toggleDriverDow('${k}', this)" style="padding:6px 12px;background:#fff;border:1.5px solid #bee3f8;border-radius:6px;font-size:12px;font-weight:700;color:#2b6cb0;cursor:pointer;">${label}</button>
+            `).join('')}
+          </div>
+        </div>
+        <button onclick="submitDriverResolve()" id="drv-submit-btn" style="width:100%;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ 제출</button>
+      </div>
+    `;
+
+    // 이벤트 등록
+    modal.querySelectorAll('input[name="drv-reason"]').forEach(inp => {
+      inp.onchange = () => onDriverReasonChange();
+    });
+    modal.querySelectorAll('#drv-reason-list label').forEach(lbl => {
+      lbl.onclick = (e) => {
+        if (e.target.tagName !== 'INPUT') {
+          const inp = lbl.querySelector('input');
+          inp.checked = true;
+          onDriverReasonChange();
+        }
+      };
+    });
+  } catch(e) {
+    alert('경보 로드 오류: ' + e.message);
+  }
+}
+
+function onDriverReasonChange() {
+  const selected = document.querySelector('input[name="drv-reason"]:checked');
+  if (!selected) return;
+  const key = selected.value;
+  _driverResolveState.selectedKey = key;
+  const reason = _driverResolveState.reasons.find(r => r.key === key);
+
+  document.querySelectorAll('#drv-reason-list label').forEach(lbl => {
+    lbl.style.borderColor = lbl.dataset.reasonKey === key ? (reason?.color || '#1a4731') : '#e2e8f0';
+    lbl.style.background = lbl.dataset.reasonKey === key ? '#f0fff4' : '#fff';
+  });
+
+  document.getElementById('drv-custom-input').style.display = (key === 'other' || reason?.requireInput) ? 'block' : 'none';
+  document.getElementById('drv-regular-dow').style.display = (key === 'regular_off') ? 'block' : 'none';
+}
+
+function toggleDriverDow(dow, btn) {
+  const idx = _driverResolveState.selectedDow.indexOf(dow);
+  if (idx === -1) {
+    _driverResolveState.selectedDow.push(dow);
+    btn.style.background = '#2b6cb0';
+    btn.style.color = '#fff';
+  } else {
+    _driverResolveState.selectedDow.splice(idx, 1);
+    btn.style.background = '#fff';
+    btn.style.color = '#2b6cb0';
+  }
+}
+
+function closeDriverResolveModal() {
+  const modal = document.getElementById('driverResolveModal');
+  if (modal) modal.style.display = 'none';
+  _driverResolveState = { alertId: null, alertData: null, reasons: [], selectedKey: null, selectedDow: [] };
+}
+
+async function submitDriverResolve() {
+  const { alertId, alertData, reasons, selectedKey, selectedDow } = _driverResolveState;
+  if (!alertId || !alertData) { alert('경보 정보가 없습니다.'); return; }
+  if (!selectedKey) { alert('사유를 선택해주세요.'); return; }
+
+  const reason = reasons.find(r => r.key === selectedKey);
+  let customText = '';
+  if (selectedKey === 'other' || reason?.requireInput) {
+    customText = document.getElementById('drv-custom-text').value.trim();
+    if (!customText) { alert('기타 사유를 입력해주세요.'); return; }
+  }
+
+  const btn = document.getElementById('drv-submit-btn');
+  btn.disabled = true; btn.textContent = '처리 중...';
+
+  try {
+    const clientName = alertData.name || alertData.clientName;
+    const batch = db.batch();
+
+    // 경보 해제 + 사유 기록 (기사 제출)
+    batch.update(db.collection('alerts').doc(alertId), {
+      resolved: true,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      resolvedBy: currentUser.name || currentUser.docId || 'driver',
+      resolvedByRole: currentUser.role || 'driver',
+      resolveReasonKey: selectedKey,
+      resolveReasonLabel: reason?.label || selectedKey,
+      resolveCustomText: customText || null,
+      resolveAutoAction: reason?.autoAction || 'none',
+      resolveRemovedDows: selectedKey === 'regular_off' ? selectedDow : []
+    });
+
+    // 자동 액션
+    const action = reason?.autoAction;
+    if (action === 'remove_orderday' && selectedDow.length > 0 && clientName) {
+      const cs = await db.collection('clients').where('name','==',clientName).limit(1).get();
+      if (!cs.empty) {
+        const cDoc = cs.docs[0];
+        const curOrderDays = (cDoc.data().orderDays || []).filter(d => !selectedDow.includes(d));
+        batch.update(cDoc.ref, { orderDays: curOrderDays, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+      }
+    } else if (action === 'deactivate_client' && clientName) {
+      const cs = await db.collection('clients').where('name','==',clientName).limit(1).get();
+      if (!cs.empty) {
+        batch.update(cs.docs[0].ref, {
+          active: false,
+          deactivatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          deactivatedReason: 'alert_terminated_by_driver',
+          deactivatedBy: currentUser.name
+        });
+      }
+    } else if (action === 'notify_admin') {
+      const logRef = db.collection('admin_notifications').doc();
+      batch.set(logRef, {
+        type: 'complaint',
+        clientName,
+        alertId,
+        driverName: currentUser.name,
+        customText: customText || null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        read: false
+      });
+    }
+
+    await batch.commit();
+    alert('✅ 처리 완료');
+    closeDriverResolveModal();
+    await loadAlerts();
+  } catch(e) {
+    alert('오류: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '✅ 제출';
+  }
+}
+
+window.openDriverResolveModal = openDriverResolveModal;
+window.closeDriverResolveModal = closeDriverResolveModal;
+window.submitDriverResolve = submitDriverResolve;
+window.toggleDriverDow = toggleDriverDow;
+window.onDriverReasonChange = onDriverReasonChange;
 
 // 카드 4: 지시사항 로드
 async function loadDirectives() {
