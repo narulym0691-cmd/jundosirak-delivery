@@ -4219,18 +4219,23 @@ async function loadNoOrderTracking() {
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
     const todayStr = now.toISOString().slice(0, 10);
 
-    // sales_daily에서 최근 2건 조회 (날짜 내림차순)
-    const recentSnap = await db.collection('sales_daily')
-      .orderBy(firebase.firestore.FieldPath.documentId(), 'desc')
-      .limit(5)
-      .get();
+    // 오늘 ~ 7일 전까지 날짜 목록 생성 후 병렬 조회
+    const datesToCheck = [todayStr];
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      datesToCheck.push(d.toISOString().slice(0, 10));
+    }
+    const snapResults = await Promise.all(
+      datesToCheck.map(dt => db.collection('sales_daily').doc(dt).get())
+    );
 
     // 오늘 doc과 직전 업로드 doc 찾기
     let todaySnap = null, prevSnap = null;
-    recentSnap.forEach(doc => {
-      if (doc.id === todayStr && !todaySnap) todaySnap = doc;
-      else if (doc.id < todayStr && !prevSnap) prevSnap = doc;
-    });
+    for (const snap of snapResults) {
+      if (!snap.exists) continue;
+      if (snap.id === todayStr && !todaySnap) { todaySnap = snap; continue; }
+      if (snap.id < todayStr && !prevSnap) { prevSnap = snap; break; }
+    }
 
     const todayOrdered = new Set(todaySnap ? todaySnap.data().orderedClients || [] : []);
     const prevOrdered  = new Set(prevSnap  ? prevSnap.data().orderedClients  || [] : []);
