@@ -294,10 +294,13 @@ async function selectPeriod(p) {
     if (!orderDays || !Array.isArray(orderDays) || orderDays.length === 0) continue;
 
     // 이 기간에 주문해야 하는 날짜 필터
+    // orderDays는 ["mon","tue",...] 문자열 배열 또는 [0,1,...] 숫자 배열 모두 지원
+    const DOW_STR = ['sun','mon','tue','wed','thu','fri','sat'];
     const bizDaysForClient = availDates.filter(dt => {
       const dow = new Date(dt).getDay();
-      const dowIdx = dow === 0 ? 6 : dow - 1;
-      return orderDays.includes(dowIdx);
+      const dowIdx = dow === 0 ? 6 : dow - 1; // 월=0, 일=6
+      const dowStr = DOW_STR[dow]; // 'mon','tue',...
+      return orderDays.includes(dowIdx) || orderDays.includes(dowStr);
     });
     if (bizDaysForClient.length === 0) continue; // 이 기간에 주문요일 없으면 제외
 
