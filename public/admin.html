@@ -814,6 +814,28 @@
   </div>
 </div>
 
+<!-- 경보 사유 관리 모달 (관리자 전용) -->
+<div id="alertReasonsModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:1200;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;max-width:560px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <div style="font-size:16px;font-weight:800;color:#1a4731;">⚙️ 경보 사유 관리</div>
+      <button onclick="closeAlertReasonsModal()" style="background:none;border:none;font-size:20px;cursor:pointer;color:#718096;">✕</button>
+    </div>
+    <div style="font-size:12px;color:#718096;margin-bottom:12px;line-height:1.5;">
+      기사가 경보 해제 시 선택할 수 있는 사유 목록을 관리합니다.<br>
+      <strong>기본 제공</strong>: 정기휴무 / 회식 / 불만 / 거래종료 / 기타 (삭제 불가)
+    </div>
+    <div id="ar-list" style="margin-bottom:16px;"></div>
+    <div style="border-top:1px solid #e2e8f0;padding-top:14px;">
+      <div style="font-size:13px;font-weight:700;color:#4a5568;margin-bottom:8px;">➕ 새 사유 추가</div>
+      <div style="display:flex;gap:8px;">
+        <input id="ar-new-label" type="text" placeholder="사유 이름 (예: 직원 교육)" style="flex:1;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;box-sizing:border-box;">
+        <button onclick="addAlertReason()" style="padding:8px 14px;background:#1a4731;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 경보 해제 모달 (체크박스형 사유 선택) -->
 <div id="resolveAlertModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.55);z-index:1200;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#fff;max-width:420px;width:100%;border-radius:14px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-height:90vh;overflow-y:auto;">
@@ -3320,6 +3342,10 @@ async function sendSms() {
     <span>📋</span> 정성평가
   </button>
   <div class="dropup-divider"></div>
+  <button class="dropup-item" onclick="closeDropup(); showAlertReasonsModal();">
+    <span>⚙️</span> 경보 사유 관리
+  </button>
+  <div class="dropup-divider"></div>
   <div class="dropup-divider"></div>
   <button class="dropup-item" style="color:#c53030;" onclick="closeDropup(); resetAllSalesData();">
     <span>🗑️</span> 데이터 초기화
@@ -4129,6 +4155,96 @@ async function cleanupDuplicateAlerts() {
     loadAlerts();
   } catch(e) {
     alert('정리 오류: ' + e.message);
+  }
+}
+
+// ── 경보 사유 관리 모달 ──
+const DEFAULT_REASON_KEYS = ['regular_off', 'dinner', 'complaint', 'terminated', 'other'];
+
+async function showAlertReasonsModal() {
+  document.getElementById('alertReasonsModal').style.display = 'flex';
+  await loadAlertReasonsList();
+}
+
+function closeAlertReasonsModal() {
+  document.getElementById('alertReasonsModal').style.display = 'none';
+}
+
+async function loadAlertReasonsList() {
+  const listEl = document.getElementById('ar-list');
+  listEl.innerHTML = '<div style="color:#718096;text-align:center;padding:16px;font-size:13px;">로딩 중...</div>';
+  try {
+    const snap = await db.collection('alert_reasons').orderBy('order').get();
+    if (snap.empty) {
+      listEl.innerHTML = '<div style="color:#c53030;text-align:center;padding:16px;font-size:13px;">사유가 없습니다. 페이지 로드 중일 수 있습니다.</div>';
+      return;
+    }
+    const rows = [];
+    snap.forEach(d => rows.push({ key: d.id, ...d.data() }));
+    listEl.innerHTML = rows.map(r => {
+      const isDefault = DEFAULT_REASON_KEYS.includes(r.key);
+      const actionLabel = r.autoAction === 'remove_orderday' ? '주문요일 자동 제거'
+        : r.autoAction === 'deactivate_client' ? '거래처 비활성'
+        : r.autoAction === 'notify_admin' ? '관리자 알림'
+        : '없음';
+      return `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#f7fafc;border-radius:8px;margin-bottom:6px;">
+          <span style="width:12px;height:12px;border-radius:50%;background:${r.color || '#718096'};display:inline-block;"></span>
+          <div style="flex:1;">
+            <div style="font-size:14px;font-weight:700;color:#2d3748;">${r.label}</div>
+            <div style="font-size:11px;color:#718096;margin-top:2px;">자동액션: ${actionLabel}${isDefault ? ' · 기본 사유' : ''}</div>
+          </div>
+          ${isDefault
+            ? '<span style="font-size:10px;background:#edf2f7;color:#4a5568;padding:3px 8px;border-radius:8px;">기본</span>'
+            : `<button onclick="deleteAlertReason('${r.key}','${(r.label||'').replace(/'/g,"\\'")}')" style="padding:4px 10px;background:#fff5f5;color:#c53030;border:1px solid #fed7d7;border-radius:5px;font-size:11px;cursor:pointer;font-weight:700;">삭제</button>`
+          }
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = '<div style="color:#c53030;font-size:13px;">오류: ' + e.message + '</div>';
+  }
+}
+
+async function addAlertReason() {
+  const input = document.getElementById('ar-new-label');
+  const label = input.value.trim();
+  if (!label) { alert('사유 이름을 입력해주세요.'); return; }
+  if (label.length > 20) { alert('사유 이름은 20자 이내로 입력해주세요.'); return; }
+  // 중복 체크
+  const dup = await db.collection('alert_reasons').where('label','==',label).limit(1).get();
+  if (!dup.empty) { alert('이미 같은 이름의 사유가 있습니다.'); return; }
+  // 고유 키 생성 (타임스탬프 기반)
+  const key = 'custom_' + Date.now();
+  // order: 기존 최대값 + 1 (기본 5개는 1~5, 기타는 99)
+  const all = await db.collection('alert_reasons').get();
+  let maxOrder = 0;
+  all.forEach(d => { const o = d.data().order || 0; if (o < 99 && o > maxOrder) maxOrder = o; });
+  try {
+    await db.collection('alert_reasons').doc(key).set({
+      key, label, color: '#718096', order: maxOrder + 1, autoAction: 'none',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    input.value = '';
+    await loadAlertReasonsList();
+    alert('✅ 사유 추가 완료: ' + label);
+  } catch(e) {
+    alert('추가 오류: ' + e.message);
+  }
+}
+
+async function deleteAlertReason(key, label) {
+  if (DEFAULT_REASON_KEYS.includes(key)) {
+    alert('기본 제공 사유는 삭제할 수 없습니다.');
+    return;
+  }
+  if (!confirm(`사유 "${label}" 을(를) 삭제하시겠습니까?`)) return;
+  try {
+    await db.collection('alert_reasons').doc(key).delete();
+    await loadAlertReasonsList();
+    alert('✅ 삭제 완료');
+  } catch(e) {
+    alert('삭제 오류: ' + e.message);
   }
 }
 
