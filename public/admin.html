@@ -1008,15 +1008,12 @@
       <button onclick="closeClaimCsModal()" style="background:none;border:none;font-size:24px;color:#718096;cursor:pointer;">✕</button>
     </div>
     
-    <div style="display:flex;gap:10px;margin-bottom:16px;">
-      <select id="claimCsType" onchange="loadClaimCs()" style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;">
-        <option value="all">전체</option>
-        <option value="상함">상함</option>
-        <option value="이물">이물</option>
-      </select>
+    <div style="background:#fff5f5;border-left:4px solid #c53030;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#742a2a;line-height:1.5;">
+      💡 <strong>상함</strong> 클레임은 가장 심각한 CS입니다.<br>
+      담당 기사의 <strong>고객관리 방문(현장 활동)</strong>이 완료되어야 해결됩니다.
     </div>
-    
-    <div id="claimCsSummary" style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;"></div>
+
+    <div id="claimCsSummary" style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;"></div>
     
     <div id="claimCsTable" style="overflow-x:auto;"></div>
   </div>
@@ -3964,83 +3961,115 @@ function closeClaimCsModal() {
 }
 
 async function loadClaimCs() {
-  const type = document.getElementById('claimCsType').value;
-  
   try {
-    let query = db.collection('claims')
-      .where('csCompleted','==',false);
-    
-    if (type !== 'all') {
-      query = query.where('type','==',type);
-    }
-    
-    const snap = await query.get();
-    
+    // 상함 유형 + csCompleted:false만 조회 (가장 심각한 CS)
+    const snap = await db.collection('claims')
+      .where('csCompleted','==',false)
+      .where('type','==','상함')
+      .get();
+
     const data = [];
     snap.forEach(d => data.push({ id: d.id, ...d.data() }));
-    
-    // 상함/이물만 필터 (오배송/지연 제외)
-    _claimCsData = data.filter(c => c.type === '상함' || c.type === '이물');
-    
-    // 요약
+
+    // 날짜 최신순 정렬
+    _claimCsData = data.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
     const total = _claimCsData.length;
-    const sangham = _claimCsData.filter(c => c.type === '상함').length;
-    const imul = _claimCsData.filter(c => c.type === '이물').length;
-    
+    const smsSent = _claimCsData.filter(c => c.csSmsSent).length;
+    const fvDone = _claimCsData.filter(c => c._fvDone).length; // 나중에 field_visits 체크로 채움
+
+    // field_visits 일괄 조회로 각 클레임에 방문 기록 있는지 마킹
+    if (_claimCsData.length) {
+      const fvNames = new Set();
+      try {
+        // field_visits 전체 조회는 비용 크므로 customer_care만 필터 (visitType 기준)
+        const fvSnap = await db.collection('field_visits')
+          .where('visitType','==','customer_care').get();
+        fvSnap.forEach(d => { const x = d.data(); if (x.name) fvNames.add(x.name); });
+      } catch(e) { console.warn('field_visits 조회 오류(무시):', e.message); }
+      _claimCsData.forEach(c => { c._fvDone = fvNames.has(c.clientName); });
+    }
+    const fvDoneCount = _claimCsData.filter(c => c._fvDone).length;
+    const fvPending = total - fvDoneCount;
+
+    // 요약 카드 (3개: 전체 / 문자발송 / 방문미완료)
+    document.getElementById('claimCsSummary').style.gridTemplateColumns = 'repeat(3, 1fr)';
     document.getElementById('claimCsSummary').innerHTML = [
-      ['전체', total+'건', '#e53e3e', '#fff5f5'],
-      ['상함', sangham+'건', '#dd6b20', '#fffaf0']
+      ['전체(상함)', total+'건', '#c53030', '#fff5f5'],
+      ['문자 발송', smsSent+'건', '#276749', '#f0fff4'],
+      ['방문 미완료', fvPending+'건', '#d97706', '#fffaf0']
     ].map(([label,val,color,bg]) => `
       <div style="background:${bg};border-radius:8px;padding:12px;text-align:center;">
         <div style="font-size:11px;color:#718096;">${label}</div>
         <div style="font-size:20px;font-weight:800;color:${color};">${val}</div>
       </div>`).join('');
-    
+
     // 테이블
     document.getElementById('claimCsTable').innerHTML = `
       <table style="width:100%;border-collapse:collapse;font-size:13px;">
         <thead>
           <tr style="background:#fff5f5;border-bottom:2px solid #feb2b2;">
             <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">날짜</th>
-            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">유형</th>
             <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">거래처</th>
+            <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">담당기사</th>
             <th style="padding:10px;text-align:left;font-weight:700;color:#742a2a;">내용</th>
-            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">문자발송</th>
-            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">작성완료</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">문자</th>
+            <th style="padding:10px;text-align:center;font-weight:700;color:#742a2a;">방문기록</th>
           </tr>
         </thead>
         <tbody>
-          ${_claimCsData.map(c => `
-            <tr style="border-bottom:1px solid #f0f0f0;">
-              <td style="padding:10px;font-size:12px;">${c.date}</td>
-              <td style="padding:10px;text-align:center;font-weight:700;color:${c.type==='상함'?'#dd6b20':'#e53e3e'};">${c.type}</td>
-              <td style="padding:10px;">${c.name||'-'}</td>
-              <td style="padding:10px;font-size:12px;color:#718096;">${(c.content||'').slice(0,30)}${(c.content||'').length>30?'...':''}</td>
-              <td style="padding:10px;text-align:center;">${c.csSmsSent?'✅':'❌'}</td>
-              <td style="padding:10px;text-align:center;"><button onclick="checkFieldVisit('${c.name}')" style="padding:4px 10px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;cursor:pointer;">확인</button></td>
-            </tr>`).join('')}
+          ${_claimCsData.length === 0
+            ? '<tr><td colspan="6" style="padding:20px;text-align:center;color:#a0aec0;">상함 CS 미완료 건 없음 ✅</td></tr>'
+            : _claimCsData.map(c => {
+              const fvDoneBadge = c._fvDone
+                ? '<span style="color:#276749;font-weight:700;">✅ 완료</span>'
+                : '<span style="color:#c53030;font-weight:700;">❌ 미완료</span>';
+              const safeName = (c.clientName||'').replace(/'/g,"\\'");
+              return `<tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:10px;font-size:12px;">${c.date||'-'}</td>
+                <td style="padding:10px;font-weight:600;">${c.clientName||'-'}</td>
+                <td style="padding:10px;font-size:12px;">${c.driverName||'-'}</td>
+                <td style="padding:10px;font-size:12px;color:#718096;">${(c.content||'').slice(0,30)}${(c.content||'').length>30?'...':''}</td>
+                <td style="padding:10px;text-align:center;">${c.csSmsSent?'✅':'❌'}</td>
+                <td style="padding:10px;text-align:center;">
+                  ${fvDoneBadge}
+                  <button onclick="checkFieldVisit('${safeName}')" style="margin-left:6px;padding:3px 8px;background:#f7fafc;border:1px solid #e2e8f0;border-radius:5px;font-size:11px;cursor:pointer;">상세</button>
+                </td>
+              </tr>`;
+            }).join('')}
         </tbody>
       </table>`;
-    
+
   } catch(e) {
     alert('로딩 오류: ' + e.message);
+    console.error(e);
   }
 }
 
 async function checkFieldVisit(clientName) {
+  if (!clientName) { alert('거래처명이 없습니다.'); return; }
   try {
     const snap = await db.collection('field_visits')
-      .where('name','==',name)
-      .where('type','==','customer_care')
-      .limit(1)
+      .where('name','==',clientName)
+      .where('visitType','==','customer_care')
       .get();
-    
+
     if (snap.empty) {
-      alert(`${clientName} 고객관리 기록이 없습니다.`);
-    } else {
-      const fv = snap.docs[0].data();
-      alert(`✅ 작성 완료\n\n거래처: ${fv.name}\n내용: ${fv.content||'-'}\n작성일: ${fv.visitDate}`);
+      alert(`❌ "${clientName}" 고객관리 방문 기록이 없습니다.\n\n담당 기사에게 방문 요청이 필요합니다.`);
+      return;
     }
+
+    // 최신순 정렬
+    const records = [];
+    snap.forEach(d => records.push(d.data()));
+    records.sort((a,b) => {
+      const ta = a.createdAt?.toDate?.()?.getTime() || 0;
+      const tb = b.createdAt?.toDate?.()?.getTime() || 0;
+      return tb - ta;
+    });
+    const fv = records[0];
+    const dateStr = fv.createdAt?.toDate?.()?.toLocaleDateString('ko-KR') || '-';
+    alert(`✅ 방문 기록 있음 (${records.length}건)\n\n최근 방문:\n거래처: ${fv.name}\n담당기사: ${fv.driverName || '-'}\n내용: ${fv.content || '-'}\n작성일: ${dateStr}`);
   } catch(e) {
     alert('확인 오류: ' + e.message);
   }
