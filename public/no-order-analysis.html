@@ -89,6 +89,7 @@ tr:hover td { background: #f7fafc; }
     <div id="result-empty" class="empty-msg">위 버튼을 클릭하면 미주문 업체 목록이 바로 표시됩니다.</div>
     <div id="result-loading" class="loading-msg" style="display:none">⏳ 데이터 조회 중...</div>
     <div id="result-content" style="display:none">
+      <div id="result-warning"></div>
       <div class="result-header">
         <div>
           <div class="result-title" id="result-title">미주문 업체</div>
@@ -321,17 +322,34 @@ async function selectPeriod(p) {
   const { label, start, end } = periods[p];
 
   // sales_daily 조회 (docId가 YYYY-MM-DD)
-  // docId 기준 날짜 범위로 직접 조회 (date 필드 없는 문서 호환)
   const salesSnap = await db.collection('sales_daily')
     .where(firebase.firestore.FieldPath.documentId(), '>=', start)
     .where(firebase.firestore.FieldPath.documentId(), '<=', end)
     .get();
   const byDate = {};
+  let totalOrderedCount = 0; // 데이터 가용성 체크용
+  let emptyDates = []; // 업체명 파싱 실패된 날짜
   salesSnap.forEach(d => {
     const data = d.data();
-    const dt = data.date || d.id; // date 필드 없으면 docId 사용
-    byDate[dt] = buildOrderedSet(data.orderedClients||[]);
+    const dt = data.date || d.id;
+    const clients = data.orderedClients || [];
+    byDate[dt] = buildOrderedSet(clients);
+    totalOrderedCount += clients.length;
+    if (clients.length === 0) emptyDates.push(dt);
   });
+
+  // 데이터 가용성 경고 (업체명 파싱 실패된 날짜가 있으면 표시)
+  const warningBox = document.getElementById('result-warning');
+  if (warningBox) {
+    if (salesSnap.size > 0 && emptyDates.length > 0) {
+      const msg = totalOrderedCount === 0
+        ? `⚠️ <strong>${label}</strong>에 해당하는 날짜(${salesSnap.size}일) 전체가 업체명 파싱 실패 상태입니다.<br>이 구간은 미주문 업체 분석이 <strong>불가능</strong>하며, 아래 결과는 <strong>신뢰할 수 없습니다</strong>.<br><small style="color:#744210;">💡 해결: 해당 날짜 일일장부 엑셀을 재업로드하면 자동 복원됩니다. (4/21부터는 업로드 로직이 수정되어 정상 저장됨)</small>`
+        : `⚠️ 이 구간 ${salesSnap.size}일 중 <strong>${emptyDates.length}일</strong>(${emptyDates.slice(0,5).join(', ')}${emptyDates.length>5?'...':''})이 업체명 파싱 실패 상태입니다. 해당 날짜 업체는 "미주문"으로 잘못 잡힐 수 있어요.<br><small style="color:#744210;">💡 해결: 해당 엑셀 파일을 재업로드해주세요.</small>`;
+      warningBox.innerHTML = `<div style="background:#fff5f5;border:2px solid #feb2b2;border-radius:10px;padding:14px;margin-bottom:14px;color:#c53030;font-size:13px;line-height:1.6;">${msg}</div>`;
+    } else {
+      warningBox.innerHTML = '';
+    }
+  }
   const availDates = Object.keys(byDate).sort();
 
   // clients 조회 (active=true만)

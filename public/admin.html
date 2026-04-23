@@ -1521,7 +1521,13 @@
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
     const clientOrderMap = {}; // clientName → { total, driverName, courseId }
-    for (const sheetName of wb.SheetNames) {
+    // "결과" 시트 우선 처리 (구형 파일은 여러 시트 중 "결과" 시트에 실제 데이터가 있음)
+    const sheetOrder = [...wb.SheetNames].sort((a, b) => {
+      if (a === '결과') return -1;
+      if (b === '결과') return 1;
+      return 0;
+    });
+    for (const sheetName of sheetOrder) {
       const ws = wb.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
       if (rows.length < 45) continue;
