@@ -2398,8 +2398,14 @@
           const active = u.active !== false;
           const roleLabel = u.role === 'leader' ? '팀장' : '기사';
           html += `<tr style="border-bottom:1px solid #f7fafc;${!active?'opacity:0.5':''}">
-            <td style="padding:7px 8px;font-weight:${u.role==='leader'?'700':'400'}">${u.name}</td>
-            <td style="padding:7px 8px;">${roleLabel}</td>
+            <td style="padding:7px 8px;font-weight:${u.role==='leader'?'700':'400'}">
+              ${u.name}
+              <button onclick="editDriverName('${u.id}','${u.name}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
+            </td>
+            <td style="padding:7px 8px;">
+              ${roleLabel}
+              <button onclick="editDriverRole('${u.id}','${u.name}','${u.role}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
+            </td>
             <td style="padding:7px 8px;">
               <span style="font-size:11px;color:${u.phone?'#276749':'#a0aec0'};">${u.phone||'미등록'}</span>
               <button onclick="editPhone('${u.id}','${u.name}','${u.phone||''}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
@@ -2453,6 +2459,47 @@
     await db.collection('users').doc(id).update({ phone: phone.trim() });
     alert(`✅ ${name} 전화번호 저장 완료!`);
     await loadDriverList();
+  };
+
+  window.editDriverName = async (id, currentName) => {
+    const newName = prompt(`새 이름을 입력하세요.\n현재: ${currentName}`, currentName);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed) { alert('이름은 비워둘 수 없습니다.'); return; }
+    if (trimmed === currentName) return;
+    try {
+      await db.collection('users').doc(id).update({ name: trimmed });
+      alert(`✅ 이름 변경 완료: ${currentName} → ${trimmed}`);
+      await loadDriverList();
+    } catch(e) {
+      alert('이름 변경 실패: ' + e.message);
+    }
+  };
+
+  window.editDriverRole = async (id, name, currentRole) => {
+    const roleLabel = { driver: '기사', leader: '팀장', manager: '매니저' };
+    const options = [
+      '1. 기사 (driver)',
+      '2. 팀장 (leader)',
+      '3. 매니저 (manager)'
+    ];
+    const msg = `${name}의 새 역할을 선택하세요.\n현재: ${roleLabel[currentRole] || currentRole}\n\n${options.join('\n')}\n\n숫자를 입력하세요:`;
+    const choice = prompt(msg, '');
+    if (choice === null) return;
+    let newRole = null;
+    if (choice === '1') newRole = 'driver';
+    else if (choice === '2') newRole = 'leader';
+    else if (choice === '3') newRole = 'manager';
+    else { alert('잘못된 입력입니다. 1, 2, 3 중 하나를 입력하세요.'); return; }
+    if (newRole === currentRole) return;
+    if (!confirm(`${name}의 역할을 [${roleLabel[currentRole]}] → [${roleLabel[newRole]}]로 변경하시겠습니까?`)) return;
+    try {
+      await db.collection('users').doc(id).update({ role: newRole });
+      alert(`✅ 역할 변경 완료: ${name} → ${roleLabel[newRole]}`);
+      await loadDriverList();
+    } catch(e) {
+      alert('역할 변경 실패: ' + e.message);
+    }
   };
 
   window.addDriver = async () => {
