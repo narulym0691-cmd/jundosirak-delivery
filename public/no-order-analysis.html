@@ -265,8 +265,8 @@ async function selectPeriod(p) {
   const periods = getPeriods(currentYm);
   const { label, start, end } = periods[p];
 
-  // daily_sales 조회
-  const salesSnap = await db.collection('daily_sales')
+  // sales_daily 조회 (최신 데이터 소스)
+  const salesSnap = await db.collection('sales_daily')
     .where('date','>=',start).where('date','<=',end).get();
   const byDate = {};
   salesSnap.forEach(d => {
@@ -275,16 +275,23 @@ async function selectPeriod(p) {
   });
   const availDates = Object.keys(byDate).sort();
 
-  // clients 조회
+  // clients 조회 (active=true만)
   const clientsSnap = await db.collection('clients').get();
   const clients = [];
-  clientsSnap.forEach(d => clients.push({ id: d.id, ...d.data() }));
+  clientsSnap.forEach(d => {
+    const data = d.data();
+    if (data.active === false) return; // 비활성 거래처 제외
+    clients.push({ id: d.id, ...data });
+  });
 
   // 미주문 업체 계산: 해당 기간 영업일에 한 번도 주문 없는 업체
   const noOrderClients = [];
   for (const client of clients) {
-    const { clientName, orderDays, dailyAvgOrder, teamId, courseId } = client;
-    if (!orderDays || !Array.isArray(orderDays)) continue;
+    // 필드명: name (clientName 아님) / dailyAvg (dailyAvgOrder 아님)
+    const clientName = client.name;
+    const { orderDays, dailyAvg, teamId, courseId } = client;
+    if (!clientName) continue;
+    if (!orderDays || !Array.isArray(orderDays) || orderDays.length === 0) continue;
 
     // 이 기간에 주문해야 하는 날짜 필터
     const bizDaysForClient = availDates.filter(dt => {
@@ -301,8 +308,8 @@ async function selectPeriod(p) {
         clientName,
         teamId: teamId||'',
         courseId: courseId||'',
-        dailyAvgOrder: dailyAvgOrder||0,
-        isPriority: (dailyAvgOrder||0) >= 8,
+        dailyAvgOrder: dailyAvg||0,
+        isPriority: (dailyAvg||0) >= 8,
         orderDays: orderDays||[],
         bizDaysCount: bizDaysForClient.length,
         driver: COURSE_DRIVER[courseId] || '-'
