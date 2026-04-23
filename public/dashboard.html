@@ -1561,18 +1561,35 @@ async function loadPeerReview() {
         ${currentPeerCriteria.map(c => `
           <div class="peer-criteria-row">
             <span class="peer-criteria-label">${c}</span>
-            <div class="star-rating" id="stars-${tid}-${c.replace(/[\s()]/g,'_')}">
+            <div class="star-rating" id="stars-${tid}-${c.replace(/[\s()]/g,'_')}" data-team="${tid}" data-criteria="${c}">
               ${[1,2,3,4,5].map(n =>
-                `<span class="star" onclick="setPeerScore('${tid}',${JSON.stringify(c)},${n})">★</span>`
+                `<span class="star" data-score="${n}">★</span>`
               ).join('')}
             </div>
           </div>
         `).join('')}
       </div>
     `).join('') + `
-      <button class="eval-submit-btn" id="peerSubmitBtn" onclick="submitPeerReview(${JSON.stringify(yw)})">제출하기</button>
+      <button class="eval-submit-btn" id="peerSubmitBtn">제출하기</button>
       <div id="peerSubmitMsg" style="font-size:12px;text-align:center;margin-top:8px;min-height:16px;"></div>
     `;
+
+    // 이벤트 리스너 — 별표 클릭 (토글: 같은 점수 재클릭 시 0으로 리셋)
+    container.querySelectorAll('.star-rating').forEach(ratingEl => {
+      ratingEl.querySelectorAll('.star').forEach(star => {
+        star.addEventListener('click', () => {
+          const tid = ratingEl.dataset.team;
+          const c = ratingEl.dataset.criteria;
+          const n = parseInt(star.dataset.score);
+          const current = peerScores[tid] && peerScores[tid][c] ? peerScores[tid][c] : 0;
+          const newScore = (current === n) ? 0 : n; // 같은 점수 누르면 취소
+          setPeerScore(tid, c, newScore);
+        });
+      });
+    });
+
+    // 제출 버튼 이벤트
+    document.getElementById('peerSubmitBtn').addEventListener('click', () => submitPeerReview(yw));
   } catch (e) {
     container.innerHTML = '<div class="card-error">데이터를 불러오지 못했습니다.</div>';
   }
@@ -1584,7 +1601,7 @@ function setPeerScore(teamId, criteria, score) {
   const key = criteria.replace(/[\s()]/g, '_');
   const stars = document.querySelectorAll(`#stars-${teamId}-${key} .star`);
   stars.forEach((s, i) => {
-    s.classList.toggle('on', i < score);
+    s.classList.toggle('on', i < score); // score=0이면 전부 off
   });
 }
 
