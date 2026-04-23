@@ -2,162 +2,151 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>미주문 업체 분석 — 준도시락</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="/js/firebase-config.js"></script>
 <style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f7fafc; min-height: 100vh; }
-.header { background: #1a4731; color: #fff; padding: 16px 20px; display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 10; }
-.header-back { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 4px; }
-.header-title { font-size: 17px; font-weight: 700; }
-.header-sub { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 2px; }
-.content { padding: 16px; max-width: 900px; margin: 0 auto; }
-.period-buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 20px; }
-.period-btn { padding: 14px 10px; border: 2px solid #e2e8f0; border-radius: 10px; background: #fff; cursor: pointer; text-align: center; transition: all 0.15s; }
-.period-btn:hover { border-color: #1a4731; }
-.period-btn.active { border-color: #1a4731; background: #1a4731; color: #fff; }
-.period-btn .btn-title { font-size: 14px; font-weight: 700; }
-.period-btn .btn-desc { font-size: 11px; color: #718096; margin-top: 3px; }
-.period-btn.active .btn-desc { color: rgba(255,255,255,0.7); }
-.result-section { background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
-.result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.result-title { font-size: 15px; font-weight: 700; color: #1a4731; }
-.result-count { font-size: 13px; color: #718096; }
-.download-btn { padding: 8px 14px; background: #38a169; color: #fff; border: none; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 5px; }
-.download-btn:disabled { background: #a0aec0; cursor: not-allowed; }
-.filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-.filter-select { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; }
-.search-input { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 12px; flex: 1; min-width: 120px; }
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { background: #f0fff4; color: #276749; font-weight: 600; padding: 9px 10px; text-align: left; border-bottom: 2px solid #c6f6d5; white-space: nowrap; }
-td { padding: 9px 10px; border-bottom: 1px solid #e2e8f0; color: #2d3748; vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: #f7fafc; }
-.badge-team { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; background: #e2e8f0; color: #4a5568; }
-.badge-priority { background: #fed7d7; color: #c53030; }
-.empty-msg { text-align: center; padding: 40px; color: #a0aec0; font-size: 14px; }
-.loading-msg { text-align: center; padding: 30px; color: #718096; font-size: 14px; }
-.summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-.summary-card { background: #f0fff4; border-radius: 8px; padding: 12px; text-align: center; }
-.summary-card .s-num { font-size: 22px; font-weight: 700; color: #1a4731; }
-.summary-card .s-label { font-size: 11px; color: #718096; margin-top: 3px; }
-.team-names { '1팀 준고': 'team1', '2팀 해운대': 'team2' }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',system-ui,sans-serif; background:#f0f4f1; color:#1a202c; padding-bottom:40px; }
+
+  .header { background:linear-gradient(135deg,#1a4731 0%,#2d6a4f 100%); color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .header-title { font-size:16px; font-weight:800; }
+  .btn-back { background:none; border:none; color:#fff; font-size:13px; cursor:pointer; opacity:0.9; }
+
+  .filter-bar { background:#fff; padding:12px 16px; border-bottom:1px solid #e2e8f0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .filter-bar select { padding:8px 12px; border:1px solid #e2e8f0; border-radius:8px; font-size:13px; font-weight:600; color:#1a4731; background:#fff; cursor:pointer; }
+
+  .card { background:#fff; border-radius:12px; padding:16px; margin:12px 14px; box-shadow:0 2px 8px rgba(26,71,49,0.07); }
+  .card-title { font-size:15px; font-weight:800; color:#1a4731; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+  .card-sub { font-size:11px; color:#718096; font-weight:400; margin-left:auto; }
+
+  .summary-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+  .summary-card { background:#f7fafc; border-radius:10px; padding:14px; text-align:center; }
+  .summary-val { font-size:22px; font-weight:800; color:#1a4731; }
+  .summary-label { font-size:11px; color:#718096; margin-top:4px; }
+
+  .reason-chart { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .reason-row { display:flex; align-items:center; gap:10px; font-size:12px; }
+  .reason-label { width:90px; font-weight:700; color:#2d3748; }
+  .reason-bar-wrap { flex:1; background:#f0f4f1; border-radius:6px; height:18px; overflow:hidden; position:relative; }
+  .reason-bar { height:100%; border-radius:6px; }
+  .reason-count { font-weight:700; color:#4a5568; min-width:50px; text-align:right; }
+
+  .tbl { width:100%; border-collapse:collapse; font-size:12px; }
+  .tbl th { background:#f0f4f1; padding:8px 6px; text-align:center; color:#4a5568; font-weight:700; border-bottom:2px solid #e2e8f0; font-size:11px; }
+  .tbl td { padding:7px 6px; text-align:center; border-bottom:1px solid #e2e8f0; }
+  .tbl tbody tr:hover { background:#f7fafc; }
+  .tbl td:first-child, .tbl th:first-child { text-align:left; }
+
+  .badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:10px; font-weight:700; }
+  .b-urgent { background:#fed7d7; color:#c53030; }
+  .b-check { background:#fef3c7; color:#92400e; }
+  .b-resolved { background:#d1fae5; color:#065f46; }
+  .b-pending { background:#f3f4f6; color:#4a5568; }
+
+  .empty-msg { text-align:center; color:#a0aec0; padding:24px; font-size:13px; }
+  .loading-msg { text-align:center; color:#718096; padding:24px; font-size:13px; }
+
+  .reason-color-regular_off { background:#3182ce; }
+  .reason-color-dinner { background:#38a169; }
+  .reason-color-complaint { background:#d97706; }
+  .reason-color-terminated { background:#c53030; }
+  .reason-color-other { background:#718096; }
+  .reason-color-custom { background:#9333ea; }
+
+  .scroll-x { overflow-x:auto; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <button class="header-back" onclick="history.back()">←</button>
-  <div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <button class="btn-back" onclick="location.href='/admin.html'">← 뒤로</button>
     <div class="header-title">📉 미주문 업체 분석</div>
-    <div class="header-sub">해당 기간 동안 한 번도 주문 없는 업체</div>
   </div>
 </div>
 
-<div class="content">
-  <!-- 년도/월 선택 -->
-  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;background:#fff;padding:12px 14px;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,0.07);flex-wrap:wrap;">
-    <span style="font-size:13px;font-weight:600;color:#4a5568;">📆 조회 기간 선택</span>
-    <select id="year-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;"></select>
-    <select id="mon-select" onchange="onMonthChange()" style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:6px;font-size:14px;font-weight:600;color:#1a4731;"></select>
-    <span style="font-size:11px;color:#718096;">년도와 월을 선택한 뒤 기간 버튼을 누르세요</span>
-  </div>
+<div class="filter-bar">
+  <label style="font-size:12px;color:#4a5568;font-weight:700;">기준 월</label>
+  <select id="filter-month" onchange="loadAll()"></select>
+  <label style="font-size:12px;color:#4a5568;font-weight:700;">팀</label>
+  <select id="filter-team" onchange="loadAll()">
+    <option value="">전체 팀</option>
+    <option value="team1">1팀 준고</option>
+    <option value="team2">2팀 해운대</option>
+    <option value="team3">3팀 공오일</option>
+    <option value="team4">4팀 연수남</option>
+    <option value="team5">5팀 아가리</option>
+    <option value="team6">6팀 도세마</option>
+    <option value="team7">7팀 강서영</option>
+  </select>
+</div>
 
-  <!-- 기간 선택 버튼 -->
-  <div class="period-buttons">
-    <button class="period-btn" id="btn-p1" onclick="selectPeriod(1)">
-      <div class="btn-title" id="btn-p1-title">📅 1일~10일</div>
-      <div class="btn-desc">1구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
-    </button>
-    <button class="period-btn" id="btn-p2" onclick="selectPeriod(2)">
-      <div class="btn-title" id="btn-p2-title">📅 11일~20일</div>
-      <div class="btn-desc">2구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
-    </button>
-    <button class="period-btn" id="btn-p3" onclick="selectPeriod(3)">
-      <div class="btn-title" id="btn-p3-title">📅 21일~말일</div>
-      <div class="btn-desc">3구간 — 해당 기간 한 번도 주문 없는 업체 조회</div>
-    </button>
-    <button class="period-btn" id="btn-p4" onclick="selectPeriod(4)">
-      <div class="btn-title" id="btn-p4-title">📊 월 전체</div>
-      <div class="btn-desc">선택한 달 전체 미주문 업체 조회</div>
-    </button>
-  </div>
+<!-- ① 월간 요약 -->
+<div class="card">
+  <div class="card-title">📊 월간 요약 <span class="card-sub" id="summary-period"></span></div>
+  <div class="summary-grid" id="summary-cards"></div>
+  <div id="summary-reason" class="reason-chart"></div>
+</div>
 
-  <!-- 결과 영역 (항상 표시) -->
-  <div class="result-section">
-    <div id="result-empty" class="empty-msg">위 버튼을 클릭하면 미주문 업체 목록이 바로 표시됩니다.</div>
-    <div id="result-loading" class="loading-msg" style="display:none">⏳ 데이터 조회 중...</div>
-    <div id="result-content" style="display:none">
-      <div id="result-warning"></div>
-      <div class="result-header">
-        <div>
-          <div class="result-title" id="result-title">미주문 업체</div>
-          <div class="result-count" id="result-count"></div>
-        </div>
-        <button class="download-btn" onclick="downloadExcel()" id="dl-btn">
-          <span>⬇️</span> 엑셀 다운로드
-        </button>
-      </div>
-      <!-- 요약 카드 -->
-      <div class="summary-cards" id="summary-cards"></div>
-      <!-- 필터 -->
-      <div class="filter-row">
-        <select class="filter-select" id="filter-team" onchange="renderTable()">
-          <option value="">전체 팀</option>
-          <option value="team1">1팀 준고</option>
-          <option value="team2">2팀 해운대</option>
-          <option value="team3">3팀 공오일</option>
-          <option value="team4">4팀 연수남</option>
-          <option value="team5">5팀 아가리</option>
-          <option value="team6">6팀 도세마</option>
-          <option value="team7">7팀 강서영</option>
-        </select>
-        <select class="filter-select" id="filter-priority" onchange="renderTable()">
-          <option value="">전체</option>
-          <option value="1">1순위만</option>
-          <option value="0">일반만</option>
-        </select>
-        <input class="search-input" id="filter-search" type="text" placeholder="업체명 검색..." oninput="renderTable()">
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>업체명</th>
-              <th>팀</th>
-              <th>코스</th>
-              <th>일평균</th>
-              <th>1순위</th>
-              <th>주문요일</th>
-              <th>이 기간 영업일수<br><span style="font-size:10px;color:#718096;font-weight:400;">(해당 월에 주문했어야 할 일수)</span></th>
-              <th>마지막 주문일<br><span style="font-size:10px;color:#718096;font-weight:400;">(이 업체가 최근 주문한 날짜)</span></th>
-            </tr>
-          </thead>
-          <tbody id="result-tbody"></tbody>
-        </table>
-      </div>
-    </div>
+<!-- ② 기사별 대응 현황 -->
+<div class="card">
+  <div class="card-title">👤 기사별 대응 현황 <span class="card-sub">담당 경보 수 / 처리 현황</span></div>
+  <div class="scroll-x">
+    <table class="tbl" id="driver-table">
+      <thead>
+        <tr>
+          <th>기사</th><th>팀</th><th>전체</th><th>처리완료</th><th>처리율</th><th>미처리</th>
+        </tr>
+      </thead>
+      <tbody id="driver-tbody"></tbody>
+    </table>
   </div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="/js/auth.js"></script>
+<!-- ③ 거래종료 처리 업체 -->
+<div class="card">
+  <div class="card-title">🔴 거래종료 처리 업체 <span class="card-sub">이탈 확정</span></div>
+  <div class="scroll-x">
+    <table class="tbl" id="terminated-table">
+      <thead>
+        <tr>
+          <th>처리일</th><th>업체명</th><th>팀</th><th>일평균</th><th>사유</th>
+        </tr>
+      </thead>
+      <tbody id="terminated-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ④ 반복 문제 업체 -->
+<div class="card">
+  <div class="card-title">⚠️ 반복 경보 업체 <span class="card-sub">이번달 2회 이상 경보 발생</span></div>
+  <div id="repeat-content"><div class="empty-msg">로딩 중...</div></div>
+</div>
+
+<!-- ⑤ 미처리 경보 -->
+<div class="card">
+  <div class="card-title">⏳ 미처리 경보 <span class="card-sub">기사 확인보고 필요</span></div>
+  <div class="scroll-x">
+    <table class="tbl" id="pending-table">
+      <thead>
+        <tr>
+          <th>등급</th><th>업체</th><th>팀</th><th>경보일</th><th>연속</th><th>일평균</th>
+        </tr>
+      </thead>
+      <tbody id="pending-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
 <script>
-const firebaseConfig = {
-  apiKey: "AIzaSyCMUqXPDxPyqnRIBRV2UIgxbShWzEUD5yg",
-  authDomain: "jundosirak-delivery-ae87f.firebaseapp.com",
-  projectId: "jundosirak-delivery-ae87f",
-  storageBucket: "jundosirak-delivery-ae87f.firebasestorage.app",
-  messagingSenderId: "758374011966",
-  appId: "1:758374011966:web:b379171e702e521830ed6f"
+const TEAM_NAMES = {
+  team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일',
+  team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
 };
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
-// 코스→기사 매핑
 const COURSE_DRIVER = {
   '코스1':'표창훈','코스2':'이근일','코스3':'김민기','코스4':'오철석',
   '코스5':'이진우','코스6':'박인수','코스7':'안준수','코스8':'최용혁',
@@ -165,374 +154,257 @@ const COURSE_DRIVER = {
   '코스13':'이창목','코스14':'김동완','코스15':'전태영','코스16':'김종호',
   '코스17':'류대현','코스18':'최준은','코스19':'조홍철'
 };
-const TEAM_NAMES = {
-  'team1':'1팀 준고','team2':'2팀 해운대','team3':'3팀 공오일',
-  'team4':'4팀 연수남','team5':'5팀 아가리','team6':'6팀 도세마','team7':'7팀 강서영'
-};
-const DOW_NAMES = ['월','화','수','목','금'];
 
-// PERIODS는 동적으로 getPeriods(ym) 으로 생성
+const db = firebase.firestore();
+let _reasons = {}; // key → {label, color, autoAction}
 
-let currentData = [];
-let currentPeriod = null;
-let currentYm = '';
-
-// 집계행 필터링
-const AGG_NAMES = new Set(['소계','합계','총계','계','중계','subtotal','total']);
-
-// 이름 정규화: 공백 제거, 소문자, "주식회사/(주)" prefix 제거
-function normName(n) {
-  let s = String(n||'').trim();
-  if (!s) return '';
-  // "주식회사 ", "(주)", "주)" prefix 제거
-  s = s.replace(/^\s*(주식회사|\(주\)|주\))\s*/g, '');
-  // 공백/특수문자 제거 후 소문자
-  s = s.replace(/\s+/g, '').toLowerCase();
-  return s;
-}
-
-// 지역 suffix 제거 ("_해운대구", "_부산진구" 등)
-function stripRegionSuffix(n) {
-  return n.replace(/_[가-힣]+[구군동]\b/g, '')
-          .replace(/_[가-힣]{2,10}$/g, '');
-}
-
-// 뷔페형 하위 주문(_이름) 본체만 추출
-function stripPersonSuffix(n) {
-  // 첫 언더스코어 이후 제거 (예: 부산베스트내과_안미연 → 부산베스트내과)
-  const idx = n.indexOf('_');
-  return idx > 0 ? n.substring(0, idx) : n;
-}
-
-// 5단계 매칭: orderedSet은 미리 정규화된 값들의 Map (원본 보존용)
-// 반환값: 매칭되면 true
-function isOrdered(clientName, normalizedOrderedSet) {
-  const cn = normName(clientName);
-  if (!cn) return false;
-  // 1단계: 완전 일치
-  if (normalizedOrderedSet.has(cn)) return true;
-  // 2단계: 지역 suffix 제거 후 매칭
-  const cn2 = stripRegionSuffix(cn);
-  if (cn2 !== cn && normalizedOrderedSet.has(cn2)) return true;
-  // 3단계: 본체 prefix 매칭 (부산베스트내과_xxx 같은 케이스)
-  const cnBase = stripPersonSuffix(cn);
-  // 4단계: orderedSet 안에 본체 이름 포함 매칭 (뷔페형)
-  for (const o of normalizedOrderedSet) {
-    if (cn === o) return true;
-    if (cn2 === o || cn2 === stripRegionSuffix(o)) return true;
-    // 본체 일치 (부산베스트내과 vs 부산베스트내과_안미연)
-    if (cnBase && o.startsWith(cnBase + '_')) return true;
-    if (cn.startsWith(stripPersonSuffix(o) + '_')) return true;
+// 권한 확인
+(() => {
+  const stored = localStorage.getItem('jundosirak_user');
+  if (!stored) { alert('로그인이 필요합니다.'); location.href = '/index.html'; return; }
+  const me = JSON.parse(stored);
+  if (me.role !== 'admin' && me.role !== 'manager') {
+    alert('관리자 전용 페이지입니다.'); history.back(); return;
   }
-  return false;
-}
+})();
 
-// orderedClients 배열 → 정규화된 Set (집계행 제외)
-function buildOrderedSet(names) {
-  const set = new Set();
-  (names||[]).forEach(n => {
-    const raw = String(n||'').trim();
-    if (!raw) return;
-    if (AGG_NAMES.has(raw.toLowerCase())) return; // 집계행 제외
-    set.add(normName(raw));
-  });
-  return set;
-}
-
-function getLastDay(ym) {
-  const [y, m] = ym.split('-').map(Number);
-  return new Date(y, m, 0).getDate();
-}
-
-function getPeriods(ym) {
-  const last = getLastDay(ym);
-  return {
-    1: { label: `${ym.replace('-','년 ')}월 1일~10일`, start: `${ym}-01`, end: `${ym}-10` },
-    2: { label: `${ym.replace('-','년 ')}월 11일~20일`, start: `${ym}-11`, end: `${ym}-20` },
-    3: { label: `${ym.replace('-','년 ')}월 21일~${last}일`, start: `${ym}-21`, end: `${ym}-${String(last).padStart(2,'0')}` },
-    4: { label: `${ym.replace('-','년 ')}월 전체`, start: `${ym}-01`, end: `${ym}-${String(last).padStart(2,'0')}` },
-  };
-}
-
-function initMonthSelect() {
+function initMonthSelector() {
+  const sel = document.getElementById('filter-month');
   const now = new Date();
-  const ySel = document.getElementById('year-select');
-  const mSel = document.getElementById('mon-select');
-
-  // 년도: 2026부터 현재+2년까지
-  ySel.innerHTML = '';
-  for (let y = 2026; y <= now.getFullYear() + 2; y++) {
+  for (let i = 0; i < 6; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const ym = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
     const opt = document.createElement('option');
-    opt.value = y;
-    opt.textContent = `${y}년`;
-    ySel.appendChild(opt);
+    opt.value = ym;
+    opt.textContent = ym.replace('-','년 ') + '월';
+    if (i === 0) opt.selected = true;
+    sel.appendChild(opt);
   }
-  ySel.value = now.getFullYear();
-
-  // 월: 1~12월
-  mSel.innerHTML = '';
-  for (let m = 1; m <= 12; m++) {
-    const opt = document.createElement('option');
-    opt.value = String(m).padStart(2,'0');
-    opt.textContent = `${m}월`;
-    mSel.appendChild(opt);
-  }
-  mSel.value = String(now.getMonth()+1).padStart(2,'0');
-
-  currentYm = `${ySel.value}-${mSel.value}`;
-  updateBtnTitles();
 }
 
-function onMonthChange() {
-  const y = document.getElementById('year-select').value;
-  const m = document.getElementById('mon-select').value;
-  currentYm = `${y}-${m}`;
-  updateBtnTitles();
-  // 기간 버튼 active 초기화
-  [1,2,3,4].forEach(i => document.getElementById('btn-p'+i).classList.remove('active'));
-  document.getElementById('result-content').style.display = 'none';
-  document.getElementById('result-empty').style.display = 'block';
-  currentData = [];
-  currentPeriod = null;
+async function loadReasonMap() {
+  try {
+    const snap = await db.collection('alert_reasons').get();
+    _reasons = {};
+    snap.forEach(d => { _reasons[d.id] = d.data(); });
+  } catch(e) { console.warn('reason 로드 실패:', e); }
 }
 
-function updateBtnTitles() {
-  if (!currentYm) return;
-  const periods = getPeriods(currentYm);
-  const last = getLastDay(currentYm);
-  const m = parseInt(currentYm.split('-')[1]);
-  document.getElementById('btn-p1-title').textContent = `📅 ${m}월 1일~10일`;
-  document.getElementById('btn-p2-title').textContent = `📅 ${m}월 11일~20일`;
-  document.getElementById('btn-p3-title').textContent = `📅 ${m}월 21일~${last}일`;
-  document.getElementById('btn-p4-title').textContent = `📊 ${m}월 전체`;
-}
+async function loadAll() {
+  await loadReasonMap();
+  const ym = document.getElementById('filter-month').value;
+  const teamFilter = document.getElementById('filter-team').value;
+  document.getElementById('summary-period').textContent = ym.replace('-','년 ') + '월';
 
-async function selectPeriod(p) {
-  if (!currentYm) return;
-  // 버튼 active 처리
-  [1,2,3,4].forEach(i => {
-    document.getElementById('btn-p'+i).classList.toggle('active', i===p);
-  });
-  currentPeriod = p;
-  document.getElementById('result-empty').style.display = 'none';
-  document.getElementById('result-loading').style.display = 'block';
-  document.getElementById('result-content').style.display = 'none';
+  const start = `${ym}-01`;
+  const [y, m] = ym.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const end = `${ym}-${String(lastDay).padStart(2,'0')}`;
 
-  const periods = getPeriods(currentYm);
-  const { label, start, end } = periods[p];
-
-  // sales_daily 조회 (docId가 YYYY-MM-DD)
-  const salesSnap = await db.collection('sales_daily')
-    .where(firebase.firestore.FieldPath.documentId(), '>=', start)
-    .where(firebase.firestore.FieldPath.documentId(), '<=', end)
-    .get();
-  const byDate = {};
-  let totalOrderedCount = 0; // 데이터 가용성 체크용
-  let emptyDates = []; // 업체명 파싱 실패된 날짜
-  salesSnap.forEach(d => {
-    const data = d.data();
-    const dt = data.date || d.id;
-    const clients = data.orderedClients || [];
-    byDate[dt] = buildOrderedSet(clients);
-    totalOrderedCount += clients.length;
-    if (clients.length === 0) emptyDates.push(dt);
-  });
-
-  // 데이터 가용성 경고 (업체명 파싱 실패된 날짜가 있으면 표시)
-  const warningBox = document.getElementById('result-warning');
-  if (warningBox) {
-    if (salesSnap.size > 0 && emptyDates.length > 0) {
-      const msg = totalOrderedCount === 0
-        ? `⚠️ <strong>${label}</strong>에 해당하는 날짜(${salesSnap.size}일) 전체가 업체명 파싱 실패 상태입니다.<br>이 구간은 미주문 업체 분석이 <strong>불가능</strong>하며, 아래 결과는 <strong>신뢰할 수 없습니다</strong>.<br><small style="color:#744210;">💡 해결: 해당 날짜 일일장부 엑셀을 재업로드하면 자동 복원됩니다. (4/21부터는 업로드 로직이 수정되어 정상 저장됨)</small>`
-        : `⚠️ 이 구간 ${salesSnap.size}일 중 <strong>${emptyDates.length}일</strong>(${emptyDates.slice(0,5).join(', ')}${emptyDates.length>5?'...':''})이 업체명 파싱 실패 상태입니다. 해당 날짜 업체는 "미주문"으로 잘못 잡힐 수 있어요.<br><small style="color:#744210;">💡 해결: 해당 엑셀 파일을 재업로드해주세요.</small>`;
-      warningBox.innerHTML = `<div style="background:#fff5f5;border:2px solid #feb2b2;border-radius:10px;padding:14px;margin-bottom:14px;color:#c53030;font-size:13px;line-height:1.6;">${msg}</div>`;
-    } else {
-      warningBox.innerHTML = '';
-    }
-  }
-  const availDates = Object.keys(byDate).sort();
-
-  // clients 조회 (active=true만)
-  const clientsSnap = await db.collection('clients').get();
-  const clients = [];
-  clientsSnap.forEach(d => {
-    const data = d.data();
-    if (data.active === false) return; // 비활성 거래처 제외
-    clients.push({ id: d.id, ...data });
-  });
-
-  // 미주문 업체 계산: 해당 기간 영업일에 한 번도 주문 없는 업체
-  const noOrderClients = [];
-  for (const client of clients) {
-    // 필드명: name (clientName 아님) / dailyAvg (dailyAvgOrder 아님)
-    const clientName = client.name;
-    const { orderDays, dailyAvg, teamId, courseId } = client;
-    if (!clientName) continue;
-    if (!orderDays || !Array.isArray(orderDays) || orderDays.length === 0) continue;
-
-    // 이 기간에 주문해야 하는 날짜 필터
-    // orderDays는 ["mon","tue",...] 문자열 배열 또는 [0,1,...] 숫자 배열 모두 지원
-    const DOW_STR = ['sun','mon','tue','wed','thu','fri','sat'];
-    const bizDaysForClient = availDates.filter(dt => {
-      const dow = new Date(dt).getDay();
-      const dowIdx = dow === 0 ? 6 : dow - 1; // 월=0, 일=6
-      const dowStr = DOW_STR[dow]; // 'mon','tue',...
-      return orderDays.includes(dowIdx) || orderDays.includes(dowStr);
+  // alerts 조회 (date 기준)
+  let alerts = [];
+  try {
+    const snap = await db.collection('alerts')
+      .where('date','>=',start).where('date','<=',end).get();
+    snap.forEach(d => alerts.push({ id: d.id, ...d.data() }));
+  } catch(e) {
+    // date 없는 구 문서 대응: 전체 조회 후 필터
+    const all = await db.collection('alerts').get();
+    all.forEach(d => {
+      const a = { id: d.id, ...d.data() };
+      const dt = a.date || (a.createdAt && a.createdAt.toDate ? a.createdAt.toDate().toISOString().slice(0,10) : '');
+      if (dt >= start && dt <= end) alerts.push(a);
     });
-    if (bizDaysForClient.length === 0) continue; // 이 기간에 주문요일 없으면 제외
-
-    // 한 번이라도 주문 들어왔는지 체크
-    const orderedAnyDay = bizDaysForClient.some(dt => isOrdered(clientName, byDate[dt]||new Set()));
-    if (!orderedAnyDay) {
-      noOrderClients.push({
-        clientName,
-        teamId: teamId||'',
-        courseId: courseId||'',
-        dailyAvgOrder: dailyAvg||0,
-        isPriority: (dailyAvg||0) >= 6,
-        orderDays: orderDays||[],
-        bizDaysCount: bizDaysForClient.length,
-        driver: COURSE_DRIVER[courseId] || '-',
-        lastOrderDate: null // 아래에서 채움
-      });
-    }
   }
+  if (teamFilter) alerts = alerts.filter(a => a.teamId === teamFilter);
 
-  // 미주문 업체의 마지막 주문일 = 해당 월(=이번 조회 범위) 내 최종 주문일
-  // 여기서는 미주문 업체만 넣었으니 전부 "이번 월 무주문" 상태
-  // 단, bizDaysForClient 안에서 한 번이라도 있었으면 noOrderClients에 안 들어옴
-  // → 따라서 lastOrderDate는 null 유지 (= "해당 월 무주문")
+  renderSummary(alerts);
+  renderDriverTable(alerts);
+  renderTerminated(alerts);
+  renderRepeat(alerts);
+  renderPending(alerts);
+}
 
-  currentData = noOrderClients;
-  document.getElementById('result-loading').style.display = 'none';
-  document.getElementById('result-content').style.display = 'block';
-  document.getElementById('result-title').textContent = `📉 ${label} 미주문 업체`;
+function renderSummary(alerts) {
+  const total = alerts.length;
+  const resolved = alerts.filter(a => a.resolved).length;
+  const pending = total - resolved;
+  const resolveRate = total ? Math.round(resolved / total * 100) : 0;
 
-  // 요약 카드
-  const priorityCount = noOrderClients.filter(c=>c.isPriority).length;
-  const teamCount = new Set(noOrderClients.map(c=>c.teamId)).size;
+  const urgent = alerts.filter(a => a.grade === 'urgent').length;
+  const check = alerts.filter(a => a.grade === 'check').length;
+
   document.getElementById('summary-cards').innerHTML = `
-    <div class="summary-card"><div class="s-num">${noOrderClients.length}</div><div class="s-label">미주문 업체 수</div></div>
-    <div class="summary-card"><div class="s-num" style="color:#c53030">${priorityCount}</div><div class="s-label">1순위 업체</div></div>
-    <div class="summary-card"><div class="s-num">${availDates.length}</div><div class="s-label">해당 기간 영업일</div></div>
+    <div class="summary-card">
+      <div class="summary-val" style="color:#1a4731;">${total}</div>
+      <div class="summary-label">전체 경보</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" style="color:#276749;">${resolved} <span style="font-size:13px;color:#718096;font-weight:700;">(${resolveRate}%)</span></div>
+      <div class="summary-label">처리 완료</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-val" style="color:#c53030;">${pending}</div>
+      <div class="summary-label">미처리</div>
+    </div>
   `;
 
-  renderTable();
+  // 사유 분포 (처리 완료 경보만)
+  const resolvedAlerts = alerts.filter(a => a.resolved);
+  const byReason = {};
+  resolvedAlerts.forEach(a => {
+    const key = a.resolveReasonKey || 'unclassified';
+    if (!byReason[key]) byReason[key] = { count: 0, label: a.resolveReasonLabel || '(사유 없음)' };
+    byReason[key].count++;
+  });
+  const reasonArr = Object.entries(byReason).map(([k,v]) => ({ key:k, ...v })).sort((a,b)=>b.count-a.count);
+  const maxCount = Math.max(1, ...reasonArr.map(r=>r.count));
+
+  const reasonHTML = reasonArr.length === 0
+    ? '<div class="empty-msg" style="padding:10px;">사유 분류된 경보 없음</div>'
+    : `<div style="font-size:12px;font-weight:700;color:#4a5568;margin-top:14px;margin-bottom:6px;">처리 사유 분포</div>` +
+      reasonArr.map(r => {
+        const pct = (r.count / maxCount * 100).toFixed(0);
+        const colorClass = r.key.startsWith('custom_') ? 'reason-color-custom' : `reason-color-${r.key}`;
+        return `
+          <div class="reason-row">
+            <span class="reason-label">${r.label}</span>
+            <div class="reason-bar-wrap">
+              <div class="reason-bar ${colorClass}" style="width:${pct}%;"></div>
+            </div>
+            <span class="reason-count">${r.count}건</span>
+          </div>
+        `;
+      }).join('');
+  document.getElementById('summary-reason').innerHTML = reasonHTML;
 }
 
-function renderTable() {
-  const teamFilter = document.getElementById('filter-team').value;
-  const priorityFilter = document.getElementById('filter-priority').value;
-  const searchFilter = document.getElementById('filter-search').value.trim().toLowerCase();
-
-  let filtered = currentData.filter(c => {
-    if (teamFilter && c.teamId !== teamFilter) return false;
-    if (priorityFilter === '1' && !c.isPriority) return false;
-    if (priorityFilter === '0' && c.isPriority) return false;
-    if (searchFilter && !c.clientName.toLowerCase().includes(searchFilter)) return false;
-    return true;
+function renderDriverTable(alerts) {
+  const byDriver = {};
+  alerts.forEach(a => {
+    const driver = COURSE_DRIVER[a.courseId] || '미배정';
+    if (!byDriver[driver]) byDriver[driver] = { total: 0, resolved: 0, teamId: a.teamId };
+    byDriver[driver].total++;
+    if (a.resolved) byDriver[driver].resolved++;
   });
 
-  // 1순위 먼저, 그 다음 팀 순
-  filtered.sort((a,b) => {
-    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
-    return (a.teamId||'').localeCompare(b.teamId||'');
-  });
+  const rows = Object.entries(byDriver)
+    .map(([name, v]) => ({ name, ...v, rate: v.total ? Math.round(v.resolved/v.total*100) : 0, pending: v.total - v.resolved }))
+    .sort((a,b) => b.total - a.total);
 
-  document.getElementById('result-count').textContent = `총 ${filtered.length}개 업체`;
-
-  const tbody = document.getElementById('result-tbody');
-  if (filtered.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:#a0aec0">해당 조건의 미주문 업체가 없습니다.</td></tr>';
+  const tbody = document.getElementById('driver-tbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">경보 없음</td></tr>';
     return;
   }
-
-  // 마지막 주문일 포맷 + 경과일 계산
-  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })).toISOString().slice(0,10);
-  function formatLastOrder(dt, ym) {
-    if (!dt) {
-      // 해당 월에 주문 전혀 없음 → 이번 달 1일부터 오늘까지 경과일 계산
-      const monthStart = ym + '-01';
-      const daysAgo = Math.floor((new Date(today) - new Date(monthStart)) / 86400000);
-      const [y, m] = ym.split('-').map(Number);
-      return `<div style="font-size:12px;color:#c53030;font-weight:700;">${m}월 무주문</div><div style="font-size:10px;color:#c53030;font-weight:700;">최소 ${daysAgo}일+ 전</div>`;
-    }
-    const [y, m, d] = dt.split('-').map(Number);
-    const daysAgo = Math.floor((new Date(today) - new Date(dt)) / 86400000);
-    const dayColor = daysAgo > 14 ? '#c53030' : daysAgo > 7 ? '#d97706' : '#276749';
-    return `<div style="font-size:12px;">${m}/${d}</div><div style="font-size:10px;color:${dayColor};font-weight:700;">${daysAgo}일 전</div>`;
-  }
-
-  tbody.innerHTML = filtered.map(c => `
-    <tr>
-      <td><strong>${c.clientName}</strong>${c.isPriority ? ' <span style="font-size:10px;background:#fed7d7;color:#c53030;padding:1px 5px;border-radius:8px;">1순위</span>' : ''}</td>
-      <td><span class="badge-team">${TEAM_NAMES[c.teamId]||c.teamId||'-'}</span></td>
-      <td>${c.courseId||'-'} <span style="font-size:11px;color:#718096">(${c.driver})</span></td>
-      <td>${c.dailyAvgOrder}개</td>
-      <td>${c.isPriority ? '🔴 예' : '⚪ 아니오'}</td>
-      <td>${c.orderDays.map(d=>DOW_NAMES[d]).join('/')}</td>
-      <td style="text-align:center">${c.bizDaysCount}일</td>
-      <td style="text-align:center">${formatLastOrder(c.lastOrderDate, currentYm)}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = rows.map(r => {
+    const rateColor = r.rate >= 80 ? '#276749' : r.rate >= 50 ? '#d97706' : '#c53030';
+    return `<tr>
+      <td style="font-weight:600;">${r.name}</td>
+      <td>${TEAM_NAMES[r.teamId] || r.teamId || '-'}</td>
+      <td>${r.total}</td>
+      <td style="color:#276749;font-weight:700;">${r.resolved}</td>
+      <td style="color:${rateColor};font-weight:700;">${r.rate}%</td>
+      <td style="color:#c53030;font-weight:700;">${r.pending}</td>
+    </tr>`;
+  }).join('');
 }
 
-function downloadExcel() {
-  if (!currentData.length || !currentPeriod) return;
-  const { label } = getPeriods(currentYm)[currentPeriod];
-  const teamFilter = document.getElementById('filter-team').value;
-  const priorityFilter = document.getElementById('filter-priority').value;
-  const searchFilter = document.getElementById('filter-search').value.trim().toLowerCase();
-
-  let filtered = currentData.filter(c => {
-    if (teamFilter && c.teamId !== teamFilter) return false;
-    if (priorityFilter === '1' && !c.isPriority) return false;
-    if (priorityFilter === '0' && c.isPriority) return false;
-    if (searchFilter && !c.clientName.toLowerCase().includes(searchFilter)) return false;
-    return true;
-  });
-  filtered.sort((a,b) => {
-    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
-    return (a.teamId||'').localeCompare(b.teamId||'');
-  });
-
-  const rows = [['업체명','팀','코스','담당기사','일평균주문','1순위여부','주문요일','해당월영업일수(해당월에주문했어야할일수)','마지막주문일(이업체가최근주문한날짜)','경과일']];
-  const todayStr = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'})).toISOString().slice(0,10);
-  const monthStartStr = currentYm + '-01';
-  filtered.forEach(c => {
-    const daysAgo = c.lastOrderDate
-      ? Math.floor((new Date(todayStr) - new Date(c.lastOrderDate)) / 86400000)
-      : Math.floor((new Date(todayStr) - new Date(monthStartStr)) / 86400000);
-    rows.push([
-      c.clientName,
-      TEAM_NAMES[c.teamId]||c.teamId||'-',
-      c.courseId||'-',
-      c.driver||'-',
-      c.dailyAvgOrder,
-      c.isPriority ? '1순위' : '일반',
-      c.orderDays.map(d=>DOW_NAMES[d]).join('/'),
-      c.bizDaysCount,
-      c.lastOrderDate || `${currentYm.split('-')[1]}월 무주문`,
-      c.lastOrderDate ? (daysAgo + '일 전') : ('최소 ' + daysAgo + '일+ 전')
-    ]);
-  });
-
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [30,15,10,10,12,10,15,15,14,10].map(w=>({wch:w}));
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, '미주문업체');
-  XLSX.writeFile(wb, `미주문업체_${label.replace(/\s/g,'_')}.xlsx`);
-}
-
-// 인증 체크 + 초기화
-window.addEventListener('DOMContentLoaded', () => {
-  const user = JSON.parse(localStorage.getItem('jundosirak_user')||'null');
-  if (!user || user.role !== 'admin') {
-    location.href = '/index.html';
+function renderTerminated(alerts) {
+  const terminated = alerts.filter(a => a.resolveReasonKey === 'terminated');
+  const tbody = document.getElementById('terminated-tbody');
+  if (!terminated.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-msg">거래종료 처리된 업체 없음 ✅</td></tr>';
     return;
   }
-  initMonthSelect();
-});
+  terminated.sort((a,b) => {
+    const da = a.resolvedAt?.toDate?.()?.getTime() || 0;
+    const db = b.resolvedAt?.toDate?.()?.getTime() || 0;
+    return db - da;
+  });
+  tbody.innerHTML = terminated.map(a => {
+    const resolvedDate = a.resolvedAt?.toDate?.();
+    const dt = resolvedDate ? `${resolvedDate.getMonth()+1}/${resolvedDate.getDate()}` : '-';
+    return `<tr>
+      <td>${dt}</td>
+      <td style="font-weight:700;color:#c53030;">${a.name || a.clientName}</td>
+      <td>${TEAM_NAMES[a.teamId] || a.teamId || '-'}</td>
+      <td>${a.dailyAvg || 0}개</td>
+      <td style="font-size:11px;color:#718096;">${a.resolveCustomText || '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderRepeat(alerts) {
+  const byClient = {};
+  alerts.forEach(a => {
+    const name = a.name || a.clientName;
+    if (!name) return;
+    if (!byClient[name]) byClient[name] = { count: 0, teamId: a.teamId, reasons: [], dailyAvg: a.dailyAvg || 0 };
+    byClient[name].count++;
+    if (a.resolveReasonLabel) byClient[name].reasons.push(a.resolveReasonLabel);
+  });
+
+  const repeats = Object.entries(byClient)
+    .filter(([_, v]) => v.count >= 2)
+    .map(([name, v]) => ({ name, ...v }))
+    .sort((a,b) => b.count - a.count);
+
+  const container = document.getElementById('repeat-content');
+  if (!repeats.length) {
+    container.innerHTML = '<div class="empty-msg">반복 경보 업체 없음 ✅</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      ${repeats.map(r => {
+        const reasonCounts = {};
+        r.reasons.forEach(x => reasonCounts[x] = (reasonCounts[x]||0)+1);
+        const reasonText = Object.entries(reasonCounts).map(([k,v]) => `${k} ${v}회`).join(' / ') || '사유 미입력';
+        const bg = r.count >= 3 ? '#fff5f5' : '#fffaf0';
+        const border = r.count >= 3 ? '#feb2b2' : '#fed7aa';
+        return `
+          <div style="background:${bg};border-left:3px solid ${border};border-radius:8px;padding:10px 12px;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span style="font-weight:700;font-size:13px;">${r.name}</span>
+              <span class="badge" style="background:${border};color:#fff;">${r.count}회</span>
+              <span style="font-size:11px;color:#718096;">${TEAM_NAMES[r.teamId] || '-'}</span>
+              <span style="font-size:11px;color:#718096;">· 일평균 ${r.dailyAvg}개</span>
+            </div>
+            <div style="font-size:11px;color:#4a5568;margin-top:4px;">📋 ${reasonText}</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderPending(alerts) {
+  const pending = alerts.filter(a => !a.resolved);
+  pending.sort((a,b) => (b.consecutiveDays||0) - (a.consecutiveDays||0));
+  const tbody = document.getElementById('pending-tbody');
+  if (!pending.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">미처리 경보 없음 ✅</td></tr>';
+    return;
+  }
+  tbody.innerHTML = pending.map(a => {
+    const grade = a.grade === 'urgent' ? '<span class="badge b-urgent">🔴 즉시</span>' :
+                  a.grade === 'check' ? '<span class="badge b-check">🟠 확인보고</span>' : '<span class="badge b-pending">-</span>';
+    return `<tr>
+      <td>${grade}</td>
+      <td style="font-weight:600;">${a.name || a.clientName || '-'}</td>
+      <td>${TEAM_NAMES[a.teamId] || a.teamId || '-'}</td>
+      <td style="font-size:11px;color:#718096;">${a.date || '-'}</td>
+      <td style="font-weight:700;color:#c53030;">${a.consecutiveDays || 0}일</td>
+      <td>${a.dailyAvg || 0}개</td>
+    </tr>`;
+  }).join('');
+}
+
+// 초기화
+initMonthSelector();
+loadAll();
 </script>
+
 </body>
 </html>
