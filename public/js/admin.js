@@ -129,22 +129,28 @@ async function loadAdminData() {
 }
 
 function renderSummaryCards() {
+  // 일평균 기준 비교 (A안): 기준 일평균 vs 실제 일평균
   let totalCumul = 0;
-  let totalBaseline = 0;
+  let totalBaselineDailyAvg = 0;
+  let bizDays = 0;
   allTeamsData.forEach(t => {
     const s = allStatsData[t.id] || {};
     const hasStats = Object.keys(s).length > 0;
     totalCumul += hasStats ? (s.cumulativeTotal || 0) : 0;
-    totalBaseline += hasStats ? (s.baselineCumulative || 0) : 0;
+    totalBaselineDailyAvg += t.baselineDailyAvg || 0;
+    if (hasStats && !bizDays) bizDays = s.bizDays || 0;
   });
-  const totalDiff = totalCumul - totalBaseline;
-  const totalDiffStr = totalDiff >= 0 ? `+${numFormat(totalDiff)}` : numFormat(totalDiff);
 
-  // 전체 수량: sales_daily 기준 (조식배송+미배정 포함), 팀별 기준대비는 팀합산 기준
+  // 실제 일평균 vs 기준 일평균 차이
+  const actualDailyAvg = bizDays > 0 ? Math.round(totalCumul / bizDays) : 0;
+  const dailyAvgDiff = actualDailyAvg - totalBaselineDailyAvg;
+  const dailyAvgDiffStr = dailyAvgDiff >= 0 ? `+${numFormat(dailyAvgDiff)}` : numFormat(dailyAvgDiff);
+
+  // 전체 수량: sales_daily 기준 (조식배송+미배정 포함)
   const realTotal = window._realGrandTotal || totalCumul;
   document.getElementById('summaryTotal').innerHTML = `
     <div class="summary-val">${numFormat(realTotal)}</div>
-    <div class="summary-sub ${totalDiff >= 0 ? 'positive' : 'negative'}">팀별 기준대비 ${totalDiffStr}</div>
+    <div class="summary-sub ${dailyAvgDiff >= 0 ? 'positive' : 'negative'}">일평균 기준대비 ${dailyAvgDiffStr}개/일</div>
   `;
 
   let bReached = 0;
@@ -218,18 +224,18 @@ async function renderAdminTeamRanking() {
     const baseline = t.baselineDailyAvg || 0;
     const evalScore = evalScores[t.id] ?? null;
     return { ...t, cumul, dailyAvg, dailyAvgDiff, cumulDiff, grade, bizDays, baseline, evalScore };
-  }).sort((a, b) => b.cumulDiff - a.cumulDiff);
+  }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
 
   const rows = ranked.map((t, i) => {
     const gColor = gradeColor(t.grade);
     const isAdmin = adminUser && (adminUser.role === 'admin' || adminUser.role === 'manager');
     const gradeBadge = isAdmin
       ? `<span class="grade-badge-sm" style="background:${gColor};cursor:pointer;"
-           onclick="alert('[ ${t.name} 등급 상세 ]\\n등급: ${t.grade}\\n일평균: ${t.dailyAvg}개\\n기준: ${t.baselineDailyAvg}개\\n기준대비(누적): ${t.cumulDiff >= 0 ? '+' : ''}${t.cumulDiff}개')"
+           onclick="alert('[ ${t.name} 등급 상세 ]\\n등급: ${t.grade}\\n일평균: ${t.dailyAvg}개\\n기준일평균: ${t.baselineDailyAvg}개\\n일평균 기준대비: ${t.dailyAvgDiff >= 0 ? '+' : ''}${t.dailyAvgDiff}개/일')"
          >${t.grade}</span>`
       : `<span class="grade-badge-sm" style="background:${gColor}">${t.grade}</span>`;
-    const diffStr = t.cumulDiff >= 0 ? `+${numFormat(t.cumulDiff)}` : numFormat(t.cumulDiff);
-    const diffColor = t.cumulDiff >= 0 ? '#276749' : '#e53e3e';
+    const diffStr = t.dailyAvgDiff >= 0 ? `+${t.dailyAvgDiff}` : `${t.dailyAvgDiff}`;
+    const diffColor = t.dailyAvgDiff >= 0 ? '#276749' : '#e53e3e';
     const evalStr = t.evalScore !== null ? `${t.evalScore}점` : '-';
     const evalColor = t.evalScore !== null ? (t.evalScore >= 80 ? '#276749' : t.evalScore >= 60 ? '#c05621' : '#c53030') : '#a0aec0';
     return `
@@ -248,7 +254,7 @@ async function renderAdminTeamRanking() {
   container.innerHTML = `
     <table class="admin-table">
       <thead>
-        <tr><th>순위</th><th>팀명</th><th>누적수량</th><th>일평균</th><th>기준대비</th><th>평가점수</th><th>등급</th></tr>
+        <tr><th>순위</th><th>팀명</th><th>누적수량</th><th>일평균</th><th>기준대비(일평균)</th><th>평가점수</th><th>등급</th></tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
