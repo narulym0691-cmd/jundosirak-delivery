@@ -2462,11 +2462,20 @@
   };
 
   window.editDriverName = async (id, currentName) => {
-    const newName = prompt(`새 이름을 입력하세요.\n현재: ${currentName}`, currentName);
+    const newName = prompt(
+      `⚠️ 이름 변경 시 주의사항\n\n` +
+      `• 지역(코스)은 변경되지 않습니다.\n` +
+      `• 기존 엑셀 업로드 데이터에는 옛 이름이 남아있습니다.\n` +
+      `• 다음 엑셀 업로드부터 새 이름이 반영됩니다.\n` +
+      `• 판매수량 통계는 지역 기준이므로 영향 없습니다.\n\n` +
+      `새 이름을 입력하세요.\n현재: ${currentName}`,
+      currentName
+    );
     if (newName === null) return;
     const trimmed = newName.trim();
     if (!trimmed) { alert('이름은 비워둘 수 없습니다.'); return; }
     if (trimmed === currentName) return;
+    if (!confirm(`${currentName} → ${trimmed}\n\n정말 변경하시겠습니까?`)) return;
     try {
       await db.collection('users').doc(id).update({ name: trimmed });
       alert(`✅ 이름 변경 완료: ${currentName} → ${trimmed}`);
