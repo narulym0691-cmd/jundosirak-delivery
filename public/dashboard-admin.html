@@ -149,10 +149,19 @@ let _users = [], _claims = [], _monthly = {}, _clients = [], _alerts = [], _dire
 let _curYM = '', _curWeek = '', _curTeam = '';
 
 // ── 초기화 ──────────────────────────────────────
-// Auth 상태 확인 후 로딩 (세션 없으면 로그인 페이지로)
-auth.onAuthStateChanged(async user => {
-  if (!user) {
+// localStorage 기반 로그인 확인 (하위호환: jd_user → jundosirak_user)
+(async () => {
+  const stored = localStorage.getItem('jundosirak_user') || localStorage.getItem('jd_user');
+  if (!stored) {
+    alert('로그인이 필요합니다.');
     location.href = '/index.html';
+    return;
+  }
+  let me;
+  try { me = JSON.parse(stored); } catch(e) { location.href = '/index.html'; return; }
+  if (me.role !== 'admin' && me.role !== 'manager') {
+    alert('접근 권한이 없습니다.');
+    history.back();
     return;
   }
   try {
@@ -162,7 +171,7 @@ auth.onAuthStateChanged(async user => {
     document.getElementById('mainContent').innerHTML =
       `<div style="color:#e53e3e;padding:20px;text-align:center;">로딩 오류: ${e.message}<br><br><a href="/index.html" style="color:#2b6cb0;">다시 로그인</a></div>`;
   }
-});
+})();
 
 function initFilters() {
   const sel = document.getElementById('filterMonth');
