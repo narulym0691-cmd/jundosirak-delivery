@@ -941,14 +941,37 @@
     </div>
     <!-- 탭 버튼 -->
     <div style="display:flex;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0;margin-bottom:20px;">
-      <button id="ncTab-history" onclick="switchNcTab('history')"
+      <button id="ncTab-send" onclick="switchNcTab('send')"
         style="flex:1;padding:10px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#1a4731;color:#fff;">
+        📤 문자 발송
+      </button>
+      <button id="ncTab-history" onclick="switchNcTab('history')"
+        style="flex:1;padding:10px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#f7fafc;color:#4a5568;">
         📋 발송내역
       </button>
       <button id="ncTab-template" onclick="switchNcTab('template')"
         style="flex:1;padding:10px 0;font-size:13px;font-weight:600;border:none;cursor:pointer;background:#f7fafc;color:#4a5568;">
         ✏️ 템플릿 설정
       </button>
+    </div>
+
+    <!-- 문자 발송 탭 -->
+    <div id="ncPane-send">
+      <div style="background:#ebf8ff;border-left:4px solid #2b6cb0;border-radius:6px;padding:12px;margin-bottom:14px;font-size:12px;color:#2b6cb0;line-height:1.6;">
+        💡 구글시트의 신규업체 데이터를 기반으로 <strong>오늘 처음 주문한 업체</strong>에게 감사 문자를 발송합니다.<br>
+        날짜를 선택하면 해당 날짜 신규업체가 조회됩니다. (기본: 오늘)
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <label style="font-size:13px;font-weight:700;color:#4a5568;">발송 날짜</label>
+        <input id="nc-send-date" type="date" style="padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+        <button onclick="loadNcSendList()" style="padding:8px 14px;background:#2b6cb0;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">🔄 조회</button>
+        <button onclick="sendAllNcSms()" id="nc-send-all-btn" style="padding:8px 14px;background:#c53030;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;margin-left:auto;" disabled>📤 전체 발송</button>
+      </div>
+      <div id="nc-send-preview" style="background:#f7fafc;border-radius:8px;padding:12px;margin-bottom:12px;display:none;">
+        <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:6px;">문자 미리보기</div>
+        <div id="nc-send-preview-text" style="background:#fff;border-radius:6px;padding:10px;font-size:12px;color:#2d3748;white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto;"></div>
+      </div>
+      <div id="nc-send-list"><div style="color:#a0aec0;text-align:center;padding:30px;font-size:13px;">날짜를 선택하고 조회해주세요.</div></div>
     </div>
 
     <!-- 발송내역 탭 -->
@@ -1797,7 +1820,7 @@
       if (parts.length < 3) continue;
       const isoDate = `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
       if (isoDate === date) {
-        newOnDate.push({ name, driver, qty });
+        newOnDate.push({ name: clientName, driver, qty });
       }
     }
 
@@ -3537,20 +3560,245 @@ const NC_DEFAULT_TEMPLATES = [
 function showNewClientSmsModal() {
   _ncSmsMonth = new Date(new Date().getTime() + 9*60*60*1000).toISOString().slice(0, 7);
   document.getElementById('newClientSmsModal').style.display = 'block';
-  switchNcTab('history');
+  switchNcTab('send');
 }
 
 function switchNcTab(tab) {
   _ncCurTab = tab;
-  ['history','template'].forEach(t => {
-    document.getElementById('ncPane-' + t).style.display = t === tab ? 'block' : 'none';
+  ['send','history','template'].forEach(t => {
+    const paneEl = document.getElementById('ncPane-' + t);
+    if (paneEl) paneEl.style.display = t === tab ? 'block' : 'none';
     const btn = document.getElementById('ncTab-' + t);
-    btn.style.background = t === tab ? '#1a4731' : '#f7fafc';
-    btn.style.color = t === tab ? '#fff' : '#4a5568';
+    if (btn) {
+      btn.style.background = t === tab ? '#1a4731' : '#f7fafc';
+      btn.style.color = t === tab ? '#fff' : '#4a5568';
+    }
   });
+  if (tab === 'send') initNcSendTab();
   if (tab === 'history') loadNcSmsData();
   if (tab === 'template') loadNcTemplates();
 }
+
+// ── 신규업체 문자 발송 탭 ──
+let _ncSendCandidates = [];
+
+function initNcSendTab() {
+  const dateInput = document.getElementById('nc-send-date');
+  if (dateInput && !dateInput.value) {
+    const today = new Date(new Date().getTime() + 9*60*60*1000).toISOString().slice(0,10);
+    dateInput.value = today;
+  }
+}
+
+async function loadNcSendList() {
+  const date = document.getElementById('nc-send-date').value;
+  if (!date) { alert('날짜를 선택해주세요.'); return; }
+  const listEl = document.getElementById('nc-send-list');
+  const sendAllBtn = document.getElementById('nc-send-all-btn');
+  listEl.innerHTML = '<div style="color:#718096;text-align:center;padding:20px;font-size:13px;">구글시트 조회 중...</div>';
+  sendAllBtn.disabled = true;
+
+  try {
+    // 구글시트에서 신규업체 가져오기
+    const SHEET_ID = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
+    const NEW_CLIENT_GID = '1000247276';
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${NEW_CLIENT_GID}`;
+
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('구글시트 접근 실패: ' + resp.status);
+    const text = await resp.text();
+    const lines = text.split('\n');
+    const targetSheetDate = date.replace(/-/g,'.'); // 2026-04-23 → 2026.04.23
+
+    const candidates = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      const rawDate = (cols[0]||'').trim();
+      const clientName = (cols[1]||'').trim().replace(/^"|"$/g,'');
+      const phoneRaw = (cols[2]||'').trim().replace(/[^0-9]/g,'');
+      const driver = (cols[5]||'').trim().replace(/^"|"$/g,'');
+      const qty = parseInt((cols[6]||'0').replace(/[^0-9]/g,'')) || 0;
+      if (rawDate !== targetSheetDate || !clientName || !phoneRaw) continue;
+      // 전화번호 정규화 (010으로 시작)
+      const phone = phoneRaw.startsWith('010') ? phoneRaw : ('0' + phoneRaw.replace(/^0+/, ''));
+      candidates.push({ clientName, phone, driver, qty });
+    }
+
+    if (!candidates.length) {
+      listEl.innerHTML = `<div style="color:#a0aec0;text-align:center;padding:30px;font-size:13px;">${date} 신규업체 없음</div>`;
+      _ncSendCandidates = [];
+      return;
+    }
+
+    // 이미 발송된 업체 체크
+    const sentSnap = await db.collection('new_client_sms')
+      .where('date','==',date).get();
+    const sentSet = new Set();
+    sentSnap.forEach(d => { const x = d.data(); if (x.clientName) sentSet.add(x.clientName); });
+
+    // 템플릿 가져오기
+    const tplDoc = await db.collection('sms_config').doc('new_client_templates').get();
+    const tplData = tplDoc.exists ? tplDoc.data() : {};
+    const templates = tplData.templates || NC_DEFAULT_TEMPLATES;
+    const selectedIdx = tplData.selected || 0;
+    const selectedTpl = templates[selectedIdx] || NC_DEFAULT_TEMPLATES[0];
+
+    _ncSendCandidates = candidates.map(c => ({
+      ...c,
+      alreadySent: sentSet.has(c.clientName),
+      message: selectedTpl.replace('{업체명}', c.clientName)
+    }));
+
+    // 미리보기 (첫 번째 후보로)
+    const firstNotSent = _ncSendCandidates.find(c => !c.alreadySent) || _ncSendCandidates[0];
+    const previewEl = document.getElementById('nc-send-preview');
+    const previewTextEl = document.getElementById('nc-send-preview-text');
+    if (firstNotSent && previewEl && previewTextEl) {
+      previewEl.style.display = 'block';
+      previewTextEl.textContent = firstNotSent.message;
+    }
+
+    // 리스트 렌더
+    const toSend = _ncSendCandidates.filter(c => !c.alreadySent).length;
+    sendAllBtn.disabled = toSend === 0;
+    sendAllBtn.textContent = toSend > 0 ? `📤 전체 발송 (${toSend}건)` : '✅ 모두 발송됨';
+
+    listEl.innerHTML = `
+      <div style="font-size:12px;color:#4a5568;margin-bottom:8px;">총 <strong>${candidates.length}</strong>건 (미발송 ${toSend}건 / 발송완료 ${candidates.length - toSend}건)</div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <thead>
+            <tr style="background:#f0fff4;border-bottom:2px solid #c6f6d5;">
+              <th style="padding:7px 8px;text-align:left;color:#276749;">업체명</th>
+              <th style="padding:7px 8px;text-align:center;color:#276749;">전화</th>
+              <th style="padding:7px 8px;text-align:left;color:#276749;">담당기사</th>
+              <th style="padding:7px 8px;text-align:center;color:#276749;">수량</th>
+              <th style="padding:7px 8px;text-align:center;color:#276749;">상태</th>
+              <th style="padding:7px 8px;text-align:center;color:#276749;">조치</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${_ncSendCandidates.map((c, i) => `
+              <tr style="border-bottom:1px solid #f0f0f0;">
+                <td style="padding:7px 8px;font-weight:600;">${c.clientName}</td>
+                <td style="padding:7px 8px;text-align:center;font-family:monospace;font-size:11px;">${c.phone}</td>
+                <td style="padding:7px 8px;">${c.driver || '-'}</td>
+                <td style="padding:7px 8px;text-align:center;">${c.qty}개</td>
+                <td style="padding:7px 8px;text-align:center;">
+                  ${c.alreadySent ? '<span style="color:#276749;font-size:11px;">✅ 발송됨</span>' : '<span style="color:#c53030;font-size:11px;">⏳ 대기</span>'}
+                </td>
+                <td style="padding:7px 8px;text-align:center;">
+                  ${c.alreadySent
+                    ? '<span style="color:#a0aec0;font-size:11px;">-</span>'
+                    : `<button onclick="sendOneNcSms(${i})" id="nc-send-btn-${i}" style="padding:3px 8px;background:#2b6cb0;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;font-weight:700;">📤 발송</button>`
+                  }
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:#c53030;padding:12px;font-size:13px;">❌ 조회 실패: ${e.message}</div>`;
+    _ncSendCandidates = [];
+  }
+}
+
+async function sendOneNcSms(idx) {
+  const c = _ncSendCandidates[idx];
+  if (!c || c.alreadySent) return;
+  if (!confirm(`${c.clientName}(${c.phone})에게 문자 발송하시겠습니까?`)) return;
+  const btn = document.getElementById('nc-send-btn-' + idx);
+  if (btn) { btn.disabled = true; btn.textContent = '발송중...'; }
+
+  try {
+    const date = document.getElementById('nc-send-date').value;
+    const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targets: [{ name: c.clientName, phone: c.phone }], text: c.message })
+    });
+    const data = await res.json();
+    const success = data.ok && data.sent > 0;
+
+    // new_client_sms에 기록
+    await db.collection('new_client_sms').add({
+      date,
+      clientName: c.clientName,
+      phone: c.phone,
+      driverName: c.driver || '',
+      qty: c.qty,
+      text: c.message,
+      sent: success ? 1 : 0,
+      failed: success ? 0 : 1,
+      error: success ? null : (data.error || '발송 실패'),
+      sentBy: 'admin_manual',
+      sentAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    if (success) {
+      c.alreadySent = true;
+      if (btn) { btn.textContent = '✅ 완료'; btn.style.background = '#276749'; }
+      alert('✅ ' + c.clientName + ' 발송 완료');
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '📤 발송'; }
+      alert('❌ 발송 실패: ' + (data.error || '알 수 없는 오류'));
+    }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 발송'; }
+    alert('오류: ' + e.message);
+  }
+}
+
+async function sendAllNcSms() {
+  const pending = _ncSendCandidates.filter(c => !c.alreadySent);
+  if (!pending.length) { alert('발송 대상이 없습니다.'); return; }
+  if (!confirm(`${pending.length}건의 문자를 일괄 발송하시겠습니까?`)) return;
+
+  const btn = document.getElementById('nc-send-all-btn');
+  btn.disabled = true; btn.textContent = '발송 중...';
+
+  const date = document.getElementById('nc-send-date').value;
+  let ok = 0, fail = 0;
+
+  for (let i = 0; i < _ncSendCandidates.length; i++) {
+    const c = _ncSendCandidates[i];
+    if (c.alreadySent) continue;
+    try {
+      const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targets: [{ name: c.clientName, phone: c.phone }], text: c.message })
+      });
+      const data = await res.json();
+      const success = data.ok && data.sent > 0;
+      await db.collection('new_client_sms').add({
+        date,
+        clientName: c.clientName, phone: c.phone,
+        driverName: c.driver || '', qty: c.qty,
+        text: c.message,
+        sent: success ? 1 : 0,
+        failed: success ? 0 : 1,
+        error: success ? null : (data.error || '발송 실패'),
+        sentBy: 'admin_bulk',
+        sentAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      if (success) { ok++; c.alreadySent = true; } else fail++;
+      // 솔라피 API 부하 방지
+      await new Promise(r => setTimeout(r, 200));
+    } catch(e) { fail++; }
+  }
+
+  alert(`✅ 발송 완료: ${ok}건 성공 / ${fail}건 실패`);
+  await loadNcSendList(); // 리로드
+}
+
+window.showNewClientSmsModal = showNewClientSmsModal;
+window.switchNcTab = switchNcTab;
+window.loadNcSendList = loadNcSendList;
+window.sendOneNcSms = sendOneNcSms;
+window.sendAllNcSms = sendAllNcSms;
 
 function ncSmsChangeMonth(delta) {
   const [y, m] = _ncSmsMonth.split('-').map(Number);
