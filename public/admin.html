@@ -4305,7 +4305,7 @@ async function loadNoOrderTracking() {
     });
 
     // 로그인한 사용자 정보 (localStorage에서 직접 읽기)
-    const _me = (() => { try { return JSON.parse(localStorage.getItem('jd_user') || '{}'); } catch(e) { return {}; } })();
+    const _me = (() => { try { return JSON.parse(localStorage.getItem('jundosirak_user') || localStorage.getItem('jd_user') || '{}'); } catch(e) { return {}; } })();
     const isAdmin = _me.role === 'admin' || _me.role === 'manager';
     const myName  = _me.name || '';
 

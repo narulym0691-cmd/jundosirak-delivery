@@ -140,7 +140,7 @@
 <script>
 
 // 로그인 체크
-const me = JSON.parse(localStorage.getItem('jd_user') || 'null');
+const me = JSON.parse(localStorage.getItem('jundosirak_user') || localStorage.getItem('jd_user') || 'null');
 if (!me || me.role !== 'admin') location.href = 'index.html';
 
 let _alerts = [], _smsLogs = [];

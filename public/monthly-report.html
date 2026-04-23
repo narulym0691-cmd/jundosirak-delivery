@@ -114,8 +114,8 @@ const firebaseConfig = {
 if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 
-// 권한 확인
-const stored = localStorage.getItem('jd_user');
+// 권한 확인 (하위호환: jd_user → jundosirak_user)
+const stored = localStorage.getItem('jundosirak_user') || localStorage.getItem('jd_user');
 if (!stored) { alert('로그인이 필요합니다.'); location.href = '/index.html'; }
 const loginUser = JSON.parse(stored);
 if (loginUser.role !== 'admin' && loginUser.role !== 'manager') {
