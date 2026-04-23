@@ -4257,9 +4257,10 @@ async function loadNoOrderTracking() {
       if (d.name) clientMap[d.name] = d;
     });
 
-    // 로그인한 사용자 정보
-    const isAdmin = me && (me.role === 'admin' || me.role === 'manager');
-    const myName  = me ? me.name : '';
+    // 로그인한 사용자 정보 (localStorage에서 직접 읽기)
+    const _me = (() => { try { return JSON.parse(localStorage.getItem('jd_user') || '{}'); } catch(e) { return {}; } })();
+    const isAdmin = _me.role === 'admin' || _me.role === 'manager';
+    const myName  = _me.name || '';
 
     // 기사별 그룹핑
     const byDriver = {};
