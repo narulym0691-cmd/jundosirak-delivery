@@ -1141,7 +1141,7 @@
 </div>
 
 <!-- 현장 활동 대시보드 카드 -->
-<div style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);">
+<div id="fieldActivityDashboard" style="background:#fff;border-radius:14px;padding:18px;margin:14px;box-shadow:0 2px 12px rgba(26,71,49,0.08);">
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
     <div style="font-size:15px;font-weight:800;color:#1a4731;">📍 현장 활동 대시보드</div>
     <button onclick="downloadFieldVisitExcel()" style="padding:6px 12px;background:#217346;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">📥 엑셀</button>
@@ -3290,11 +3290,8 @@ let _fvAllData = [];
 let _fvStatsData = [];
 
 function showFieldVisitStatsModal() {
-  loadAdminFieldVisits();
-  setTimeout(() => {
-    const el = document.getElementById('fvd-summary');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 300);
+  const card = document.getElementById('fieldActivityDashboard');
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 function closeFieldVisitStatsModal() {}
 
