@@ -1380,9 +1380,10 @@ async function loadVehiclePhotos() {
   if (!currentUser) return;
   vehiclePhotos = [];
   const ym = getYM();
+  const driverId = currentUser.docId || currentUser.uid || currentUser.name;
   try {
     const snap = await db.collection('evaluations').doc(ym)
-      .collection('drivers').doc(currentUser.uid).get();
+      .collection('drivers').doc(driverId).get();
     if (snap.exists) {
       const d = snap.data();
       if (d.vehicle && d.vehicle.photos) {
@@ -1458,6 +1459,7 @@ async function saveVehiclePhotos() {
     const ym = getYM();
     const storage = firebase.storage();
     const savedPhotos = [];
+    const driverId = currentUser.docId || currentUser.uid || currentUser.name;
 
     vehiclePhotos.filter(p => p.type === 'existing').forEach(p => {
       savedPhotos.push({ url: p.url, uploadedAt: p.uploadedAt || null });
@@ -1468,7 +1470,7 @@ async function saveVehiclePhotos() {
       const p = newPhotos[i];
       const ext = p.file.name.includes('.') ? p.file.name.split('.').pop() : 'jpg';
       const filename = `photo_${Date.now()}_${i}.${ext}`;
-      const path = `vehicle-photos/${currentUser.uid}/${ym}/${filename}`;
+      const path = `vehicle-photos/${driverId}/${ym}/${filename}`;
       const ref = storage.ref(path);
       btn.textContent = `업로드 중... (${savedPhotos.length + 1}/${vehiclePhotos.length})`;
       await ref.put(p.file);
@@ -1477,7 +1479,7 @@ async function saveVehiclePhotos() {
     }
 
     await db.collection('evaluations').doc(ym)
-      .collection('drivers').doc(currentUser.uid).set({
+      .collection('drivers').doc(driverId).set({
         vehicle: {
           photoUploaded: true,
           photos: savedPhotos,
@@ -1521,7 +1523,7 @@ async function loadPeerReview() {
   try {
     // 이미 제출했는지 확인
     const snap = await db.collection('peerReviews').doc(yw)
-      .collection('reviews').doc(currentUser.uid).get();
+      .collection('reviews').doc(currentUser.docId || currentUser.uid || currentUser.name).get();
 
     if (snap.exists) {
       container.innerHTML = '<div class="eval-done-badge">✅ 이번 주 평가 완료</div>';
@@ -1607,8 +1609,8 @@ async function submitPeerReview(yw) {
 
   try {
     await db.collection('peerReviews').doc(yw)
-      .collection('reviews').doc(currentUser.uid).set({
-        reviewerId: currentUser.uid,
+      .collection('reviews').doc(currentUser.docId || currentUser.uid || currentUser.name).set({
+        reviewerId: currentUser.docId || currentUser.uid || currentUser.name,
         reviewerName: currentUser.name,
         reviewerTeamId: currentUser.teamId,
         scores: peerScores,
