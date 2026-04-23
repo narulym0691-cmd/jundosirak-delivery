@@ -2397,14 +2397,15 @@
         members.forEach(u => {
           const active = u.active !== false;
           const roleLabel = u.role === 'leader' ? '팀장' : '기사';
+          const safeName = (u.name||'').replace(/'/g, "\\'");
           html += `<tr style="border-bottom:1px solid #f7fafc;${!active?'opacity:0.5':''}">
             <td style="padding:7px 8px;font-weight:${u.role==='leader'?'700':'400'}">
               ${u.name}
-              <button onclick="editDriverName('${u.id}','${u.name}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
+              <button onclick="editDriverName('${u.id}','${safeName}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
             </td>
             <td style="padding:7px 8px;">
               ${roleLabel}
-              <button onclick="editDriverRole('${u.id}','${u.name}','${u.role}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
+              <button onclick="editDriverRole('${u.id}','${safeName}','${u.role}')" style="font-size:10px;padding:1px 5px;background:#edf2f7;border:none;border-radius:3px;cursor:pointer;margin-left:3px;">✏️</button>
             </td>
             <td style="padding:7px 8px;">
               <span style="font-size:11px;color:${u.phone?'#276749':'#a0aec0'};">${u.phone||'미등록'}</span>
