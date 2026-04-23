@@ -4215,102 +4215,128 @@ async function loadNoOrderTracking() {
   listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
 
   try {
-    // 1. 미해결 경보 조회 (consecutiveDays 포함)
-    const alertSnap = await db.collection('alerts')
-      .where('resolved', '==', false)
-      .get();
+    // 오늘/어제 날짜 계산 (한국시간)
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const todayStr = now.toISOString().slice(0, 10);
+    const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+    // 어제가 일요일이면 금요일로 (주말 건너뜀)
+    if (yest.getDay() === 0) yest.setDate(yest.getDate() - 2);
+    if (yest.getDay() === 6) yest.setDate(yest.getDate() - 1);
+    const yesterdayStr = yest.toISOString().slice(0, 10);
 
-    // 2. 1순위 업체 전체 조회 후 클라이언트에서 필터
-    const prioritySnap = await db.collection('clients')
-      .where('isPriority', '==', true)
-      .get();
+    // 오늘/어제 sales_daily + clients 병렬 로드
+    const [todaySnap, yesterdaySnap, clientsSnap] = await Promise.all([
+      db.collection('sales_daily').doc(todayStr).get(),
+      db.collection('sales_daily').doc(yesterdayStr).get(),
+      db.collection('clients').get()
+    ]);
 
-    // 경보 맵 생성 (clientName 기준)
-    const alertMap = {};
-    alertSnap.forEach(doc => {
-      const d = doc.data();
-      const key = d.name || d.clientName || '';
-      if (!alertMap[key] || (d.consecutiveDays || 0) > (alertMap[key].consecutiveDays || 0)) {
-        alertMap[key] = d;
-      }
+    const todayOrdered   = new Set((todaySnap.exists   ? todaySnap.data().orderedClients   || [] : []));
+    const yesterdayOrdered = new Set((yesterdaySnap.exists ? yesterdaySnap.data().orderedClients || [] : []));
+
+    // 어제 주문 O → 오늘 주문 X 인 업체
+    const missedClients = [];
+    yesterdayOrdered.forEach(name => {
+      if (!todayOrdered.has(name)) missedClients.push(name);
     });
 
-    // 추적 목록 합산 (중복 제거)
-    const trackMap = {};
-
-    // 경보 업체 추가
-    alertSnap.forEach(doc => {
+    // clients DB에서 담당기사/팀/일평균 정보 매핑
+    const clientMap = {};
+    clientsSnap.forEach(doc => {
       const d = doc.data();
-      const key = d.name || d.clientName || '';
-      if (!key) return;
-      trackMap[key] = {
-        clientName: key,
-        teamId: d.teamId || '',
-        driverName: d.driverName || '',
-        courseId: d.courseId || '',
-        consecutiveDays: d.consecutiveDays || 0,
-        isPriority: d.isPriority || d.grade === 'urgent',
-        grade: d.grade || '',
-        date: d.date || '',
-        lastOrderDate: d.lastOrderDate || '',
-        source: 'alert'
-      };
+      if (d.name) clientMap[d.name] = d;
     });
 
-    // 1순위 업체 추가 (경보 없는데 isPriority=true인 업체)
-    prioritySnap.forEach(doc => {
-      const d = doc.data();
-      if (!trackMap[d.name]) {
-        // clients에 consecutiveMissed가 없으므로 표시 안 함 (경보 발생 시 자동 추가됨)
-      }
+    // 로그인한 사용자 정보
+    const isAdmin = me && (me.role === 'admin' || me.role === 'manager');
+    const myName  = me ? me.name : '';
+
+    // 기사별 그룹핑
+    const byDriver = {};
+    missedClients.forEach(name => {
+      const c = clientMap[name] || {};
+      const driver = c.driverName || c.courseId || '미배정';
+      // 기사 본인은 본인 것만
+      if (!isAdmin && driver !== myName) return;
+      if (!byDriver[driver]) byDriver[driver] = [];
+      byDriver[driver].push({ name, dailyAvg: c.dailyAvg || 0, teamId: c.teamId || '', isPriority: (c.dailyAvg || 0) >= 8 });
     });
 
-    const items = Object.values(trackMap).sort((a, b) => b.consecutiveDays - a.consecutiveDays);
+    const totalCount = Object.values(byDriver).reduce((s, arr) => s + arr.length, 0);
 
-    if (items.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">⭕ 현재 추적 중인 미주문 업체 없음</div>';
+    if (totalCount === 0) {
+      const msg = !todaySnap.exists
+        ? '오늘 엑셀 업로드 전입니다'
+        : '⭕ 어제 대비 미주문 업체 없음';
+      listEl.innerHTML = `<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">${msg}</div>`;
       return;
     }
 
-    const teamNames = {
+    const TEAM_NAMES = {
       team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일(051)',
       team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
     };
 
-    let html = `<div style="font-size:12px;color:#718096;margin-bottom:8px;">총 ${items.length}개 업체 추적 중</div>`;
-    items.forEach(item => {
-      const days = item.consecutiveDays;
-      let statusColor, statusLabel;
-      if (days >= 7) {
-        statusColor = '#1a202c'; statusLabel = `⚫ ${days}일 연속`;
-      } else if (days >= 3) {
-        statusColor = '#c53030'; statusLabel = `🔴 ${days}일 연속`;
-      } else {
-        statusColor = '#c05621'; statusLabel = `🟡 ${days}일 연속`;
-      }
-      const teamName = teamNames[item.teamId] || item.teamId || '-';
-      const priorityBadge = item.isPriority ? '<span style="background:#ebf8ff;color:#2b6cb0;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px;">8개↑</span>' : '';
-      const gradeBadge = item.grade === 'urgent'
-        ? '<span style="background:#fff5f5;color:#c53030;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px;">🔴즉시경보</span>'
-        : item.grade === 'check'
-          ? '<span style="background:#fefcbf;color:#b7791f;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:4px;">🟠확인보고</span>'
-          : '';
-      const dateStr = item.date ? ` · 발생 ${item.date}` : '';
+    // 요약 + 펼치기 버튼
+    const priorityCount = Object.values(byDriver).flat().filter(c => c.isPriority).length;
+    let html = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:13px;color:#4a5568;">
+          어제(${yesterdayStr}) 주문 → 오늘(${todayStr}) 미주문
+          <strong style="color:#c53030;margin-left:4px;">총 ${totalCount}개 업체</strong>
+          ${priorityCount > 0 ? `<span style="color:#c53030;font-size:12px;"> (8개↑ ${priorityCount}건)</span>` : ''}
+        </div>
+        <button onclick="toggleNoOrderDetail()" id="noOrderToggleBtn"
+          style="padding:5px 12px;background:#fff5f5;border:1px solid #fed7d7;border-radius:8px;font-size:12px;font-weight:700;color:#c53030;cursor:pointer;">
+          펼치기 ▼
+        </button>
+      </div>
+      <div id="noOrderDetail" style="display:none;">`;
 
-      html += `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:8px;margin-bottom:6px;background:#fff5f5;border:1px solid #fed7d7;">
-          <div style="flex:1;">
-            <div style="font-weight:700;font-size:13px;">${item.clientName}${priorityBadge}${gradeBadge}</div>
-            <div style="font-size:11px;color:#718096;margin-top:2px;">${teamName} · ${item.driverName || '-'}${dateStr}</div>
-          </div>
-          <div style="font-weight:800;font-size:13px;color:${statusColor};white-space:nowrap;margin-left:8px;">${statusLabel}</div>
+    // 기사별 그룹 렌더링
+    Object.entries(byDriver).sort().forEach(([driver, clients]) => {
+      const priorityOnes = clients.filter(c => c.isPriority);
+      const normalOnes   = clients.filter(c => !c.isPriority);
+      const teamName = clients[0] ? (TEAM_NAMES[clients[0].teamId] || clients[0].teamId || '') : '';
+
+      html += `<div style="margin-bottom:10px;">
+        <div style="font-size:12px;font-weight:800;color:#2d3748;padding:5px 8px;background:#f7fafc;border-radius:6px;margin-bottom:5px;">
+          🚗 ${driver} ${teamName ? '('+teamName+')' : ''} · ${clients.length}건
         </div>`;
+
+      // 8개↑ 먼저
+      priorityOnes.forEach(c => {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;margin-bottom:3px;background:#fff5f5;border-left:3px solid #c53030;">
+          <span style="font-size:13px;font-weight:600;">${c.name}</span>
+          <span style="font-size:11px;font-weight:700;color:#c53030;">🔴 ${c.dailyAvg}개↑</span>
+        </div>`;
+      });
+      // 일반
+      normalOnes.forEach(c => {
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;margin-bottom:3px;background:#f7fafc;border-left:3px solid #cbd5e0;">
+          <span style="font-size:13px;">${c.name}</span>
+          <span style="font-size:11px;color:#718096;">${c.dailyAvg ? c.dailyAvg+'개' : '-'}</span>
+        </div>`;
+      });
+      html += `</div>`;
     });
+
+    html += `</div>`;
     listEl.innerHTML = html;
+
   } catch(e) {
     listEl.innerHTML = `<div style="color:#c53030;padding:12px;font-size:13px;">오류: ${e.message}</div>`;
   }
 }
+
+window.toggleNoOrderDetail = () => {
+  const detail = document.getElementById('noOrderDetail');
+  const btn    = document.getElementById('noOrderToggleBtn');
+  if (!detail) return;
+  const isHidden = detail.style.display === 'none';
+  detail.style.display = isHidden ? '' : 'none';
+  btn.textContent = isHidden ? '접기 ▲' : '펼치기 ▼';
+};
 
 // 판매수량 미입력 카드 (대시보드 상시 표시)
 async function loadSalesMissingCard() {
