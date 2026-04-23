@@ -96,15 +96,31 @@ async function updateMonthInfo() {
 async function loadAdminData() {
   const ym = getCurrentYearMonth();
   try {
-    const [teamsSnap, statsDoc] = await Promise.all([
+    const [teamsSnap, statsDoc, salesSnap] = await Promise.all([
       db.collection('teams').get({source:'server'}),
-      db.collection('monthly_stats').doc(ym).get({source:'server'})
+      db.collection('monthly_stats').doc(ym).get({source:'server'}),
+      db.collection('sales_daily').where(firebase.firestore.FieldPath.documentId(), '>=', ym+'-01')
+        .where(firebase.firestore.FieldPath.documentId(), '<=', ym+'-31').get({source:'server'})
     ]);
     allTeamsData = [];
     teamsSnap.forEach(doc => allTeamsData.push({ id: doc.id, ...doc.data() }));
     // teamStats 하위 구조 지원: { teamStats: { team1: {...} } } 또는 { team1: {...} } 둘 다 대응
     const rawStats = statsDoc.exists ? statsDoc.data() : {};
     allStatsData = rawStats.teamStats ? rawStats.teamStats : rawStats;
+
+    // 전체 수량 집계 (밥/국 제외, 조식배송+미배정 포함) — sales_daily.driverStats 기준
+    const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부'];
+    let realGrandTotal = 0;
+    salesSnap.forEach(doc => {
+      const d = doc.data();
+      if (d.driverStats) {
+        Object.values(d.driverStats).forEach(drv => {
+          MENUS.forEach(m => realGrandTotal += (drv[m]||0));
+        });
+      }
+    });
+    window._realGrandTotal = realGrandTotal;
+
     renderSummaryCards();
     renderAdminTeamRanking();
   } catch (e) {
@@ -124,9 +140,11 @@ function renderSummaryCards() {
   const totalDiff = totalCumul - totalBaseline;
   const totalDiffStr = totalDiff >= 0 ? `+${numFormat(totalDiff)}` : numFormat(totalDiff);
 
+  // 전체 수량: sales_daily 기준 (조식배송+미배정 포함), 팀별 기준대비는 팀합산 기준
+  const realTotal = window._realGrandTotal || totalCumul;
   document.getElementById('summaryTotal').innerHTML = `
-    <div class="summary-val">${numFormat(totalCumul)}</div>
-    <div class="summary-sub ${totalDiff >= 0 ? 'positive' : 'negative'}">기준대비 ${totalDiffStr}</div>
+    <div class="summary-val">${numFormat(realTotal)}</div>
+    <div class="summary-sub ${totalDiff >= 0 ? 'positive' : 'negative'}">팀별 기준대비 ${totalDiffStr}</div>
   `;
 
   let bReached = 0;
