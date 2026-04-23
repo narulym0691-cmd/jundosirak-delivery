@@ -1093,8 +1093,10 @@ function renderFvmStat(items) {
 let fvmStatOpen = false;
 function toggleFvmStat() {
   fvmStatOpen = !fvmStatOpen;
-  document.getElementById('fvm-stat').style.display = fvmStatOpen ? 'block' : 'none';
-  document.getElementById('fvm-stat-btn').textContent = fvmStatOpen ? '📊 방문 통계 닫기' : '📊 방문 통계 보기';
+  const statEl = document.getElementById('fvm-stat');
+  const btnEl = document.getElementById('fvm-stat-btn');
+  if (statEl) statEl.style.display = fvmStatOpen ? 'block' : 'none';
+  if (btnEl) btnEl.textContent = fvmStatOpen ? '📊 방문 통계 닫기' : '📊 방문 통계 보기';
 }
 
 async function deleteFieldVisit(docId, photoUrls) {

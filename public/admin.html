@@ -1246,7 +1246,7 @@
 
 <script src="/js/firebase-config.js"></script>
 <script src="/js/auth.js"></script>
-<script src="/js/admin.js?v=202604211556"></script>
+<script src="/js/admin.js?v=202604231531"></script>
 <script>
   // ── 코스 기준 팀 매핑 ──
   const DRIVER_COURSE_MAP = {
@@ -3289,7 +3289,13 @@ function closeDropup() {
 let _fvAllData = [];
 let _fvStatsData = [];
 
-function showFieldVisitStatsModal() { loadAdminFieldVisits(); }
+function showFieldVisitStatsModal() {
+  loadAdminFieldVisits();
+  setTimeout(() => {
+    const el = document.getElementById('fvd-summary');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 300);
+}
 function closeFieldVisitStatsModal() {}
 
 function renderFvdSummary(data) {
