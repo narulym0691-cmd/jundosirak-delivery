@@ -1951,21 +1951,27 @@
     return 1 - dist / Math.max(a.length, b.length);
   }
 
-  // ── 부분일치 주문 확인: 정규화 + 포함 관계 + 유사도 매칭 ──
+  // ── 부분일치 주문 확인: 정확 일치 우선 → 보수적 부분일치/유사도 ──
+  // 오탐 방지 원칙: 짧은 공통어(한의원·치과·약국 등) 포함만으로는 매칭하지 않음
   function isOrderedPartialMatch(name, orderedNorm) {
     const norm = normClient(name);
     if (!norm || norm.length < 2) return false;
+    // 1) 정확 일치 먼저
+    if (orderedNorm.has(norm)) return true;
     for (const o of orderedNorm) {
       if (!o || o.length < 2) continue;
-      // 포함 관계
-      if (norm.includes(o) || o.includes(norm)) return true;
-      // 짧은 쪽 기준 앞 4글자 이상 일치 + 전체 길이 차이 2 이하일 때만 매칭
       const shorter = norm.length < o.length ? norm : o;
-      const prefix4 = shorter.slice(0, 4);
-      if (shorter.length >= 4 && norm.startsWith(prefix4) && o.startsWith(prefix4)
-          && Math.abs(norm.length - o.length) <= 2) return true;
-      // 레벤슈타인 유사도 0.8 이상 (6글자 이상일 때만 — 짧은 이름 오탐 방지)
-      if (shorter.length >= 6 && similarityScore(norm, o) >= 0.80) return true;
+      const longer  = norm.length < o.length ? o : norm;
+      // 2) 포함 관계 — 짧은 쪽이 5글자 이상일 때만 (공통 업종어 오탐 방지)
+      if (shorter.length >= 5 && longer.includes(shorter)) return true;
+      // 3) 앞 5글자 공통 접두 + 길이차 2 이하 (양쪽 다 6글자 이상일 때)
+      if (norm.length >= 6 && o.length >= 6) {
+        const prefix5 = shorter.slice(0, 5);
+        if (norm.startsWith(prefix5) && o.startsWith(prefix5)
+            && Math.abs(norm.length - o.length) <= 2) return true;
+      }
+      // 4) 레벤슈타인 유사도 0.90 이상 (짧은 쪽 8글자 이상일 때만 — 한글 1~2글자 차이 오탐 방지)
+      if (shorter.length >= 8 && similarityScore(norm, o) >= 0.90) return true;
     }
     return false;
   }
@@ -2094,6 +2100,8 @@
     for (const doc of clientsSnap.docs) {
       const client = doc.data();
       const { name, orderDays, dailyAvg, teamId, courseId } = client;
+      // 이름 없는 clients 문서는 경보 생성 대상에서 제외 (빈 이름 alert 방지)
+      if (!name || String(name).trim().length < 2) continue;
       if (!orderDays || !Array.isArray(orderDays)) continue;
 
       // 오늘 주문 요일인가? (숫자 또는 문자열 'mon'~'sun' 둘 다 지원)
@@ -2245,7 +2253,7 @@
     // ⭐ 재업로드 모드 플래그 — 체크 시 경보/문자/신규업체 로직 스킵
     const isReuploadMode = document.getElementById('su-reupload-mode')?.checked || false;
     if (isReuploadMode) {
-      if (!confirm(`🔄 재업로드 모드로 저장합니다.\n\n날짜: ${date}\n\n✅ 수행: 판매수량/팀통계 덮어쓰기\n❌ 스킵: 경보 생성/문자 발송/신규업체 추적\n\n계속하시겠습니까?`)) {
+      if (!confirm(`🔄 재업로드 모드로 저장합니다.\n\n날짜: ${date}\n\n✅ 수행: 판매수량/팀통계 덮어쓰기 + 경보 재계산 (주문한 거래처 자동 해제, 미주문 거래처 신규 경보)\n❌ 스킵: 기사 문자 발송/신규업체 문자 스케줄/1순위 문자\n\n계속하시겠습니까?`)) {
         return;
       }
     }
@@ -2472,7 +2480,7 @@
       const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
       const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
       const alertSmsMsg = (typeof _lastAlertSmsResult === 'string' && _lastAlertSmsResult) ? `\n📱 ${_lastAlertSmsResult}` : '';
-      const reuploadMsg = isReuploadMode ? '\n🔄 재업로드 모드: 집계만 덮어씀 (경보/문자/신규업체 스킵)' : '';
+      const reuploadMsg = isReuploadMode ? '\n🔄 재업로드 모드: 집계/경보 재계산됨 (문자 발송만 스킵)' : '';
       alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}${alertSmsMsg}${reuploadMsg}`);
       closeSalesUpload();
       location.reload();
