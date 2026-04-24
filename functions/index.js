@@ -1881,3 +1881,193 @@ exports.scheduledDriverFeedbackSms = functions
     }
     return null;
   });
+
+// ─── sales_daily 업로드 시 자동 경보 재계산 ────────────────────────
+// 기존: admin.html UI 저장 버튼에서 createAlertsFromSales 호출 → 브라우저 JS 의존
+// 개선: sales_daily 문서 쓰기 감지 → 서버에서 자동으로 경보 재계산
+//
+// 동작:
+//  1) 오늘 주문한 거래처 미해결 경보 자동 해제 (resolvedReason: 'ordered_today')
+//  2) 오늘 주문 요일인데 주문 없는 1순위(일평균>=6) → 즉시경보(urgent)
+//  3) 일반 거래처 3일 연속 미주문 → 확인보고(check)
+//  4) SMS 발송은 여기서 안 함 (admin.html UI 경로 혹은 scheduledDriverFeedbackSms가 담당)
+//
+// 멱등성(같은 날 재업로드 허용):
+//  - 같은 날 prev.date === date 면 consecutiveDays 유지, 데이터만 덮어씀
+//  - 다른 날이면 consecutiveDays +1
+exports.onSalesDailyWrite = functions
+  .region('us-central1')
+  .runWith({ timeoutSeconds: 120, memory: '512MB' })
+  .firestore.document('sales_daily/{date}')
+  .onWrite(async (change, context) => {
+    if (!change.after.exists) return null; // 삭제 무시
+    const date = context.params.date;
+    const data = change.after.data() || {};
+
+    // teamStats 재계산 스크립트가 쓰는 업데이트(teamStatsRebuildAt만 변경)는 스킵
+    // → orderedClients 배열이 없거나 비어있으면 스킵
+    const orderedClients = Array.isArray(data.orderedClients) ? data.orderedClients : [];
+    if (orderedClients.length === 0) {
+      console.log(`[onSalesDailyWrite] ${date}: orderedClients 없음, 스킵`);
+      return null;
+    }
+
+    console.log(`[onSalesDailyWrite] ${date}: 경보 재계산 시작 (orderedClients=${orderedClients.length})`);
+
+    // ── 정규화 & 매칭 유틸 (admin.html과 동일 로직) ──
+    function normClient(name) {
+      return String(name||'')
+        .replace(/\(주\)|\(주식회사\)|주식회사|\(유\)|\(합\)/gi, '')
+        .replace(/[_]?(부산시?|해운대구?|수영구?|남구|동구|북구|사하구?|사상구?|금정구?|연제구?|동래구?|강서구?|영도구?|중구|서구|기장군?|양산시?|창원시?)[_]?/g, '')
+        .replace(/[\s\-_\.\(\)（）【】\[\]]/g, '')
+        .replace(/\(주\)|\(주식회사\)|주식회사|\(유\)|\(합\)/gi, '')
+        .toLowerCase();
+    }
+    function levenshtein(a, b) {
+      const m = a.length, n = b.length;
+      const dp = Array.from({length: m+1}, (_,i) => Array.from({length: n+1}, (_,j) => i===0?j:j===0?i:0));
+      for (let i = 1; i <= m; i++)
+        for (let j = 1; j <= n; j++)
+          dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1]);
+      return dp[m][n];
+    }
+    function similarityScore(a, b) {
+      if (!a || !b) return 0;
+      const shorter = a.length < b.length ? a : b;
+      const longer  = a.length < b.length ? b : a;
+      if (longer.includes(shorter)) return 1.0;
+      let common = 0;
+      for (let i = 0; i < shorter.length; i++) { if (shorter[i] === longer[i]) common++; else break; }
+      const prefixScore = common / shorter.length;
+      if (prefixScore >= 0.75) return prefixScore;
+      return 1 - levenshtein(a, b) / Math.max(a.length, b.length);
+    }
+    function isOrderedPartialMatch(name, orderedNormSet) {
+      const norm = normClient(name);
+      if (!norm || norm.length < 2) return false;
+      if (orderedNormSet.has(norm)) return true;
+      for (const o of orderedNormSet) {
+        if (!o || o.length < 2) continue;
+        const shorter = norm.length < o.length ? norm : o;
+        const longer  = norm.length < o.length ? o : norm;
+        if (shorter.length >= 5 && longer.includes(shorter)) return true;
+        if (norm.length >= 6 && o.length >= 6) {
+          const prefix5 = shorter.slice(0, 5);
+          if (norm.startsWith(prefix5) && o.startsWith(prefix5)
+              && Math.abs(norm.length - o.length) <= 2) return true;
+        }
+        if (shorter.length >= 8 && similarityScore(norm, o) >= 0.90) return true;
+      }
+      return false;
+    }
+
+    try {
+      const orderedNorm = new Set(orderedClients.map(normClient));
+
+      // 요일 계산 (YYYY-MM-DD → 0=월..6=일)
+      const dow = new Date(date + 'T00:00:00+09:00').getDay(); // KST 기준
+      const dowIndex = dow === 0 ? 6 : dow - 1;
+      const DOW_STR = ['mon','tue','wed','thu','fri','sat','sun'];
+
+      // 데이터 로드
+      const [clientsSnap, prevAlertsSnap] = await Promise.all([
+        db.collection('clients').get(),
+        db.collection('alerts').where('resolved','==',false).get(),
+      ]);
+
+      // 기존 미해결 경보 맵 (name → {consecutiveDays,date,docId})
+      const prevAlertMap = {};
+      prevAlertsSnap.forEach(d => {
+        const a = d.data();
+        if (!a.name) return;
+        if (!prevAlertMap[a.name] || a.date > prevAlertMap[a.name].date) {
+          prevAlertMap[a.name] = {
+            consecutiveDays: a.consecutiveDays || 1,
+            date: a.date,
+            docId: d.id,
+          };
+        }
+      });
+
+      const batch = db.batch();
+      let batchCount = 0;
+      let resolvedCount = 0;
+      let alertCount = 0;
+
+      // 1) 오늘 주문한 거래처의 미해결 경보 자동 해제
+      for (const [alertClientName, prev] of Object.entries(prevAlertMap)) {
+        if (isOrderedPartialMatch(alertClientName, orderedNorm)) {
+          batch.update(db.collection('alerts').doc(prev.docId), {
+            resolved: true,
+            resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+            resolvedReason: 'ordered_today',
+          });
+          batchCount++;
+          resolvedCount++;
+          if (batchCount >= 400) { await batch.commit(); batchCount = 0; }
+        }
+      }
+
+      // 2/3) clients 루프 — 오늘 주문 요일인데 미주문 → 경보 생성/업데이트
+      for (const doc of clientsSnap.docs) {
+        const client = doc.data();
+        const { name, orderDays, dailyAvg, teamId, courseId } = client;
+        if (!name || String(name).trim().length < 2) continue;
+        if (!orderDays || !Array.isArray(orderDays)) continue;
+        if (client.active === false) continue;
+
+        const orderDaysNorm = orderDays.map(d => typeof d === 'string' ? DOW_STR.indexOf(d) : d);
+        if (!orderDaysNorm.includes(dowIndex)) continue;
+
+        if (isOrderedPartialMatch(name, orderedNorm)) continue;
+
+        const isPriority = (dailyAvg || 0) >= 6;
+        const prev = prevAlertMap[name];
+        const sameDayReupload = !!(prev && prev.date === date);
+
+        let grade, consecutiveDays;
+        if (prev) {
+          consecutiveDays = sameDayReupload ? prev.consecutiveDays : prev.consecutiveDays + 1;
+        } else {
+          consecutiveDays = 1;
+        }
+        if (isPriority) {
+          grade = 'urgent';
+        } else {
+          if (consecutiveDays < 3) continue;
+          grade = 'check';
+        }
+
+        if (prev) {
+          batch.update(db.collection('alerts').doc(prev.docId), {
+            consecutiveDays, date, grade, teamId, courseId,
+            name, clientName: name, dailyAvg, isPriority,
+            resolved: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        } else {
+          const alertRef = db.collection('alerts').doc();
+          const autoResolveDate = new Date();
+          autoResolveDate.setDate(autoResolveDate.getDate() + 5);
+          batch.set(alertRef, {
+            type: 'no_order', grade, isPriority,
+            name, clientName: name, dailyAvg, teamId, courseId, date,
+            consecutiveDays, resolved: false,
+            autoResolveAt: admin.firestore.Timestamp.fromDate(autoResolveDate),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            source: 'onSalesDailyWrite',
+          });
+        }
+        batchCount++;
+        alertCount++;
+        if (batchCount >= 400) { await batch.commit(); batchCount = 0; }
+      }
+
+      if (batchCount > 0) await batch.commit();
+
+      console.log(`[onSalesDailyWrite] ${date}: 해제 ${resolvedCount}건, 경보 ${alertCount}건 처리 완료`);
+    } catch (e) {
+      console.error('[onSalesDailyWrite] 오류:', e);
+    }
+    return null;
+  });
