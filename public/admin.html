@@ -2032,7 +2032,8 @@
   // 기획서 기준:
   //   1순위 업체 (dailyAvgOrder >= 6) → 하루만 미주문해도 즉시경보
   //   일반 업체  (dailyAvgOrder < 8)  → 2일 연속=주시 / 3일 연속=확인보고 / 1일=경보없음
-  async function createAlertsFromSales(date, driverRows) {
+  async function createAlertsFromSales(date, driverRows, opts = {}) {
+    const skipSms = !!opts.skipSms; // 재업로드 모드에서 SMS 발송만 스킵하기 위한 플래그
     const dow = new Date(date).getDay();
     const dowIndex = dow === 0 ? 6 : dow - 1; // 0=월 1=화 ... 4=금
     // orderDays 문자열('mon'~'sun') → 숫자(0~6) 변환 맵
@@ -2105,8 +2106,9 @@
       const isPriority = (dailyAvg || 0) >= 6;
       const prev = prevAlertMap[name];
 
-      // 이미 오늘 처리된 경보면 스킵 (같은 날 중복 실행 방지)
-      if (prev && prev.date === date) continue;
+      // 같은 날 재업로드 허용. 단, 연속일수는 "이전 기록의 date != 현재 date" 일 때만 +1
+      // (같은 날 재업로드 시에는 기존 consecutiveDays 유지, 새 데이터로 덮어쓰기만)
+      const sameDayReupload = !!(prev && prev.date === date);
 
       // 담당기사 파악
       let driverName = null;
@@ -2116,13 +2118,17 @@
       }
 
       let grade, consecutiveDays;
+      // 연속일수 계산: 같은 날 재업로드면 그대로, 다른 날이면 +1
+      if (prev) {
+        consecutiveDays = sameDayReupload ? prev.consecutiveDays : prev.consecutiveDays + 1;
+      } else {
+        consecutiveDays = 1;
+      }
       if (isPriority) {
         // 1순위(일평균 6개 이상): 당일 즉시경보
-        consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
         grade = 'urgent';
       } else {
         // 일반: 3일 연속 미주문부터 경보
-        consecutiveDays = prev ? prev.consecutiveDays + 1 : 1;
         if (consecutiveDays < 3) continue; // 1~2일째는 주시(경보 없음)
         grade = 'check';
       }
@@ -2165,7 +2171,8 @@
     if (batchCount > 0) await batch.commit();
 
     // ── 경보 발생 기사에게 즉시 문자 발송 ──
-    if (alertCount > 0 && Object.keys(alertsByDriver).length > 0) {
+    // skipSms=true (재업로드 모드)면 발송 스킵
+    if (!skipSms && alertCount > 0 && Object.keys(alertsByDriver).length > 0) {
       try {
         let smsSent = 0, smsFailed = 0;
         for (const [dName, alerts] of Object.entries(alertsByDriver)) {
@@ -2309,7 +2316,7 @@
 
       await db.collection('monthly_stats').doc(ym).set(monthlyStats);
 
-      // ⭐ 재업로드 모드: 신규업체/1순위 문자/경보 생성 모두 스킵
+      // ⭐ 재업로드 모드: 신규업체/1순위 "문자 발송"만 스킵. 경보 계산은 항상 실행.
       let newClientCount = 0;
       let priorityClientCount = 0;
       let alertCount = 0;
@@ -2329,15 +2336,17 @@
         } catch(e) {
           console.warn('1순위업체 SMS 스케줄 오류(무시):', e.message);
         }
+      }
 
-        // 4. 경보 생성 (6개 이상 업체 미주문 감지)
-        try {
-          alertCount = await createAlertsFromSales(date, driverRows);
-        } catch(e) {
-          console.warn('경보 생성 오류(무시):', e.message);
-        }
-      } else {
-        console.log('🔄 재업로드 모드: 경보/문자/신규업체 로직 스킵됨');
+      // 4. 경보 생성/해제 — 재업로드 모드와 상관없이 항상 실행
+      //    (SMS 발송은 createAlertsFromSales 내부에서 skipSms 옵션으로 제어)
+      try {
+        alertCount = await createAlertsFromSales(date, driverRows, { skipSms: !!isReuploadMode });
+      } catch(e) {
+        console.warn('경보 생성 오류(무시):', e.message);
+      }
+      if (isReuploadMode) {
+        console.log('🔄 재업로드 모드: 신규업체/1순위 문자 스킵됨. 경보는 재계산됨 (SMS는 발송 안 함).');
       }
 
       // sales_daily 업로드 로그 기록
