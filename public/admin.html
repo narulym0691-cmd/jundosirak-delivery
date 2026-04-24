@@ -623,6 +623,18 @@
       </table>
     </div>
 
+    <!-- 재업로드 모드 체크박스 -->
+    <div style="background:#fef5e7;border:1px solid #f6ad55;border-radius:8px;padding:10px 12px;margin-bottom:12px;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#744210;">
+        <input type="checkbox" id="su-reupload-mode" style="cursor:pointer;width:16px;height:16px;">
+        <span>🔄 <b>재업로드 모드</b> — 집계 데이터(판매수량/팀통계)만 덮어쓰기</span>
+      </label>
+      <div style="font-size:11px;color:#975a16;margin-top:4px;margin-left:24px;line-height:1.5;">
+        ※ 체크 시: 경보 생성/문자 발송/신규업체 추적 <b>모두 건너뜀</b><br>
+        ※ 과거 엑셀 파일을 재업로드해서 teamStats(지역 기반 집계) 생성 용도
+      </div>
+    </div>
+
     <div id="su-msg" style="font-size:12px;text-align:center;margin-bottom:8px;"></div>
     <button id="su-save-btn" onclick="saveSalesData()" style="display:none;width:100%;padding:11px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ Firestore에 저장</button>
 
@@ -1353,6 +1365,9 @@
   };
   window.closeSalesUpload = () => {
     document.getElementById('salesUploadModal').style.display = 'none';
+    // 재업로드 모드 체크박스 리셋 (안전장치)
+    const reCb = document.getElementById('su-reupload-mode');
+    if (reCb) reCb.checked = false;
   };
 
   async function loadSalesDateList() {
@@ -1580,11 +1595,23 @@
 
   function parseClientOrderData(wb) {
     const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부','밥','국'];
+    const MENUS_STATS = ['뜨','프','샐','품','덮','샌','세트','유부']; // 통계용 (밥/국 제외)
     const MENUS_EXCLUDE = ['밥','국']; // 총수량 합산 제외 메뉴
+    // 코스번호 → 팀ID 매핑 (지역 기반 집계용)
+    const COURSE_TO_TEAM = {
+      '코스1':'team2', '코스2':'team2', '코스3':'team4',
+      '코스4':'team3', '코스5':'team1', '코스6':'team1',
+      '코스7':'team2', '코스8':'team4', '코스9':'team1',
+      '코스10':'team5','코스11':'team7','코스12':'team6',
+      '코스13':'team4','코스14':'team7','코스15':'team3',
+      '코스16':'team5','코스17':'team7','코스18':'team5',
+      '코스19':'team6'
+    };
     // 헤더행 스킵 키워드
     const SKIP_HEADER_KW = ['번호','순서','이름','거래처1','거래처2','거래처3','거래처4','거래처5','거래처6','거래처7','거래처8','거래처9','기사명','합계'];
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
+    const teamStats = {}; // ⭐ 팀별 집계 (지역 기반, 팀1~7만, 밥/국 제외)
     const clientOrderMap = {}; // clientName → { total, driverName, courseId }
     // "결과" 시트 우선 처리 (구형 파일은 여러 시트 중 "결과" 시트에 실제 데이터가 있음)
     const sheetOrder = [...wb.SheetNames].sort((a, b) => {
@@ -1641,7 +1668,17 @@
           if (!MENUS_EXCLUDE.includes(menu)) total += qty; // 밥/국 제외
         });
         if (total > 0) {
-          // 같은 업체 중복 행(뷔페 등) 합산 처리
+          // ⭐ 팀별 집계 (지역 기반): 코스 → 팀 매핑으로 팀1~7만 누적
+          const teamId = COURSE_TO_TEAM[currentCourseId];
+          if (teamId) {
+            if (!teamStats[teamId]) {
+              teamStats[teamId] = { total: 0 };
+              MENUS_STATS.forEach(m => teamStats[teamId][m] = 0);
+            }
+            teamStats[teamId].total += total;
+            MENUS_STATS.forEach(m => teamStats[teamId][m] += (menuQtys[m]||0));
+          }
+          // (기존) 같은 업체 중복 행(뷔페 등) 합산 처리
           if (clientOrderMap[clientName]) {
             clientOrderMap[clientName].total += total;
             MENUS.forEach(m => { /* 기존 driverStats에 추가 */
@@ -1666,7 +1703,7 @@
       }
       if (orderedClients.length || notOrderedClients.length) break;
     }
-    return { orderedClients, notOrderedClients, driverStats, clientOrderMap };
+    return { orderedClients, notOrderedClients, driverStats, teamStats, clientOrderMap };
   }
 
   window.onSalesFileChange = async (input) => {
@@ -2193,6 +2230,14 @@
       return;
     }
 
+    // ⭐ 재업로드 모드 플래그 — 체크 시 경보/문자/신규업체 로직 스킵
+    const isReuploadMode = document.getElementById('su-reupload-mode')?.checked || false;
+    if (isReuploadMode) {
+      if (!confirm(`🔄 재업로드 모드로 저장합니다.\n\n날짜: ${date}\n\n✅ 수행: 판매수량/팀통계 덮어쓰기\n❌ 스킵: 경보 생성/문자 발송/신규업체 추적\n\n계속하시겠습니까?`)) {
+        return;
+      }
+    }
+
     const btn = document.getElementById('su-save-btn');
     btn.disabled = true; btn.textContent = '저장 중...';
 
@@ -2259,29 +2304,35 @@
 
       await db.collection('monthly_stats').doc(ym).set(monthlyStats);
 
-      // 3. 신규업체 sms_schedule 적재 (구글시트 체크)
+      // ⭐ 재업로드 모드: 신규업체/1순위 문자/경보 생성 모두 스킵
       let newClientCount = 0;
-      try {
-        newClientCount = await checkNewClientsAndScheduleSms(date, driverRows);
-      } catch(e) {
-        console.warn('신규업체 SMS 스케줄 오류(무시):', e.message);
-      }
-
-      // 3-1. 1순위 업체 주문 감지 → sms_schedule 적재
       let priorityClientCount = 0;
-      try {
-        priorityClientCount = await checkPriorityClientsAndScheduleSms(date, driverRows);
-      } catch(e) {
-        console.warn('1순위업체 SMS 스케줄 오류(무시):', e.message);
-      }
-
-      // 4. 경보 생성 (6개 이상 업체 미주문 감지)
       let alertCount = 0;
       window._lastAlertSmsResult = '';
-      try {
-        alertCount = await createAlertsFromSales(date, driverRows);
-      } catch(e) {
-        console.warn('경보 생성 오류(무시):', e.message);
+
+      if (!isReuploadMode) {
+        // 3. 신규업체 sms_schedule 적재 (구글시트 체크)
+        try {
+          newClientCount = await checkNewClientsAndScheduleSms(date, driverRows);
+        } catch(e) {
+          console.warn('신규업체 SMS 스케줄 오류(무시):', e.message);
+        }
+
+        // 3-1. 1순위 업체 주문 감지 → sms_schedule 적재
+        try {
+          priorityClientCount = await checkPriorityClientsAndScheduleSms(date, driverRows);
+        } catch(e) {
+          console.warn('1순위업체 SMS 스케줄 오류(무시):', e.message);
+        }
+
+        // 4. 경보 생성 (6개 이상 업체 미주문 감지)
+        try {
+          alertCount = await createAlertsFromSales(date, driverRows);
+        } catch(e) {
+          console.warn('경보 생성 오류(무시):', e.message);
+        }
+      } else {
+        console.log('🔄 재업로드 모드: 경보/문자/신규업체 로직 스킵됨');
       }
 
       // sales_daily 업로드 로그 기록
@@ -2290,11 +2341,13 @@
         fileName: document.getElementById('su-filename').textContent,
         orderedClients: _salesData.orderedClients || [],
         notOrderedClients: _salesData.notOrderedClients || [],
-        driverStats: _salesData.driverStats || {}
+        driverStats: _salesData.driverStats || {},
+        teamStats: _salesData.teamStats || {} // ⭐ 지역 기반 팀별 집계 (팀1~7만, 밥/국 제외)
       });
 
       // 신규업체 감지 — 구글 시트 기준 (해당 날짜 등록된 업체만 신규)
-      try {
+      // ⭐ 재업로드 모드에서는 전체 스킵
+      if (!isReuploadMode) { try {
         const SHEET_ID_NC = '1-cw2uOlbPyA8vjSrs5O6SyRBl9bgiMSfb5lQPQ6F9DM';
         const NC_GID = '1000247276';
         const sheetUrl = `https://docs.google.com/spreadsheets/d/${SHEET_ID_NC}/export?format=csv&gid=${NC_GID}`;
@@ -2400,11 +2453,13 @@
         } catch(e) { console.warn('30일추적 업데이트 오류(무시):', e.message); }
 
       } catch(e) { console.warn('신규업체 감지 오류(무시):', e.message); }
+      } // ⭐ 재업로드 모드 스킵 블록 끝 (if (!isReuploadMode))
 
       const smsMsg = (newClientCount > 0 || priorityClientCount > 0) ? `\n신규업체 ${newClientCount}건 + 1순위업체 ${priorityClientCount}건 SMS 새벽 발송 예약됨.` : '';
       const alertMsg = alertCount > 0 ? `\n경보 ${alertCount}건 생성됨.` : '';
       const alertSmsMsg = (typeof _lastAlertSmsResult === 'string' && _lastAlertSmsResult) ? `\n📱 ${_lastAlertSmsResult}` : '';
-      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}${alertSmsMsg}`);
+      const reuploadMsg = isReuploadMode ? '\n🔄 재업로드 모드: 집계만 덮어씀 (경보/문자/신규업체 스킵)' : '';
+      alert(`✅ ${date} 판매데이터 저장 완료!\n영업일 ${bizDays.size}일 기준 월간통계 업데이트됨.${smsMsg}${alertMsg}${alertSmsMsg}${reuploadMsg}`);
       closeSalesUpload();
       location.reload();
 
@@ -2780,38 +2835,120 @@ async function loadEvalDriverList() {
 }
 
 // ── 탭1: 정량기록 저장 ──
+// 배점표 (evaluation.js와 동일)
+const ADMIN_QUANT_ITEMS = [
+  { key: 'late',       name: '근태 지각',             pointsPer: -2  },
+  { key: 'nodir',      name: '지시사항 미이행',         pointsPer: -3  },
+  { key: 'wrong',      name: '오배송',                 pointsPer: -5  },
+  { key: 'miss',       name: '누락',                   pointsPer: -5  },
+  { key: 'signal',     name: '신호위반',               pointsPer: -3  },
+  { key: 'accident',   name: '사고',                   pointsPer: -10, isRadio: true, radioValuesTrue: 1 },
+  { key: 'heater',     name: '발열통 완료',             pointsPer: 0,   isRadio: true, radioValuesTrue: 1, pointsForFalse: -5, nameForFalse: '발열통 미완료' },
+  { key: 'newsalesok', name: '신규 영업 연결 성공',     pointsPer: +5  },
+  { key: 'lost',       name: '끊긴 업체',               pointsPer: 0 },  // 집계용(점수 없음)
+  { key: 'lostreport', name: '끊긴업체 보고',           pointsPer: 0,   isRadio: true, radioValuesTrue: 1, pointsForFalse: -3, nameForFalse: '끊긴업체 미보고' },
+  { key: 'newsales',   name: '신규영업 시도',           pointsPer: 0 },  // 집계용
+];
+
 window.saveQuantRecord = async () => {
   const driverId = document.getElementById('eq-driver').value;
   const month = document.getElementById('eq-month').value;
   if (!driverId) { alert('기사를 선택해주세요.'); return; }
   if (!month) { alert('연월을 선택해주세요.'); return; }
 
+  const msgEl = document.getElementById('eq-msg');
   const getInt = id => parseInt(document.getElementById(id).value) || 0;
   const getRadio = name => parseInt(document.querySelector(`input[name="${name}"]:checked`)?.value ?? 0);
 
-  const data = {
-    quant: {
-      late: getInt('eq-late'),
-      noDirective: getInt('eq-nodir'),
-      wrongDelivery: getInt('eq-wrong'),
-      missed: getInt('eq-miss'),
-      signalViolation: getInt('eq-signal'),
-      accident: getRadio('eq-accident'),
-      heaterComplete: getRadio('eq-heater'),
-      newSales: getInt('eq-newsales'),
-      newSalesSuccess: getInt('eq-newsalesok'),
-      lostClient: getInt('eq-lost'),
-      lostClientReport: getRadio('eq-lostreport'),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  // 기사 정보 조회
+  let driverInfo = null;
+  try {
+    const u = await db.collection('users').doc(driverId).get();
+    if (u.exists) driverInfo = u.data();
+  } catch(e) {}
+  if (!driverInfo) {
+    msgEl.style.color = '#c53030'; msgEl.textContent = '❌ 기사 정보 없음';
+    return;
+  }
+
+  // 각 항목 수집 + 점수 계산
+  const items = [];
+  let totalPoints = 0;
+
+  // 숫자 입력 항목
+  [['late','eq-late'],['nodir','eq-nodir'],['wrong','eq-wrong'],['miss','eq-miss'],
+   ['signal','eq-signal'],['newsales','eq-newsales'],['newsalesok','eq-newsalesok'],['lost','eq-lost']
+  ].forEach(([key, elId]) => {
+    const count = getInt(elId);
+    if (count !== 0) {
+      const item = ADMIN_QUANT_ITEMS.find(i => i.key === key);
+      const pts = count * (item?.pointsPer || 0);
+      items.push({ name: item.name, count, pointsPer: item.pointsPer, total: pts });
+      totalPoints += pts;
     }
+  });
+
+  // 라디오 항목 (사고/발열통/끊긴업체 보고)
+  const accident = getRadio('eq-accident'); // 0=무, 1=유
+  if (accident === 1) {
+    items.push({ name: '사고', count: 1, pointsPer: -10, total: -10 });
+    totalPoints += -10;
+  }
+  const heater = getRadio('eq-heater'); // 1=완료, 0=미완료
+  if (heater === 0) {
+    items.push({ name: '발열통 미완료', count: 1, pointsPer: -5, total: -5 });
+    totalPoints += -5;
+  }
+  const lostReport = getRadio('eq-lostreport'); // 1=보고, 0=미보고
+  if (lostReport === 0) {
+    items.push({ name: '끊긴업체 미보고', count: 1, pointsPer: -3, total: -3 });
+    totalPoints += -3;
+  }
+
+  if (items.length === 0) {
+    msgEl.style.color = '#c53030';
+    msgEl.textContent = '❌ 입력된 항목이 없습니다 (전부 0/정상값).';
+    return;
+  }
+
+  // 월의 마지막 날로 저장 (date 필드)
+  const [y, m] = month.split('-').map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const dateStr = `${month}-${String(lastDay).padStart(2,'0')}`;
+
+  const record = {
+    driverId,
+    driverName: driverInfo.name || '',
+    teamId:     driverInfo.teamId || '',
+    courseId:   driverInfo.courseId || '',
+    date:       dateStr,
+    yearMonth:  month,
+    items,
+    totalPoints,
+    memo:       '관리자 입력 (admin 정성평가 탭)',
+    source:     'admin_quant_tab',
+    createdAt:  firebase.firestore.FieldValue.serverTimestamp()
   };
 
-  const msgEl = document.getElementById('eq-msg');
   msgEl.style.color = '#276749'; msgEl.textContent = '저장 중...';
   try {
-    await db.collection('evaluations').doc(month)
-      .collection('drivers').doc(driverId).set(data, { merge: true });
-    msgEl.textContent = '✅ 저장 완료!';
+    // 같은 월/기사 기존 관리자 입력 레코드 있으면 덮어쓰기
+    const dupSnap = await db.collection('quantitative_records')
+      .where('driverId','==',driverId)
+      .where('yearMonth','==',month)
+      .where('source','==','admin_quant_tab')
+      .limit(1).get();
+
+    if (!dupSnap.empty) {
+      await dupSnap.docs[0].ref.update({
+        ...record,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      msgEl.textContent = `✅ 갱신 완료! 총 ${totalPoints >= 0 ? '+' : ''}${totalPoints}점`;
+    } else {
+      await db.collection('quantitative_records').add(record);
+      msgEl.textContent = `✅ 저장 완료! 총 ${totalPoints >= 0 ? '+' : ''}${totalPoints}점`;
+    }
   } catch (e) {
     msgEl.style.color = '#c53030'; msgEl.textContent = '❌ 오류: ' + e.message;
   }

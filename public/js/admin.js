@@ -108,18 +108,39 @@ async function loadAdminData() {
     const rawStats = statsDoc.exists ? statsDoc.data() : {};
     allStatsData = rawStats.teamStats ? rawStats.teamStats : rawStats;
 
-    // 전체 수량 집계 (밥/국 제외, 조식배송+미배정 포함) — sales_daily.driverStats 기준
+    // 전체 수량 집계 (지역 기반, 팀1~7만, 밥/국 제외)
+    // 우선순위 1: sales_daily.teamStats (신규, 지역 기반)
+    // 우선순위 2: sales_daily.driverStats fallback (teamStats 없는 구데이터용)
     const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부'];
+    const TEAM_IDS = ['team1','team2','team3','team4','team5','team6','team7'];
     let realGrandTotal = 0;
+    let teamGrandTotals = {}; // 팀별 누적 (teamStats 기반, 4월 재집계/실시간용)
+    let teamBizDays = 0;      // teamStats 있는 날짜 수
+    let hasTeamStatsData = false;
+
     salesSnap.forEach(doc => {
       const d = doc.data();
-      if (d.driverStats) {
+      if (d.teamStats && Object.keys(d.teamStats).length > 0) {
+        hasTeamStatsData = true;
+        teamBizDays++;
+        TEAM_IDS.forEach(tid => {
+          const ts = d.teamStats[tid];
+          if (ts) {
+            MENUS.forEach(m => realGrandTotal += (ts[m]||0));
+            teamGrandTotals[tid] = (teamGrandTotals[tid] || 0) + MENUS.reduce((a,m)=>a+(ts[m]||0), 0);
+          }
+        });
+      } else if (d.driverStats) {
+        // fallback: 기존 방식 (teamStats 없는 과거 데이터)
         Object.values(d.driverStats).forEach(drv => {
           MENUS.forEach(m => realGrandTotal += (drv[m]||0));
         });
       }
     });
     window._realGrandTotal = realGrandTotal;
+    window._teamGrandTotals = teamGrandTotals;
+    window._teamBizDays = teamBizDays;
+    window._hasTeamStatsData = hasTeamStatsData;
 
     renderSummaryCards();
     renderAdminTeamRanking();
@@ -130,26 +151,40 @@ async function loadAdminData() {
 
 function renderSummaryCards() {
   // 일평균 기준 비교 (A안): 기준 일평균 vs 실제 일평균
+  // 지역 기반 집계(teamStats)가 있으면 그것 사용, 없으면 monthly_stats fallback
   let totalCumul = 0;
   let totalBaselineDailyAvg = 0;
   let bizDays = 0;
   allTeamsData.forEach(t => {
-    const s = allStatsData[t.id] || {};
-    const hasStats = Object.keys(s).length > 0;
-    totalCumul += hasStats ? (s.cumulativeTotal || 0) : 0;
     totalBaselineDailyAvg += t.baselineDailyAvg || 0;
-    if (hasStats && !bizDays) bizDays = s.bizDays || 0;
   });
+
+  if (window._hasTeamStatsData) {
+    // ⭐ 신규: teamStats(지역 기반) 사용
+    const teamTotals = window._teamGrandTotals || {};
+    allTeamsData.forEach(t => {
+      totalCumul += teamTotals[t.id] || 0;
+    });
+    bizDays = window._teamBizDays || 0;
+  } else {
+    // fallback: monthly_stats 사용 (구데이터)
+    allTeamsData.forEach(t => {
+      const s = allStatsData[t.id] || {};
+      const hasStats = Object.keys(s).length > 0;
+      totalCumul += hasStats ? (s.cumulativeTotal || 0) : 0;
+      if (hasStats && !bizDays) bizDays = s.bizDays || 0;
+    });
+  }
 
   // 실제 일평균 vs 기준 일평균 차이
   const actualDailyAvg = bizDays > 0 ? Math.round(totalCumul / bizDays) : 0;
   const dailyAvgDiff = actualDailyAvg - totalBaselineDailyAvg;
   const dailyAvgDiffStr = dailyAvgDiff >= 0 ? `+${numFormat(dailyAvgDiff)}` : numFormat(dailyAvgDiff);
 
-  // 전체 수량: sales_daily 기준 (조식배송+미배정 포함)
-  const realTotal = window._realGrandTotal || totalCumul;
+  // 상단 큰 숫자: 지역 기반 팀1~7 합계 (teamStats) / fallback은 monthly_stats 누적
+  const displayTotal = window._hasTeamStatsData ? totalCumul : (window._realGrandTotal || totalCumul);
   document.getElementById('summaryTotal').innerHTML = `
-    <div class="summary-val">${numFormat(realTotal)}</div>
+    <div class="summary-val">${numFormat(displayTotal)}</div>
     <div class="summary-sub ${dailyAvgDiff >= 0 ? 'positive' : 'negative'}">일평균 기준대비 ${dailyAvgDiffStr}개/일</div>
   `;
 
@@ -211,17 +246,23 @@ async function renderAdminTeamRanking() {
     evalSnap.forEach(doc => { evalScores[doc.id] = doc.data().totalScore ?? null; });
   } catch(e) { /* 평가 데이터 없으면 무시 */ }
 
+  // ⭐ teamStats 우선 사용 (지역 기반), 없으면 monthly_stats fallback
+  const teamTotals = window._teamGrandTotals || {};
+  const useTeamStats = window._hasTeamStatsData;
+  const teamBizDays = window._teamBizDays || 0;
+
   const ranked = allTeamsData.map(t => {
     const s = allStatsData[t.id] || {};
     const hasStats = Object.keys(s).length > 0;
-    const bizDays = hasStats ? (s.bizDays || s.workingDays || 0) : 0;
-    const cumul = hasStats ? (s.cumulativeTotal || 0) : 0;
-    const dailyAvg = hasStats ? (s.dailyAvg || (bizDays > 0 ? Math.round(cumul / bizDays) : 0)) : 0;
-    const dailyAvgDiff = hasStats ? Math.round(s.dailyAvgDiff || 0) : 0;
-    const baselineCumul = hasStats ? (s.baselineCumulative || 0) : 0;
-    const cumulDiff = cumul - baselineCumul;
-    const grade = hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t);
+    // teamStats 있으면 거기서, 없으면 monthly_stats
+    const bizDays = useTeamStats ? teamBizDays : (hasStats ? (s.bizDays || s.workingDays || 0) : 0);
+    const cumul = useTeamStats ? (teamTotals[t.id] || 0) : (hasStats ? (s.cumulativeTotal || 0) : 0);
     const baseline = t.baselineDailyAvg || 0;
+    const dailyAvg = bizDays > 0 ? Math.round(cumul / bizDays) : 0;
+    const dailyAvgDiff = useTeamStats ? (dailyAvg - baseline) : (hasStats ? Math.round(s.dailyAvgDiff || 0) : 0);
+    const baselineCumul = hasStats ? (s.baselineCumulative || (baseline * bizDays)) : 0;
+    const cumulDiff = cumul - baselineCumul;
+    const grade = useTeamStats ? calcGrade(dailyAvg, t) : (hasStats ? (s.grade || calcGrade(cumul, t)) : calcGrade(0, t));
     const evalScore = evalScores[t.id] ?? null;
     return { ...t, cumul, dailyAvg, dailyAvgDiff, cumulDiff, grade, bizDays, baseline, evalScore };
   }).sort((a, b) => b.dailyAvgDiff - a.dailyAvgDiff);
