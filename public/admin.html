@@ -1953,7 +1953,7 @@
 
   // ── 부분일치 주문 확인: 정규화 + 포함 관계 + 유사도 매칭 ──
   function isOrderedPartialMatch(name, orderedNorm) {
-    const norm = normClient(clientName);
+    const norm = normClient(name);
     if (!norm || norm.length < 2) return false;
     for (const o of orderedNorm) {
       if (!o || o.length < 2) continue;
