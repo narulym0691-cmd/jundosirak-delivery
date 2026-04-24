@@ -111,7 +111,7 @@ async function loadAdminData() {
     // 전체 수량 집계 (지역 기반, 팀1~7만, 밥/국 제외)
     // 우선순위 1: sales_daily.teamStats (신규, 지역 기반)
     // 우선순위 2: sales_daily.driverStats fallback (teamStats 없는 구데이터용)
-    const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부'];
+    const MENUS = ['뜨','프','샐','품','덮','샌','세트','김밥']; // 저장키: 김밥(신규) / 유부(구데이터 호환)
     const TEAM_IDS = ['team1','team2','team3','team4','team5','team6','team7'];
     let realGrandTotal = 0;
     let teamGrandTotals = {}; // 팀별 누적 (teamStats 기반, 4월 재집계/실시간용)
@@ -126,8 +126,8 @@ async function loadAdminData() {
         TEAM_IDS.forEach(tid => {
           const ts = d.teamStats[tid];
           if (ts) {
-            MENUS.forEach(m => realGrandTotal += (ts[m]||0));
-            teamGrandTotals[tid] = (teamGrandTotals[tid] || 0) + MENUS.reduce((a,m)=>a+(ts[m]||0), 0);
+            MENUS.forEach(m => realGrandTotal += (ts[m] || (m==='김밥' ? ts['유부'] : 0) || 0));
+            teamGrandTotals[tid] = (teamGrandTotals[tid] || 0) + MENUS.reduce((a,m)=>a+(ts[m]||(m==='김밥'?ts['유부']:0)||0), 0);
           }
         });
       } else if (d.driverStats) {

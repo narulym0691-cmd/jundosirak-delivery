@@ -1594,8 +1594,8 @@
   }
 
   function parseClientOrderData(wb) {
-    const MENUS = ['뜨','프','샐','품','덮','샌','세트','유부','밥','국'];
-    const MENUS_STATS = ['뜨','프','샐','품','덮','샌','세트','유부']; // 통계용 (밥/국 제외)
+    const MENUS = ['뜨','프','샐','품','덮','샌','세트','김밥','밥','국'];
+    const MENUS_STATS = ['뜨','프','샐','품','덮','샌','세트','김밥']; // 통계용 (밥/국 제외)
     const MENUS_EXCLUDE = ['밥','국']; // 총수량 합산 제외 메뉴
     // 코스번호 → 팀ID 매핑 (지역 기반 집계용)
     const COURSE_TO_TEAM = {
@@ -1668,7 +1668,7 @@
         let total = 0;
         const menuQtys = {};
         MENUS.forEach((menu, idx) => {
-          const qty = parseInt(row[14 + idx]) || 0;
+          const qty = parseInt(row[colClient + 1 + idx]) || 0;
           menuQtys[menu] = qty;
           if (!MENUS_EXCLUDE.includes(menu)) total += qty; // 밥/국 제외
         });
