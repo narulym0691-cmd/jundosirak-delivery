@@ -1608,7 +1608,7 @@
       '코스19':'team6'
     };
     // 헤더행 스킵 키워드
-    const SKIP_HEADER_KW = ['번호','순서','이름','거래처1','거래처2','거래처3','거래처4','거래처5','거래처6','거래처7','거래처8','거래처9','기사명','합계'];
+    const SKIP_HEADER_KW = ['번호','순서','이름','거래처1','거래처2','거래처3','거래처4','거래처5','거래처6','거래처7','거래처8','거래처9','기사명','합계','소계','총합계','총 합계'];
     const orderedClients = [], notOrderedClients = [];
     const driverStats = {};
     const teamStats = {}; // ⭐ 팀별 집계 (지역 기반, 팀1~7만, 밥/국 제외)
@@ -1645,16 +1645,21 @@
         14:'코스14',15:'코스15',16:'코스16',17:'코스17',18:'코스18',19:'코스19'
       };
       let currentCourseId = '';
-      for (let i = 44; i < rows.length; i++) {
+      // 첫 섹션 헤더(행 42, 콜1 "1 ◎ 센텀시티(표창훈)배송코스")가 헤더 행(43) 앞에 있을 수 있어
+      // 헤더 행보다 10줄 앞에서부터 탐색 시작 (데이터는 44부터)
+      const scanStart = Math.max(0, 43 - 10);
+      for (let i = scanStart; i < rows.length; i++) {
         const row = rows[i];
         if (!row) continue;
-        // 섹션 헤더 감지: row[13]에 배송코스 포함
+        // 섹션 헤더 감지: row[colClient]에 배송코스 포함
         const secCell = String(row[colClient]||'').trim();
         if (secCell.includes('배송코스') && SECTION_PAT.test(secCell)) {
           const courseNum = parseInt(secCell.match(SECTION_PAT)[1]);
           currentCourseId = COURSE_NUM_MAP[courseNum] || '';
           continue;
         }
+        // 헤더 행 이전(i < 44)은 섹션 헤더만 탐색하고 데이터 행은 건너뜀
+        if (i < 44) continue;
         // 헤더행 스킵 (거래처1~9, 번호, 순서 등)
         const clientName = secCell;
         if (!clientName) continue;
