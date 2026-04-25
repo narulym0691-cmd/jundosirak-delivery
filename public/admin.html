@@ -2139,9 +2139,12 @@
         // 1순위(일평균 6개 이상): 당일 즉시경보
         grade = 'urgent';
       } else {
-        // 일반: 3일 연속 미주문부터 경보
-        if (consecutiveDays < 3) continue; // 1~2일째는 주시(경보 없음)
-        grade = 'check';
+        // 일반 거래처:
+        //  - 1일 미주문: 무경보 (조용히 추적만)
+        //  - 2일 연속: 🟡 주시 (watch) — 한 번 더 지켜볼 단계
+        //  - 3일 연속+: 🟠 확인보고 (check) — 조치 필요
+        if (consecutiveDays < 2) continue; // 1일째는 경보 없음
+        grade = consecutiveDays >= 3 ? 'check' : 'watch';
       }
 
       if (prev) {

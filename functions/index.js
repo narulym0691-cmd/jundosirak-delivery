@@ -2036,8 +2036,10 @@ exports.onSalesDailyWrite = functions
         if (isPriority) {
           grade = 'urgent';
         } else {
-          if (consecutiveDays < 3) continue;
-          grade = 'check';
+          // 일반 거래처:
+          //  1일째 무경보 / 2일째 watch(🟡 주시) / 3일째+ check(🟠 확인보고)
+          if (consecutiveDays < 2) continue;
+          grade = consecutiveDays >= 3 ? 'check' : 'watch';
         }
 
         if (prev) {
