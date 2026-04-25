@@ -523,11 +523,21 @@ async function loadFeedbackPending(container) {
   }
 }
 
-// ── 고객 불만 알림 카드 ─────────────────────────────────────────
-// admin_notifications 컬렉션 (type='complaint')에 쌓인 불만을 표시
+// ── 관리자 알림 카드 (불만 + 시스템 오인 등) ────────────────────
+// admin_notifications 컬렉션의 모든 type 표시 (complaint / system_issue / ...)
 // - 미읽음(read=false)을 상단에 강조 표시
-// - 클릭 시 읽음 처리 (read=true)
-// - 처리 이력 토글 버튼으로 30일 내 읽음 항목 보기
+// - 클릭 시 읽음 처리
+// - 처리 이력 토글로 30일 내 읽음 항목 보기
+
+// type별 라벨/색상 매핑
+const NOTIF_TYPE_META = {
+  complaint:    { icon: '💢', label: '고객 불만', color: '#c05621', bg: '#fffaf0' },
+  system_issue: { icon: '📦', label: '시스템 오인', color: '#6b46c1', bg: '#faf5ff' },
+};
+function getNotifMeta(type) {
+  return NOTIF_TYPE_META[type] || { icon: '🔔', label: type || '알림', color: '#4a5568', bg: '#f7fafc' };
+}
+
 async function loadComplaintNotifications() {
   const card = document.getElementById('complaintListCard');
   const badge = document.getElementById('complaintUnreadBadge');
@@ -535,9 +545,8 @@ async function loadComplaintNotifications() {
   card.innerHTML = '<div class="empty-msg">로딩 중...</div>';
 
   try {
-    const snap = await db.collection('admin_notifications')
-      .where('type','==','complaint')
-      .get();
+    // type 필터 제거 — 모든 admin_notifications 표시
+    const snap = await db.collection('admin_notifications').get();
 
     const items = [];
     snap.forEach(d => items.push({ id: d.id, ...d.data() }));
@@ -548,40 +557,46 @@ async function loadComplaintNotifications() {
     });
     const unread = items.filter(i => !i.read);
 
-    // 미읽음 배지
+    // 미읽음 배지 (type별 카운트)
     if (unread.length > 0) {
-      badge.textContent = `미읽음 ${unread.length}건`;
+      const byType = {};
+      unread.forEach(n => { byType[n.type] = (byType[n.type]||0) + 1; });
+      const parts = Object.entries(byType).map(([t, c]) => `${getNotifMeta(t).icon}${c}`);
+      badge.textContent = `미읽음 ${unread.length}건 (${parts.join(' ')})`;
       badge.style.display = '';
     } else {
       badge.style.display = 'none';
     }
 
     if (!items.length) {
-      card.innerHTML = '<div class="empty-msg" style="color:#38a169;font-weight:600;">✅ 등록된 불만 알림이 없습니다.</div>';
+      card.innerHTML = '<div class="empty-msg" style="color:#38a169;font-weight:600;">✅ 등록된 알림이 없습니다.</div>';
       return;
     }
 
-    // 미읽음만 보여주기 (읽음은 처리 이력 토글에서)
     const visibleItems = unread.length > 0 ? unread : items.slice(0, 5);
     const headerNote = unread.length === 0
       ? '<div style="font-size:12px;color:#38a169;font-weight:600;margin-bottom:8px;">✅ 미읽음 없음 — 최근 5건 표시</div>'
       : `<div style="font-size:12px;color:#c53030;font-weight:600;margin-bottom:8px;">⚠️ 미읽음 ${unread.length}건 — 클릭하면 읽음 처리됩니다</div>`;
 
     card.innerHTML = headerNote + visibleItems.map(n => {
+      const meta = getNotifMeta(n.type);
       const ts = n.createdAt?._seconds ? new Date(n.createdAt._seconds*1000).toISOString().slice(0,10) : '?';
-      const text = n.customText || '<span style="color:#a0aec0;">(상세 내용 없음)</span>';
+      const text = n.customText || `<span style="color:#a0aec0;">(상세 내용 없음)</span>`;
       const driver = n.driverName ? `· 기사: ${n.driverName} ` : '';
-      const bg = n.read ? '#f7fafc' : '#fffaf0';
-      const border = n.read ? '#e2e8f0' : '#f6ad55';
+      const bg = n.read ? '#f7fafc' : meta.bg;
+      const border = n.read ? '#e2e8f0' : meta.color;
       const status = n.read
         ? '<span style="font-size:11px;color:#a0aec0;">✓ 읽음</span>'
-        : '<span style="font-size:11px;color:#dd6b20;font-weight:700;">⚠️ 새 알림</span>';
+        : `<span style="font-size:11px;color:${meta.color};font-weight:700;">⚠️ 새 알림</span>`;
       const onclick = n.read ? '' : `onclick="markComplaintRead('${n.id}')"`;
       const cursor = n.read ? '' : 'cursor:pointer;';
       return `
         <div ${onclick} style="background:${bg};border:1.5px solid ${border};border-radius:10px;padding:12px;margin-bottom:6px;${cursor}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-            <strong style="font-size:13px;">${n.clientName || '거래처 미상'}</strong>
+            <span style="font-size:13px;">
+              <span style="background:${meta.color};color:#fff;padding:2px 7px;border-radius:6px;font-size:11px;font-weight:700;margin-right:6px;">${meta.icon} ${meta.label}</span>
+              <strong>${n.clientName || '거래처 미상'}</strong>
+            </span>
             ${status}
           </div>
           <div style="font-size:13px;color:#2d3748;margin-bottom:4px;">${text}</div>
@@ -589,7 +604,7 @@ async function loadComplaintNotifications() {
         </div>`;
     }).join('');
   } catch(e) {
-    console.error('불만 알림 로드 실패:', e);
+    console.error('관리자 알림 로드 실패:', e);
     card.innerHTML = '<div class="card-error">데이터 로드 실패</div>';
   }
 }
@@ -623,7 +638,6 @@ window.toggleComplaintHistory = async function() {
     const sinceSec = Math.floor(since.getTime() / 1000);
 
     const snap = await db.collection('admin_notifications')
-      .where('type','==','complaint')
       .where('read','==',true)
       .get();
 
@@ -636,17 +650,21 @@ window.toggleComplaintHistory = async function() {
     items.sort((a,b) => (b.createdAt?._seconds||0) - (a.createdAt?._seconds||0));
 
     if (!items.length) {
-      body.innerHTML = '<div class="empty-msg">최근 30일 내 처리된 불만 없음</div>';
+      body.innerHTML = '<div class="empty-msg">최근 30일 내 처리된 알림 없음</div>';
       return;
     }
     body.innerHTML = items.map(n => {
+      const meta = getNotifMeta(n.type);
       const ts = n.createdAt?._seconds ? new Date(n.createdAt._seconds*1000).toISOString().slice(0,10) : '?';
       const readTs = n.readAt?._seconds ? new Date(n.readAt._seconds*1000).toISOString().slice(0,10) : '?';
       const text = n.customText || '<span style="color:#a0aec0;">(상세 내용 없음)</span>';
       return `
         <div style="padding:8px 10px;background:#f7fafc;border-radius:8px;margin-bottom:4px;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
-            <strong style="font-size:13px;">${n.clientName || '거래처 미상'}</strong>
+            <span style="font-size:13px;">
+              <span style="background:${meta.color};color:#fff;padding:1px 6px;border-radius:5px;font-size:10px;font-weight:700;margin-right:5px;">${meta.icon} ${meta.label}</span>
+              <strong>${n.clientName || '거래처 미상'}</strong>
+            </span>
             <span style="font-size:11px;color:#a0aec0;">${ts} 발생 / ${readTs} 처리</span>
           </div>
           <div style="font-size:12px;color:#4a5568;margin-top:3px;">${text}</div>

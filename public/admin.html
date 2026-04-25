@@ -525,10 +525,10 @@
     </div>
   </div>
 
-  <!-- 고객 불만 알림 -->
+  <!-- 관리자 알림 (불만 + 시스템 이슈) -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <div class="card-title" style="margin:0;">💢 고객 불만 알림</div>
+      <div class="card-title" style="margin:0;">🔔 관리자 알림</div>
       <div style="display:flex;gap:6px;align-items:center;">
         <span id="complaintUnreadBadge" style="display:none;background:#c53030;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;"></span>
         <button onclick="toggleComplaintHistory()" id="complaintHistoryBtn"
@@ -540,6 +540,9 @@
           🔄 새로고침
         </button>
       </div>
+    </div>
+    <div style="font-size:11px;color:#a0aec0;margin-bottom:10px;">
+      💢 고객 불만 / 📦 시스템 오인 (정상 주문 미감지) 등 기사가 보고한 항목
     </div>
     <div id="complaintListCard">
       <div class="empty-msg">로딩 중...</div>
@@ -2128,8 +2131,9 @@
       // 이름 없는 clients 문서는 경보 생성 대상에서 제외 (빈 이름 alert 방지)
       if (!name || String(name).trim().length < 2) continue;
       // dailyAvg <= 0 인 거래처는 경보 노이즈 제거 — 실제 주문 이력 거의 없는 거래처
-      // (잠재 거래처/끊긴 거래처가 매일 경보 생성하는 문제 차단)
       if (!(Number(dailyAvg) > 0)) continue;
+      // 일시 휴업 가드: pausedUntil이 미래 날짜면 경보 생성 안 함
+      if (client.pausedUntil && client.pausedUntil >= date) continue;
       if (!orderDays || !Array.isArray(orderDays)) continue;
 
       // 오늘 주문 요일인가? (숫자 또는 문자열 'mon'~'sun' 둘 다 지원)

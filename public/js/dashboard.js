@@ -340,6 +340,11 @@ async function openDriverResolveModal(alertId) {
             `).join('')}
           </div>
         </div>
+        <div id="drv-pause-until" style="display:none;background:#fffaf0;border:1px solid #fbd38d;border-radius:8px;padding:10px;margin-bottom:12px;">
+          <div style="font-size:12px;font-weight:700;color:#c05621;margin-bottom:6px;">📅 복귀 예정일 입력 *</div>
+          <input type="date" id="drv-pause-date" style="width:100%;padding:8px 10px;border:1px solid #fbd38d;border-radius:6px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+          <div style="font-size:11px;color:#9c4221;margin-top:6px;">이 날짜까지는 경보가 발생하지 않습니다. 복귀 후 다시 미주문이면 자동으로 경보 재개됩니다.</div>
+        </div>
         <button onclick="submitDriverResolve()" id="drv-submit-btn" style="width:100%;padding:12px;background:#1a4731;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">✅ 제출</button>
       </div>
     `;
@@ -387,6 +392,21 @@ function onDriverReasonChange() {
     customLabelEl.textContent = labelMap[key] || `${reason?.label || '사유'} 상세 입력 *`;
   }
   document.getElementById('drv-regular-dow').style.display = (key === 'regular_off') ? 'block' : 'none';
+  // 일시 휴업: 복귀 예정일 입력 영역 표시 + 기본값(7일 후) 미리 채움
+  const pauseEl = document.getElementById('drv-pause-until');
+  if (pauseEl) {
+    if (key === 'temp_pause') {
+      pauseEl.style.display = 'block';
+      const dateInput = document.getElementById('drv-pause-date');
+      if (dateInput && !dateInput.value) {
+        const d = new Date();
+        d.setDate(d.getDate() + 7);
+        dateInput.value = d.toISOString().slice(0, 10);
+      }
+    } else {
+      pauseEl.style.display = 'none';
+    }
+  }
 }
 
 function toggleDriverDow(dow, btn) {
@@ -422,6 +442,24 @@ async function submitDriverResolve() {
       alert(promptLabel + ' 입력해주세요.');
       return;
     }
+  }
+
+  // 정기휴무 선택 시 요일 검증
+  if (selectedKey === 'regular_off' && (!selectedDow || selectedDow.length === 0)) {
+    alert('정기휴무 요일을 1개 이상 선택해주세요.');
+    return;
+  }
+
+  // 일시 휴업 선택 시 복귀 예정일 검증
+  let pauseUntil = null;
+  if (selectedKey === 'temp_pause') {
+    const dateInput = document.getElementById('drv-pause-date');
+    const dateVal = dateInput?.value;
+    if (!dateVal) { alert('복귀 예정일을 선택해주세요.'); return; }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const picked = new Date(dateVal); picked.setHours(0,0,0,0);
+    if (picked <= today) { alert('복귀 예정일은 내일 이후로 선택해주세요.'); return; }
+    pauseUntil = dateVal; // 'YYYY-MM-DD'
   }
 
   const btn = document.getElementById('drv-submit-btn');
@@ -474,6 +512,30 @@ async function submitDriverResolve() {
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         read: false
       });
+    } else if (action === 'report_system_issue' && clientName) {
+      // 정상 주문인데 시스템이 미주문으로 잡은 케이스 — 관리자에게 알림 (시스템 보완 트리거)
+      const logRef = db.collection('admin_notifications').doc();
+      batch.set(logRef, {
+        type: 'system_issue',
+        subType: 'misdetected_no_order',
+        clientName,
+        alertId,
+        driverName: currentUser.name,
+        customText: customText || null,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        read: false,
+      });
+    } else if (action === 'pause_until' && clientName && pauseUntil) {
+      // 일시 휴업 — clients 에 pausedUntil 설정
+      const cs = await db.collection('clients').where('name','==',clientName).limit(1).get();
+      if (!cs.empty) {
+        batch.update(cs.docs[0].ref, {
+          pausedUntil: pauseUntil, // 'YYYY-MM-DD' — 이 날 자정까지 경보 생성 안 함
+          pausedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          pausedBy: currentUser.name,
+          pausedReason: customText || null,
+        });
+      }
     }
 
     await batch.commit();
