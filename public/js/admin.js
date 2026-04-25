@@ -24,7 +24,8 @@ async function initAdmin() {
     loadSalesMissingCard(),
     loadNewClientTracking(),
     loadNoOrderTracking(),
-    loadNoOrderResponses()
+    loadNoOrderResponses(),
+    loadComplaintNotifications()
   ]);
 }
 
@@ -521,6 +522,140 @@ async function loadFeedbackPending(container) {
     container.innerHTML = '<div class="card-error">데이터 로드 실패</div>';
   }
 }
+
+// ── 고객 불만 알림 카드 ─────────────────────────────────────────
+// admin_notifications 컬렉션 (type='complaint')에 쌓인 불만을 표시
+// - 미읽음(read=false)을 상단에 강조 표시
+// - 클릭 시 읽음 처리 (read=true)
+// - 처리 이력 토글 버튼으로 30일 내 읽음 항목 보기
+async function loadComplaintNotifications() {
+  const card = document.getElementById('complaintListCard');
+  const badge = document.getElementById('complaintUnreadBadge');
+  if (!card) return;
+  card.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+
+  try {
+    const snap = await db.collection('admin_notifications')
+      .where('type','==','complaint')
+      .get();
+
+    const items = [];
+    snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+    // 미읽음 먼저, createdAt 최신순
+    items.sort((a,b) => {
+      if (a.read !== b.read) return (a.read?1:0) - (b.read?1:0);
+      return (b.createdAt?._seconds||0) - (a.createdAt?._seconds||0);
+    });
+    const unread = items.filter(i => !i.read);
+
+    // 미읽음 배지
+    if (unread.length > 0) {
+      badge.textContent = `미읽음 ${unread.length}건`;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (!items.length) {
+      card.innerHTML = '<div class="empty-msg" style="color:#38a169;font-weight:600;">✅ 등록된 불만 알림이 없습니다.</div>';
+      return;
+    }
+
+    // 미읽음만 보여주기 (읽음은 처리 이력 토글에서)
+    const visibleItems = unread.length > 0 ? unread : items.slice(0, 5);
+    const headerNote = unread.length === 0
+      ? '<div style="font-size:12px;color:#38a169;font-weight:600;margin-bottom:8px;">✅ 미읽음 없음 — 최근 5건 표시</div>'
+      : `<div style="font-size:12px;color:#c53030;font-weight:600;margin-bottom:8px;">⚠️ 미읽음 ${unread.length}건 — 클릭하면 읽음 처리됩니다</div>`;
+
+    card.innerHTML = headerNote + visibleItems.map(n => {
+      const ts = n.createdAt?._seconds ? new Date(n.createdAt._seconds*1000).toISOString().slice(0,10) : '?';
+      const text = n.customText || '<span style="color:#a0aec0;">(상세 내용 없음)</span>';
+      const driver = n.driverName ? `· 기사: ${n.driverName} ` : '';
+      const bg = n.read ? '#f7fafc' : '#fffaf0';
+      const border = n.read ? '#e2e8f0' : '#f6ad55';
+      const status = n.read
+        ? '<span style="font-size:11px;color:#a0aec0;">✓ 읽음</span>'
+        : '<span style="font-size:11px;color:#dd6b20;font-weight:700;">⚠️ 새 알림</span>';
+      const onclick = n.read ? '' : `onclick="markComplaintRead('${n.id}')"`;
+      const cursor = n.read ? '' : 'cursor:pointer;';
+      return `
+        <div ${onclick} style="background:${bg};border:1.5px solid ${border};border-radius:10px;padding:12px;margin-bottom:6px;${cursor}">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <strong style="font-size:13px;">${n.clientName || '거래처 미상'}</strong>
+            ${status}
+          </div>
+          <div style="font-size:13px;color:#2d3748;margin-bottom:4px;">${text}</div>
+          <div style="font-size:11px;color:#718096;">${ts} ${driver}</div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('불만 알림 로드 실패:', e);
+    card.innerHTML = '<div class="card-error">데이터 로드 실패</div>';
+  }
+}
+
+window.markComplaintRead = async function(id) {
+  try {
+    await db.collection('admin_notifications').doc(id).update({
+      read: true,
+      readAt: firebase.firestore.FieldValue.serverTimestamp(),
+      readBy: (window.adminUser && window.adminUser.name) || 'admin',
+    });
+    await loadComplaintNotifications();
+  } catch(e) {
+    alert('읽음 처리 실패: ' + e.message);
+  }
+};
+
+window.toggleComplaintHistory = async function() {
+  const wrap = document.getElementById('complaintHistoryList');
+  const body = document.getElementById('complaintHistoryBody');
+  const btn = document.getElementById('complaintHistoryBtn');
+  const isHidden = wrap.style.display === 'none';
+  wrap.style.display = isHidden ? '' : 'none';
+  btn.textContent = isHidden ? '📜 숨기기' : '📜 처리 이력';
+  if (!isHidden) return;
+
+  body.innerHTML = '<div class="empty-msg">로딩 중...</div>';
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const sinceSec = Math.floor(since.getTime() / 1000);
+
+    const snap = await db.collection('admin_notifications')
+      .where('type','==','complaint')
+      .where('read','==',true)
+      .get();
+
+    const items = [];
+    snap.forEach(d => {
+      const data = d.data();
+      const ts = data.createdAt?._seconds || 0;
+      if (ts >= sinceSec) items.push({ id: d.id, ...data });
+    });
+    items.sort((a,b) => (b.createdAt?._seconds||0) - (a.createdAt?._seconds||0));
+
+    if (!items.length) {
+      body.innerHTML = '<div class="empty-msg">최근 30일 내 처리된 불만 없음</div>';
+      return;
+    }
+    body.innerHTML = items.map(n => {
+      const ts = n.createdAt?._seconds ? new Date(n.createdAt._seconds*1000).toISOString().slice(0,10) : '?';
+      const readTs = n.readAt?._seconds ? new Date(n.readAt._seconds*1000).toISOString().slice(0,10) : '?';
+      const text = n.customText || '<span style="color:#a0aec0;">(상세 내용 없음)</span>';
+      return `
+        <div style="padding:8px 10px;background:#f7fafc;border-radius:8px;margin-bottom:4px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:13px;">${n.clientName || '거래처 미상'}</strong>
+            <span style="font-size:11px;color:#a0aec0;">${ts} 발생 / ${readTs} 처리</span>
+          </div>
+          <div style="font-size:12px;color:#4a5568;margin-top:3px;">${text}</div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = '<div class="card-error">로드 실패: ' + e.message + '</div>';
+  }
+};
 
 async function loadWorkdays() {
   const container = document.getElementById('workdaysCard');

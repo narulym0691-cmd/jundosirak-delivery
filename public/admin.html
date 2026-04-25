@@ -525,6 +525,31 @@
     </div>
   </div>
 
+  <!-- 고객 불만 알림 -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <div class="card-title" style="margin:0;">💢 고객 불만 알림</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <span id="complaintUnreadBadge" style="display:none;background:#c53030;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;"></span>
+        <button onclick="toggleComplaintHistory()" id="complaintHistoryBtn"
+          style="padding:5px 12px;background:#edf2f7;border:none;border-radius:6px;font-size:12px;cursor:pointer;font-weight:600;">
+          📜 처리 이력
+        </button>
+        <button onclick="loadComplaintNotifications()"
+          style="padding:5px 10px;background:#fff5f5;border:1px solid #fed7d7;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;color:#c53030;">
+          🔄 새로고침
+        </button>
+      </div>
+    </div>
+    <div id="complaintListCard">
+      <div class="empty-msg">로딩 중...</div>
+    </div>
+    <div id="complaintHistoryList" style="display:none;margin-top:12px;border-top:1px solid #e2e8f0;padding-top:12px;">
+      <div style="font-size:12px;font-weight:600;color:#4a5568;margin-bottom:6px;">📜 처리 이력 (최근 30일)</div>
+      <div id="complaintHistoryBody"><div class="empty-msg">로딩 중...</div></div>
+    </div>
+  </div>
+
   <!-- 기사 이행률 통계 -->
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
