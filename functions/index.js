@@ -1727,6 +1727,14 @@ exports.scheduledDriverFeedbackSms = functions
     // 이틀 전 날짜 (자동처리 기준)
     const twoDaysAgo = new Date(kstNow.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+    // 주말(토/일) 발송 스킵 — 기사들 출근 안 하므로
+    // KST 기준 요일: 0=일, 1=월, ... 6=토
+    const kstDay = kstNow.getUTCDay(); // KST 시각을 UTC로 다룬 객체이므로 getUTCDay 사용
+    if (kstDay === 0 || kstDay === 6) {
+      console.log(`=== 주말(${kstDay === 0 ? '일' : '토'}) — SMS 발송 스킵 (오늘=${today}) ===`);
+      return null;
+    }
+
     console.log(`=== 기사 피드백 스케줄러 시작: ${today} ===`);
 
     try {
