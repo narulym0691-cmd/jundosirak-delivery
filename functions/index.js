@@ -2013,6 +2013,8 @@ exports.onSalesDailyWrite = functions
         const client = doc.data();
         const { name, orderDays, dailyAvg, teamId, courseId } = client;
         if (!name || String(name).trim().length < 2) continue;
+        // dailyAvg <= 0 인 거래처는 경보 노이즈 제거 — 실제 주문 이력 거의 없는 거래처
+        if (!(Number(dailyAvg) > 0)) continue;
         if (!orderDays || !Array.isArray(orderDays)) continue;
         if (client.active === false) continue;
 

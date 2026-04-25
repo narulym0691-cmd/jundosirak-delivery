@@ -2102,6 +2102,9 @@
       const { name, orderDays, dailyAvg, teamId, courseId } = client;
       // 이름 없는 clients 문서는 경보 생성 대상에서 제외 (빈 이름 alert 방지)
       if (!name || String(name).trim().length < 2) continue;
+      // dailyAvg <= 0 인 거래처는 경보 노이즈 제거 — 실제 주문 이력 거의 없는 거래처
+      // (잠재 거래처/끊긴 거래처가 매일 경보 생성하는 문제 차단)
+      if (!(Number(dailyAvg) > 0)) continue;
       if (!orderDays || !Array.isArray(orderDays)) continue;
 
       // 오늘 주문 요일인가? (숫자 또는 문자열 'mon'~'sun' 둘 다 지원)
