@@ -329,7 +329,7 @@ async function openDriverResolveModal(alertId) {
           `).join('')}
         </div>
         <div id="drv-custom-input" style="display:none;margin-bottom:12px;">
-          <label style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">기타 사유 직접 입력 *</label>
+          <label id="drv-custom-label" style="font-size:12px;font-weight:600;color:#4a5568;display:block;margin-bottom:4px;">사유 직접 입력 *</label>
           <textarea id="drv-custom-text" rows="2" style="width:100%;padding:8px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;box-sizing:border-box;" placeholder="사유를 입력하세요..."></textarea>
         </div>
         <div id="drv-regular-dow" style="display:none;background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:10px;margin-bottom:12px;">
@@ -374,7 +374,18 @@ function onDriverReasonChange() {
     lbl.style.background = lbl.dataset.reasonKey === key ? '#f0fff4' : '#fff';
   });
 
-  document.getElementById('drv-custom-input').style.display = (key === 'other' || reason?.requireInput) ? 'block' : 'none';
+  const customInputEl = document.getElementById('drv-custom-input');
+  const customLabelEl = document.getElementById('drv-custom-label');
+  const showCustom = (key === 'other' || reason?.requireInput);
+  customInputEl.style.display = showCustom ? 'block' : 'none';
+  if (showCustom && customLabelEl) {
+    // 사유별로 라벨 다르게 표시
+    const labelMap = {
+      'other': '기타 사유 직접 입력 *',
+      'complaint': '불만 내용 입력 * (예: 메뉴 / 가격 / 배송 / 품질 등)',
+    };
+    customLabelEl.textContent = labelMap[key] || `${reason?.label || '사유'} 상세 입력 *`;
+  }
   document.getElementById('drv-regular-dow').style.display = (key === 'regular_off') ? 'block' : 'none';
 }
 
@@ -406,7 +417,11 @@ async function submitDriverResolve() {
   let customText = '';
   if (selectedKey === 'other' || reason?.requireInput) {
     customText = document.getElementById('drv-custom-text').value.trim();
-    if (!customText) { alert('기타 사유를 입력해주세요.'); return; }
+    if (!customText) {
+      const promptLabel = (selectedKey === 'complaint') ? '불만 내용을' : `${reason?.label || '사유'}를`;
+      alert(promptLabel + ' 입력해주세요.');
+      return;
+    }
   }
 
   const btn = document.getElementById('drv-submit-btn');
