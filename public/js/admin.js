@@ -471,14 +471,17 @@ async function loadFeedbackPending(container) {
       team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
     };
 
-    // 확인보고 중 피드백 미제출 항목 수집
+    // 모든 등급(urgent/watch/check) 미해결 + 피드백(resolveReasonKey) 미제출 항목
+    // 기준: alerts.resolved=false AND resolveReasonKey 없음
+    //   ※ 미해결인데 피드백 키가 있으면 안 되지만, 안전망으로 함께 체크
     const pending = [];
     snap.forEach(doc => {
       const d = doc.data();
-      const isCheck = d.grade === 'check' || d.grade === 'alert';
-      if (isCheck && !(d.feedback && d.feedback.text)) {
-        pending.push({ id: doc.id, ...d });
-      }
+      const grade = d.grade || d.level;
+      if (!['urgent','watch','check','alert'].includes(grade)) return; // grade='none' 등 추적용 제외
+      if (d.resolveReasonKey) return; // 이미 사유 입력됨
+      if (d.feedback && d.feedback.text) return; // 구버전 피드백 필드도 호환
+      pending.push({ id: doc.id, ...d, _grade: grade });
     });
 
     if (!pending.length) {
@@ -486,34 +489,63 @@ async function loadFeedbackPending(container) {
       return;
     }
 
-    // 팀별 그룹핑
+    // 등급별 카운트
+    const byGrade = { urgent: 0, watch: 0, check: 0 };
+    pending.forEach(a => {
+      const g = a._grade === 'alert' ? 'check' : a._grade;
+      if (byGrade[g] !== undefined) byGrade[g]++;
+    });
+
+    // 팀별 그룹핑 + 등급 정렬 (urgent → watch → check)
+    const gradeRank = { urgent: 0, watch: 1, check: 2, alert: 2 };
     const byTeam = {};
     pending.forEach(a => {
       const tid = a.teamId || 'unknown';
       if (!byTeam[tid]) byTeam[tid] = [];
       byTeam[tid].push(a);
     });
+    Object.values(byTeam).forEach(arr => {
+      arr.sort((a,b) => {
+        const gd = (gradeRank[a._grade]||9) - (gradeRank[b._grade]||9);
+        if (gd !== 0) return gd;
+        return (b.consecutiveDays||0) - (a.consecutiveDays||0);
+      });
+    });
+
+    // 등급별 라벨/색상 (전 시스템 통일 기준)
+    const gradeLabel = (g) => g==='urgent'?'🔴 즉시경보':g==='watch'?'🟡 주시':'🟠 확인보고';
+    const gradeColor = (g) => g==='urgent'?'#e53e3e':g==='watch'?'#dd6b20':'#c05621';
+    const gradeBg    = (g) => g==='urgent'?'#fff5f5':g==='watch'?'#fffaf0':'#fffaf0';
+
+    const summaryParts = [];
+    if (byGrade.urgent > 0) summaryParts.push(`🔴 ${byGrade.urgent}`);
+    if (byGrade.watch > 0)  summaryParts.push(`🟡 ${byGrade.watch}`);
+    if (byGrade.check > 0)  summaryParts.push(`🟠 ${byGrade.check}`);
 
     const html = `
       <div style="margin-bottom:8px;font-size:12px;color:#c53030;font-weight:600;">
-        ⚠️ 총 ${pending.length}건 — 담당 기사가 사유를 입력해야 합니다
+        ⚠️ 총 ${pending.length}건 (${summaryParts.join(' · ')}) — 담당 기사가 사유를 입력해야 합니다
       </div>
       ${Object.entries(byTeam).map(([tid, items]) => `
         <div style="margin-bottom:10px;">
           <div style="font-size:12px;font-weight:700;color:#4a5568;margin-bottom:5px;">
             ${TEAM_NAMES[tid]||tid} (${items.length}건)
           </div>
-          ${items.map(a => `
+          ${items.map(a => {
+            const g = a._grade === 'alert' ? 'check' : a._grade;
+            return `
             <div style="display:flex;justify-content:space-between;align-items:center;
-                        padding:8px 10px;background:#fff5f5;border-radius:8px;margin-bottom:4px;
-                        border-left:3px solid #fc8181;">
+                        padding:8px 10px;background:${gradeBg(g)};border-radius:8px;margin-bottom:4px;
+                        border-left:3px solid ${gradeColor(g)};">
               <div>
-                <span style="font-size:13px;font-weight:600;color:#2d3748;">${a.name}</span>
-                <span style="font-size:11px;color:#a0aec0;margin-left:6px;">${a.consecutiveDays||'?'}일째 미주문</span>
+                <span style="font-size:11px;font-weight:700;color:${gradeColor(g)};margin-right:4px;">${gradeLabel(g)}</span>
+                <span style="font-size:13px;font-weight:600;color:#2d3748;">${a.name||'-'}</span>
+                <span style="font-size:11px;color:#a0aec0;margin-left:6px;">${a.consecutiveDays||'?'}일째 · 일평균 ${a.dailyAvg||0}개</span>
               </div>
               <span style="font-size:11px;background:#fed7d7;color:#c53030;
                            border-radius:10px;padding:2px 8px;font-weight:600;">미답변</span>
-            </div>`).join('')}
+            </div>`;
+          }).join('')}
         </div>`).join('')}`;
 
     container.innerHTML = html;
