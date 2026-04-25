@@ -1225,7 +1225,7 @@ window.showAdminFvDetail = function(v) {
 
 // ── 경보 팀장 + 기사 문자 수동 발송 ─────────────────────────
 window.sendAlertSms = async (alertId, name, level, days, teamId) => {
-  const levelLabel = level === 'urgent' ? '🚨 즉시경보' : level === 'watch' ? '⚠️ 주시경보' : '확인보고';
+  const levelLabel = level === 'urgent' ? '🔴 즉시경보' : level === 'watch' ? '🟡 주시' : '🟠 확인보고';
   const leaderText = `[준도시락 배송관리] ${levelLabel}\n거래처: ${name}\n${days ? days+'일 연속 미주문' : ''}\n\n확인 후 조치 결과를 시스템에 입력해주세요.`;
   const driverText = `[준도시락 배송관리] 미주문 알림\n거래처: ${name}\n오늘 미주문입니다. 확인 후 시스템에 사유를 입력해주세요.`;
 
