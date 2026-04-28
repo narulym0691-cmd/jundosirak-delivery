@@ -2089,12 +2089,17 @@
       db.collection('users').get()
     ]);
 
-    // 기사 전화번호 맵
+    // 기사 전화번호 맵 + courseId→driverName 맵 + 고상우 조회
     const phoneMap = {};
+    const courseToDriverMap = {};
+    let goSangwoo = null;
     usersSnap.forEach(d => {
       const u = d.data();
       if (u.name && u.phone) phoneMap[u.name] = u.phone;
+      if (u.courseId && u.name) courseToDriverMap[u.courseId] = u.name;
+      if (u.name === '고상우') goSangwoo = { name: u.name, phone: u.phone || '010-3636-9730' };
     });
+    if (!goSangwoo) goSangwoo = { name: '고상우', phone: '010-3636-9730' };
 
     // 미해결 경보 전체 로드 (clientName → {consecutiveDays, date, docId})
     const prevAlertsSnap = await db.collection('alerts')
@@ -2110,6 +2115,7 @@
 
     let alertCount = 0;
     const alertsByDriver = {};
+    const unassignedAlerts = []; // 기사 미배정 → 고상우 fallback
     const batch = db.batch();
     let batchCount = 0;
 
@@ -2150,12 +2156,9 @@
       // (같은 날 재업로드 시에는 기존 consecutiveDays 유지, 새 데이터로 덮어쓰기만)
       const sameDayReupload = !!(prev && prev.date === date);
 
-      // 담당기사 파악
-      let driverName = null;
-      if (_salesData && _salesData.driverRows) {
-        const dr = _salesData.driverRows.find(d => d.clients && d.clients.includes(name));
-        if (dr) driverName = dr.name;
-      }
+      // 담당기사 파악: 1순위 clients.driverName, 2순위 courseId→users 매칭
+      let driverName = client.driverName || null;
+      if (!driverName && courseId) driverName = courseToDriverMap[courseId] || null;
 
       let grade, consecutiveDays;
       // 연속일수 계산: 같은 날 재업로드면 그대로, 다른 날이면 +1
@@ -2202,6 +2205,8 @@
       if (driverName) {
         if (!alertsByDriver[driverName]) alertsByDriver[driverName] = [];
         alertsByDriver[driverName].push({ grade, name, dailyAvg, consecutiveDays });
+      } else {
+        unassignedAlerts.push({ grade, name, dailyAvg, consecutiveDays });
       }
 
       // batch 500개 제한 방지
@@ -2215,7 +2220,7 @@
 
     // ── 경보 발생 기사에게 즉시 문자 발송 ──
     // skipSms=true (재업로드 모드)면 발송 스킵
-    if (!skipSms && alertCount > 0 && Object.keys(alertsByDriver).length > 0) {
+    if (!skipSms && alertCount > 0 && (Object.keys(alertsByDriver).length > 0 || unassignedAlerts.length > 0)) {
       try {
         let smsSent = 0, smsFailed = 0;
         for (const [dName, alerts] of Object.entries(alertsByDriver)) {
@@ -2251,7 +2256,6 @@
             const data = await res.json();
             const success = data.ok && data.sent > 0;
             if (success) smsSent++; else smsFailed++;
-            // sms_logs에 상세 기록
             await db.collection('sms_logs').add({
               type: 'alert',
               date,
@@ -2265,6 +2269,52 @@
             });
           } catch(e) { smsFailed++; }
         }
+
+        // 기사 미배정 거래처 → 고상우에게 통합 발송
+        if (unassignedAlerts.length > 0) {
+          const urgent = unassignedAlerts.filter(a => a.grade === 'urgent');
+          const watch  = unassignedAlerts.filter(a => a.grade === 'watch');
+          const check  = unassignedAlerts.filter(a => a.grade === 'check');
+
+          let lines = [`[준도시락 거래처 경보]`, `고상우님, 담당기사 미배정 거래처 미주문 알림입니다.`, ``];
+          if (urgent.length > 0) {
+            lines.push(`🔴 즉시경보 (${urgent.length}건)`);
+            urgent.forEach(a => lines.push(`  · ${a.name}${a.dailyAvg ? ` (일평균 ${a.dailyAvg}개)` : ''}`));
+          }
+          if (watch.length > 0) {
+            lines.push(`🟡 주시 (${watch.length}건)`);
+            watch.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
+          }
+          if (check.length > 0) {
+            lines.push(`🟠 확인보고 (${check.length}건)`);
+            check.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
+          }
+          lines.push(``); lines.push(`확인 후 연락 부탁드립니다.`);
+
+          try {
+            const smsText = lines.join('\n');
+            const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ targets: [{ name: goSangwoo.name, phone: goSangwoo.phone }], text: smsText, from: '01024763473' })
+            });
+            const data = await res.json();
+            const success = data.ok && data.sent > 0;
+            if (success) smsSent++; else smsFailed++;
+            await db.collection('sms_logs').add({
+              type: 'alert_admin_fallback',
+              date,
+              to: goSangwoo.phone,
+              toName: goSangwoo.name,
+              text: smsText,
+              success,
+              alertCount: unassignedAlerts.length,
+              urgentCount: unassignedAlerts.filter(a => a.grade === 'urgent').length,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          } catch(e) { smsFailed++; }
+        }
+
         window._lastAlertSmsResult = `경보 문자 ${smsSent}명 발송 완료${smsFailed > 0 ? ` (실패 ${smsFailed}명)` : ''}`;
       } catch(e) {
         console.warn('경보 문자 발송 오류(무시):', e.message);

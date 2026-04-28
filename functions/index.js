@@ -1787,26 +1787,63 @@ exports.scheduledDriverFeedbackSms = functions
         return null;
       }
 
-      // 기사별 courseId 맵 로드
-      const usersSnap = await db.collection('users').get();
-      const courseDriverMap = {}; // courseId → { name, phone, userId }
+      // 기사/거래처 맵 로드
+      const [usersSnap, clientsSnap] = await Promise.all([
+        db.collection('users').get(),
+        db.collection('clients').get(),
+      ]);
+      const courseDriverMap = {}; // courseId → { name, phone }
+      const driverPhoneMap  = {}; // driverName → phone
+      let goSangwoo = null;
       usersSnap.forEach(d => {
         const u = d.data();
         if (u.courseId && u.phone && u.active !== false) {
           courseDriverMap[u.courseId] = { name: u.name, phone: u.phone };
         }
+        if (u.name && u.phone) driverPhoneMap[u.name] = u.phone;
+        if (u.name === '고상우') goSangwoo = { name: u.name, phone: u.phone || '010-3636-9730' };
+      });
+      if (!goSangwoo) goSangwoo = { name: '고상우', phone: '010-3636-9730' };
+
+      const clientByName = {}; // clientName → { driverName, courseId }
+      clientsSnap.forEach(d => {
+        const c = d.data();
+        if (c.name) clientByName[c.name] = { driverName: c.driverName || null, courseId: c.courseId || null };
       });
 
       // 경보를 코스별로 그룹핑
-      const driverAlerts = {}; // driverName → [alerts]
+      const driverAlerts  = {}; // driverName → { phone, alerts }
+      const fallbackAlerts = []; // 기사 미배정 → 고상우 fallback
       const deadlineDate = new Date(kstNow.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       for (const doc of alertsSnap.docs) {
         const a = doc.data();
-        const courseId = a.courseId;
-        if (!courseId) continue;
-        const driver = courseDriverMap[courseId];
-        if (!driver) continue;
+        let courseId = a.courseId;
+        let driver   = courseId ? courseDriverMap[courseId] : null;
+
+        // 보강: clients DB에서 driverName/courseId 조회
+        if (!driver) {
+          const clientInfo = clientByName[a.name];
+          if (clientInfo) {
+            if (clientInfo.courseId && courseDriverMap[clientInfo.courseId]) {
+              courseId = clientInfo.courseId;
+              driver   = courseDriverMap[clientInfo.courseId];
+            } else if (clientInfo.driverName && driverPhoneMap[clientInfo.driverName]) {
+              driver = { name: clientInfo.driverName, phone: driverPhoneMap[clientInfo.driverName] };
+            }
+          }
+        }
+
+        if (!driver) {
+          fallbackAlerts.push({
+            id: doc.id,
+            name: a.name || '',
+            grade: a.grade || 'check',
+            consecutiveDays: a.consecutiveDays || 0,
+            dailyAvg: a.dailyAvg || 0,
+          });
+          continue;
+        }
 
         // feedbackStatus 초기화 (없으면 pending으로 설정)
         if (!a.feedbackStatus) {
@@ -1884,6 +1921,46 @@ exports.scheduledDriverFeedbackSms = functions
       }
 
       console.log(`=== 기사 문자 발송 완료: ${sentCount}/${Object.keys(driverAlerts).length}명 ===`);
+
+      // 기사 미배정 거래처 → 고상우에게 통합 발송
+      if (fallbackAlerts.length > 0) {
+        const urgentList = fallbackAlerts.filter(a => a.grade === 'urgent');
+        const watchList  = fallbackAlerts.filter(a => a.grade === 'watch');
+        const checkList  = fallbackAlerts.filter(a => a.grade === 'check');
+
+        let lines = [`[준도시락 거래처 경보]`, `고상우님, 담당기사 미배정 거래처 미주문 알림입니다.`, ``];
+        if (urgentList.length) {
+          lines.push(`🔴 즉시경보 (${urgentList.length}건)`);
+          urgentList.forEach(a => lines.push(`  · ${a.name}${a.dailyAvg ? ` (일평균 ${a.dailyAvg}개)` : ''}`));
+        }
+        if (watchList.length) {
+          lines.push(`🟡 주시 (${watchList.length}건)`);
+          watchList.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
+        }
+        if (checkList.length) {
+          lines.push(`🟠 확인보고 (${checkList.length}건)`);
+          checkList.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
+        }
+        lines.push(``);
+        lines.push(`확인 후 연락 부탁드립니다.`);
+
+        const text = lines.join('\n');
+        const result = await sendOneSms(goSangwoo.phone, text);
+
+        await db.collection('sms_logs').add({
+          type: 'alert_admin_fallback',
+          driverName: goSangwoo.name,
+          phone: goSangwoo.phone,
+          alertCount: fallbackAlerts.length,
+          text,
+          sent: result.ok ? 1 : 0,
+          failed: result.ok ? 0 : 1,
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+          date: today,
+        });
+
+        console.log(`fallback 문자 ${result.ok ? '발송' : '실패'}: ${goSangwoo.name} (미배정 경보 ${fallbackAlerts.length}건)`);
+      }
     } catch (e) {
       console.error('scheduledDriverFeedbackSms 오류:', e);
     }
