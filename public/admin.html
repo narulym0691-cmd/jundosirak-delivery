@@ -5111,14 +5111,21 @@ async function loadNoOrderTracking() {
   listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
 
   try {
-    // 오늘 날짜 계산 (한국시간)
+    // ⭐ 17:00 룰: 17시 전엔 "어제 영업일" 기준, 17시 이후엔 "오늘" 기준
+    //   - 오늘 업로드한 자료는 오후 5시까지 미반영 (영업 마감 전이므로)
+    //   - 오후 5시 이후 비로소 오늘 자료가 "확정 자료"로 화면에 반영
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
-    const todayStr = now.toISOString().slice(0, 10);
+    const kstHour = now.getHours();
+    let baseDate = new Date(now);
+    if (kstHour < 17) {
+      baseDate.setDate(baseDate.getDate() - 1); // 17시 전 → 하루 전을 "오늘"로 간주
+    }
+    const todayStr = baseDate.toISOString().slice(0, 10);
 
-    // 오늘 ~ 7일 전까지 날짜 목록 생성 후 병렬 조회
+    // todayStr ~ 7일 전까지 날짜 목록 생성 후 병렬 조회
     const datesToCheck = [todayStr];
     for (let i = 1; i <= 7; i++) {
-      const d = new Date(now); d.setDate(d.getDate() - i);
+      const d = new Date(baseDate); d.setDate(d.getDate() - i);
       datesToCheck.push(d.toISOString().slice(0, 10));
     }
     const snapResults = await Promise.all(
@@ -5222,10 +5229,12 @@ async function loadNoOrderTracking() {
 
     if (totalCount === 0) {
       const msg = !todaySnap
-        ? '오늘 엑셀 업로드 전입니다'
+        ? (kstHour < 17
+            ? `${todayStr} 일일장부가 아직 업로드되지 않았습니다`
+            : '오늘 일일장부가 아직 업로드되지 않았습니다 (17시 이후 표시)')
         : !prevSnap
           ? '비교할 이전 업로드 데이터가 없습니다'
-          : `⭕ ${prevDateStr} 대비 미주문 업체 없음`;
+          : `⭕ ${prevDateStr} 대비 ${todayStr} 미주문 업체 없음`;
       listEl.innerHTML = `<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">${msg}</div>`;
       return;
     }
@@ -5240,10 +5249,13 @@ async function loadNoOrderTracking() {
     const priorityCount = allItems.filter(c => c.isPriority).length;
     const regularCount = allItems.filter(c => c.freqKind === 'regular').length;
     const rareSkipText = rareSkipped > 0 ? `<span style="font-size:11px;color:#a0aec0;margin-left:6px;" title="가끔 등장(7일 중 2일 이하) + 비1순위 거래처는 노이즈로 숨김">· 노이즈 ${rareSkipped}건 숨김</span>` : '';
+    const cutoffNote = kstHour < 17
+      ? `<span style="font-size:10px;color:#a0aec0;margin-left:4px;" title="오늘 업로드 자료는 오후 5시 이후에 반영됩니다">· 17:00 이후 갱신</span>`
+      : '';
     let html = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <div style="font-size:13px;color:#4a5568;">
-          직전 업로드(${prevDateStr}) 주문 → 오늘(${todayStr}) 미주문
+          직전 업로드(${prevDateStr}) 주문 → ${todayStr} 미주문${cutoffNote}
           <strong style="color:#c53030;margin-left:4px;">총 ${totalCount}개</strong>
           ${regularCount > 0 ? `<span style="color:#c53030;font-size:12px;font-weight:700;"> (⭐ 단골 ${regularCount}건)</span>` : ''}
           ${priorityCount > 0 ? `<span style="color:#c53030;font-size:12px;"> · 1순위 ${priorityCount}건</span>` : ''}
