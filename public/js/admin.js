@@ -24,6 +24,7 @@ async function initAdmin() {
     loadSalesMissingCard(),
     loadNewClientTracking(),
     loadNoOrderTracking(),
+    typeof loadClosedCandidates === 'function' ? loadClosedCandidates() : Promise.resolve(),
     loadNoOrderResponses(),
     loadComplaintNotifications()
   ]);

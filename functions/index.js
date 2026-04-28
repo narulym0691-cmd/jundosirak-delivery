@@ -1676,36 +1676,69 @@ exports.onFieldVisitCreated = functions
 
 // ─── 미해결 경보 자동 해제 스케줄러 (매일 KST 00:05) ──────────────────
 // autoResolveAt 이 지난 경보를 자동으로 resolved 처리
+// + 7일+ 미주문 alerts → grade='closed_candidate' 로 자동 분리 (거래종료 후보)
 // KST 00:05 = UTC 15:05 전날 → cron: '5 15 * * *'
 exports.autoResolveAlerts = functions
   .region('us-central1')
   .pubsub.schedule('5 15 * * *')
   .timeZone('UTC')
   .onRun(async () => {
-    console.log('=== 경보 자동 해제 스케줄러 시작 ===');
+    console.log('=== 경보 자동 해제 + 거래종료 후보 분리 스케줄러 시작 ===');
     try {
+      // 1) autoResolveAt 도달 → resolved 처리
       const now = admin.firestore.Timestamp.now();
-      const snap = await db.collection('alerts')
+      const expiredSnap = await db.collection('alerts')
         .where('resolved', '==', false)
         .where('autoResolveAt', '<=', now)
         .get();
 
-      if (snap.empty) {
+      if (!expiredSnap.empty) {
+        const batch = db.batch();
+        expiredSnap.forEach(doc => {
+          batch.update(doc.ref, {
+            resolved: true,
+            resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
+            resolvedReason: 'auto_expired',
+          });
+          console.log(`자동 해제: ${doc.data().clientName} (${doc.data().consecutiveDays}일)`);
+        });
+        await batch.commit();
+        console.log(`자동 해제 완료: ${expiredSnap.size}건`);
+      } else {
         console.log('자동 해제 대상 없음');
-        return null;
       }
 
-      const batch = db.batch();
-      snap.forEach(doc => {
-        batch.update(doc.ref, {
-          resolved: true,
-          resolvedAt: admin.firestore.FieldValue.serverTimestamp(),
-          resolvedReason: 'auto_expired',
-        });
-        console.log(`자동 해제: ${doc.data().clientName} (${doc.data().consecutiveDays}일)`);
+      // 2) 7일+ 미해결 alerts → grade='closed_candidate'로 자동 분리
+      //    (거래처 경보 목록에서 빠지고 "거래종료 후보" 카드로 이동)
+      const longTermSnap = await db.collection('alerts')
+        .where('resolved', '==', false)
+        .get();
+
+      const toMigrate = [];
+      longTermSnap.forEach(doc => {
+        const a = doc.data();
+        if ((a.consecutiveDays || 0) >= 7 && a.grade !== 'closed_candidate') {
+          toMigrate.push({ id: doc.id, ref: doc.ref, name: a.clientName || a.name, days: a.consecutiveDays });
+        }
       });
-      await batch.commit();
-      console.log(`=== 자동 해제 완료: ${snap.size}건 ===`);
+
+      if (toMigrate.length > 0) {
+        const batch = db.batch();
+        toMigrate.forEach(t => {
+          batch.update(t.ref, {
+            grade: 'closed_candidate',
+            previousGrade: 'urgent',
+            migratedToClosedCandidateAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          console.log(`거래종료 후보로 분리: ${t.name} (${t.days}일)`);
+        });
+        await batch.commit();
+        console.log(`거래종료 후보 분리 완료: ${toMigrate.length}건`);
+      } else {
+        console.log('거래종료 후보 분리 대상 없음');
+      }
+
+      console.log(`=== 스케줄러 종료 ===`);
     } catch (e) {
       console.error('autoResolveAlerts 오류:', e);
     }

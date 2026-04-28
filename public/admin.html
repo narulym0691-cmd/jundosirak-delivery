@@ -473,6 +473,15 @@
     <div id="noOrderTrackingList"><div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div></div>
   </div>
 
+  <!-- 거래종료 후보 카드 (7일+ 미주문 자동 분리) -->
+  <div class="card" id="closedCandidateCard">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div class="card-title" style="margin:0;color:#3182ce;">🔵 거래종료 후보 <span style="font-size:11px;font-weight:500;color:#718096;">(7일+ 미주문)</span></div>
+      <button onclick="loadClosedCandidates()" style="padding:4px 10px;background:#edf2f7;border:none;border-radius:6px;font-size:11px;cursor:pointer;font-weight:600;">🔄 새로고침</button>
+    </div>
+    <div id="closedCandidateList"><div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div></div>
+  </div>
+
   <!-- 판매수량 미입력 현황 카드 -->
   <div class="card" id="salesMissingCard" style="display:none;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -4568,7 +4577,12 @@ async function loadAlerts() {
     const snap = await query.get();
     
     const data = [];
-    snap.forEach(d => data.push({ id: d.id, ...d.data() }));
+    snap.forEach(d => {
+      const a = { id: d.id, ...d.data() };
+      // 거래종료 후보(7일+)는 거래처 경보 목록에서 제외 (별도 카드로 분리)
+      if (a.grade === 'closed_candidate' && !includeResolved) return;
+      data.push(a);
+    });
     
     // 정렬: grade(urgent>watch>check) → consecutiveDays 내림차순
     const gradeOrder = { urgent:0, watch:1, check:2 };
@@ -5387,6 +5401,125 @@ async function loadSalesMissingCard() {
 
 initAdmin();
 initSalesAlarm();
+
+// ── 거래종료 후보 카드 (7일+ 미주문 자동 분리) ──────────────────────────
+async function loadClosedCandidates() {
+  const listEl = document.getElementById('closedCandidateList');
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
+
+  try {
+    // grade='closed_candidate' OR (resolved=false + consecutiveDays>=7) 모두 표시
+    // — 자동 분리 함수가 아직 안 돈 경우에도 화면에서 즉시 보이도록
+    const snap = await db.collection('alerts').where('resolved','==',false).get();
+    const data = [];
+    snap.forEach(d => {
+      const a = { id:d.id, ...d.data() };
+      const isClosed = a.grade === 'closed_candidate';
+      const isLong = (a.consecutiveDays||0) >= 7;
+      if (isClosed || isLong) data.push(a);
+    });
+
+    // 연속일수 내림차순
+    data.sort((a,b) => (b.consecutiveDays||0) - (a.consecutiveDays||0));
+
+    if (data.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;color:#38a169;padding:20px;font-size:13px;">⭕ 거래종료 후보 업체 없음</div>';
+      return;
+    }
+
+    const TEAM_NAMES = {
+      team1:'1팀 준고', team2:'2팀 해운대', team3:'3팀 공오일',
+      team4:'4팀 연수남', team5:'5팀 아가리', team6:'6팀 도세마', team7:'7팀 강서영'
+    };
+
+    let html = `
+      <div style="font-size:13px;color:#4a5568;margin-bottom:8px;">
+        7일 이상 미주문 거래처 — 거래종료 또는 장기휴업 가능성
+        <strong style="color:#3182ce;margin-left:4px;">총 ${data.length}건</strong>
+      </div>
+      <div style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;">
+        <thead>
+          <tr style="background:#ebf8ff;border-bottom:2px solid #90cdf4;">
+            <th style="padding:8px;text-align:left;color:#2c5282;">거래처</th>
+            <th style="padding:8px;text-align:center;color:#2c5282;">팀</th>
+            <th style="padding:8px;text-align:center;color:#2c5282;">일평균</th>
+            <th style="padding:8px;text-align:center;color:#2c5282;">미주문</th>
+            <th style="padding:8px;text-align:center;color:#2c5282;">마지막 주문</th>
+            <th style="padding:8px;text-align:center;color:#2c5282;">조치</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    data.forEach(a => {
+      const team = TEAM_NAMES[a.teamId] || a.teamId || '-';
+      const lastOrder = a.lastOrderDate || '-';
+      const dayBadge = (a.consecutiveDays||0) >= 14
+        ? `<span style="background:#feb2b2;color:#742a2a;font-weight:700;padding:2px 8px;border-radius:10px;">${a.consecutiveDays}일 ⚠️</span>`
+        : `<span style="background:#bee3f8;color:#2c5282;font-weight:700;padding:2px 8px;border-radius:10px;">${a.consecutiveDays}일</span>`;
+      html += `
+        <tr style="border-bottom:1px solid #f0f0f0;">
+          <td style="padding:8px;font-weight:600;">${a.name||'-'}</td>
+          <td style="padding:8px;text-align:center;">${team}</td>
+          <td style="padding:8px;text-align:center;">${a.dailyAvg||0}개</td>
+          <td style="padding:8px;text-align:center;">${dayBadge}</td>
+          <td style="padding:8px;text-align:center;font-size:11px;color:#718096;">${lastOrder}</td>
+          <td style="padding:8px;text-align:center;white-space:nowrap;">
+            <button onclick="closeCandidateAction('${a.id}','${a.name||''}','terminated')" style="padding:4px 8px;background:#e53e3e;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;margin-right:3px;">거래종료</button>
+            <button onclick="closeCandidateAction('${a.id}','${a.name||''}','paused')" style="padding:4px 8px;background:#dd6b20;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;margin-right:3px;">휴업</button>
+            <button onclick="closeCandidateAction('${a.id}','${a.name||''}','dismissed')" style="padding:4px 8px;background:#718096;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;">해제</button>
+          </td>
+        </tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+    listEl.innerHTML = html;
+
+  } catch(e) {
+    listEl.innerHTML = `<div style="color:#c53030;padding:12px;font-size:13px;">오류: ${e.message}</div>`;
+  }
+}
+
+// 거래종료 후보 액션 처리
+window.closeCandidateAction = async function(alertId, clientName, action) {
+  const labels = {
+    terminated: '거래종료',
+    paused: '휴업 처리',
+    dismissed: '단순 해제'
+  };
+  const label = labels[action] || '처리';
+  if (!confirm(`${clientName}\n\n→ ${label}로 처리할까요?\n\n${action==='terminated' ? '⚠️ clients.active=false 로 변경되어 모든 추적에서 제외됩니다.' : action==='paused' ? '📌 alert만 해제됩니다. (재개 시 다시 경보 생성됨)' : '📌 alert만 해제됩니다.'}`)) return;
+
+  try {
+    // 1) alert 해제
+    await db.collection('alerts').doc(alertId).update({
+      resolved: true,
+      resolvedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      resolvedReason: action === 'terminated' ? 'client_terminated' : action === 'paused' ? 'long_term_pause' : 'manual_dismiss',
+      resolvedBy: (window._meName || 'admin')
+    });
+
+    // 2) 거래종료라면 clients.active=false
+    if (action === 'terminated' && clientName) {
+      const clientsSnap = await db.collection('clients').where('name','==',clientName).limit(1).get();
+      if (!clientsSnap.empty) {
+        await clientsSnap.docs[0].ref.update({
+          active: false,
+          terminatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+          terminatedReason: 'long_term_no_order',
+          terminatedBy: (window._meName || 'admin')
+        });
+      }
+    }
+
+    alert(`✅ ${label} 완료`);
+    loadClosedCandidates();
+    if (typeof loadAlerts === 'function') loadAlerts();
+  } catch(e) {
+    alert('처리 실패: ' + e.message);
+  }
+};
 
 // ── 신규업체 30일 추적 ──────────────────────────────────────────────────
 async function loadNewClientTracking() {
