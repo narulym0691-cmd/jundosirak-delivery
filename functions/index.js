@@ -1677,10 +1677,11 @@ exports.onFieldVisitCreated = functions
 // ─── 미해결 경보 자동 해제 스케줄러 (매일 KST 00:05) ──────────────────
 // autoResolveAt 이 지난 경보를 자동으로 resolved 처리
 // + 7일+ 미주문 alerts → grade='closed_candidate' 로 자동 분리 (거래종료 후보)
-// KST 00:05 = UTC 15:05 전날 → cron: '5 15 * * *'
+// KST 17:00 = UTC 08:00 → cron: '0 8 * * *'
+// (영민님 17:00 룰과 일관성 — 영업 마감 시점에 정리, 다음날 07:00 SMS 발송 전에 미리 정리됨)
 exports.autoResolveAlerts = functions
   .region('us-central1')
-  .pubsub.schedule('5 15 * * *')
+  .pubsub.schedule('0 8 * * *')
   .timeZone('UTC')
   .onRun(async () => {
     console.log('=== 경보 자동 해제 + 거래종료 후보 분리 스케줄러 시작 ===');
