@@ -1789,15 +1789,21 @@ exports.scheduledDriverFeedbackSms = functions
 
     try {
       // ── 1. 이틀 경과 미피드백 자동 처리 ──────────────────────
-      const expiredSnap = await db.collection('alerts')
+      // 🛡️ 인덱스 의존 제거: where 2개 + JS 필터링으로 안전하게 처리
+      // (3개 where 조합은 복합 인덱스 필요 → 인덱스 누락 시 함수 전체 죽음)
+      const pendingSnap = await db.collection('alerts')
         .where('resolved', '==', false)
         .where('feedbackStatus', '==', 'pending')
-        .where('feedbackDeadline', '<=', today)
         .get();
 
-      if (!expiredSnap.empty) {
+      const expiredDocs = pendingSnap.docs.filter(doc => {
+        const deadline = doc.data().feedbackDeadline;
+        return deadline && deadline <= today;
+      });
+
+      if (expiredDocs.length > 0) {
         const batch = db.batch();
-        for (const doc of expiredSnap.docs) {
+        for (const doc of expiredDocs) {
           const a = doc.data();
           // 미이행 로그 기록
           await db.collection('driver_feedback_log').add({
@@ -1823,7 +1829,7 @@ exports.scheduledDriverFeedbackSms = functions
           console.log(`미이행 자동처리: ${a.name} (${a.driverName || '기사미상'})`);
         }
         await batch.commit();
-        console.log(`자동처리 완료: ${expiredSnap.size}건`);
+        console.log(`자동처리 완료: ${expiredDocs.length}건`);
       }
 
       // ── 2. 기사별 미주문 경보 문자 발송 ──────────────────────

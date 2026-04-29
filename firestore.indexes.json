@@ -124,6 +124,15 @@
         { "fieldPath": "isPriority", "order": "ASCENDING" },
         { "fieldPath": "consecutiveMissed", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resolved", "order": "ASCENDING" },
+        { "fieldPath": "feedbackStatus", "order": "ASCENDING" },
+        { "fieldPath": "feedbackDeadline", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
