@@ -1761,11 +1761,27 @@ exports.scheduledDriverFeedbackSms = functions
     // 이틀 전 날짜 (자동처리 기준)
     const twoDaysAgo = new Date(kstNow.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
+    // 🔍 진단 로그 — 함수 시작 시점 (Cloud Scheduler가 정상 트리거했는지 확인용)
+    await db.collection('sms_logs').add({
+      type: 'scheduler_started',
+      schedulerName: 'scheduledDriverFeedbackSms',
+      date: today,
+      sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      note: '07:00 KST 자동 함수가 시작됨',
+    });
+
     // 주말(토/일) 발송 스킵 — 기사들 출근 안 하므로
     // KST 기준 요일: 0=일, 1=월, ... 6=토
     const kstDay = kstNow.getUTCDay(); // KST 시각을 UTC로 다룬 객체이므로 getUTCDay 사용
     if (kstDay === 0 || kstDay === 6) {
       console.log(`=== 주말(${kstDay === 0 ? '일' : '토'}) — SMS 발송 스킵 (오늘=${today}) ===`);
+      await db.collection('sms_logs').add({
+        type: 'scheduler_skipped',
+        schedulerName: 'scheduledDriverFeedbackSms',
+        date: today,
+        reason: 'weekend',
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
       return null;
     }
 
@@ -1995,8 +2011,29 @@ exports.scheduledDriverFeedbackSms = functions
 
         console.log(`fallback 문자 ${result.ok ? '발송' : '실패'}: ${goSangwoo.name} (미배정 경보 ${fallbackAlerts.length}건)`);
       }
+
+      // 🔍 진단 로그 — 함수 정상 완료
+      await db.collection('sms_logs').add({
+        type: 'scheduler_completed',
+        schedulerName: 'scheduledDriverFeedbackSms',
+        date: today,
+        driversSent: Object.keys(driverAlerts).length,
+        fallbackAlerts: fallbackAlerts.length,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     } catch (e) {
       console.error('scheduledDriverFeedbackSms 오류:', e);
+      // 🔍 진단 로그 — 함수 에러
+      try {
+        await db.collection('sms_logs').add({
+          type: 'scheduler_error',
+          schedulerName: 'scheduledDriverFeedbackSms',
+          date: today,
+          errorMessage: String(e?.message || e),
+          errorStack: String(e?.stack || '').slice(0, 1500),
+          sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (_) { /* 로그 쓰기 실패는 무시 */ }
     }
     return null;
   });

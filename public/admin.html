@@ -2227,108 +2227,13 @@
 
     if (batchCount > 0) await batch.commit();
 
-    // ── 경보 발생 기사에게 즉시 문자 발송 ──
-    // skipSms=true (재업로드 모드)면 발송 스킵
-    if (!skipSms && alertCount > 0 && (Object.keys(alertsByDriver).length > 0 || unassignedAlerts.length > 0)) {
-      try {
-        let smsSent = 0, smsFailed = 0;
-        for (const [dName, alerts] of Object.entries(alertsByDriver)) {
-          const phone = phoneMap[dName];
-          if (!phone) continue;
-
-          const urgent = alerts.filter(a => a.grade === 'urgent');
-          const watch  = alerts.filter(a => a.grade === 'watch');
-          const check  = alerts.filter(a => a.grade === 'check');
-
-          let lines = [`[준도시락 거래처 경보]`, `${dName} 기사님, 담당 거래처 미주문 알림입니다.`, ``];
-          if (urgent.length > 0) {
-            lines.push(`🔴 즉시경보 (${urgent.length}건)`);
-            urgent.forEach(a => lines.push(`  · ${a.name}${a.dailyAvg ? ` (일평균 ${a.dailyAvg}개)` : ''}`));
-          }
-          if (watch.length > 0) {
-            lines.push(`🟡 주시 (${watch.length}건)`);
-            watch.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
-          }
-          if (check.length > 0) {
-            lines.push(`🟠 확인보고 (${check.length}건)`);
-            check.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
-          }
-          lines.push(``); lines.push(`확인 후 연락 부탁드립니다.`);
-
-          try {
-            const smsText = lines.join('\n');
-            const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targets: [{ name: dName, phone }], text: smsText, from: '01024763473' })
-            });
-            const data = await res.json();
-            const success = data.ok && data.sent > 0;
-            if (success) smsSent++; else smsFailed++;
-            await db.collection('sms_logs').add({
-              type: 'alert',
-              date,
-              to: phone,
-              toName: dName,
-              text: smsText,
-              success,
-              alertCount: alerts.length,
-              urgentCount: alerts.filter(a=>a.grade==='urgent').length,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          } catch(e) { smsFailed++; }
-        }
-
-        // 기사 미배정 거래처 → 고상우에게 통합 발송
-        if (unassignedAlerts.length > 0) {
-          const urgent = unassignedAlerts.filter(a => a.grade === 'urgent');
-          const watch  = unassignedAlerts.filter(a => a.grade === 'watch');
-          const check  = unassignedAlerts.filter(a => a.grade === 'check');
-
-          let lines = [`[준도시락 거래처 경보]`, `고상우님, 담당기사 미배정 거래처 미주문 알림입니다.`, ``];
-          if (urgent.length > 0) {
-            lines.push(`🔴 즉시경보 (${urgent.length}건)`);
-            urgent.forEach(a => lines.push(`  · ${a.name}${a.dailyAvg ? ` (일평균 ${a.dailyAvg}개)` : ''}`));
-          }
-          if (watch.length > 0) {
-            lines.push(`🟡 주시 (${watch.length}건)`);
-            watch.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
-          }
-          if (check.length > 0) {
-            lines.push(`🟠 확인보고 (${check.length}건)`);
-            check.forEach(a => lines.push(`  · ${a.name} (${a.consecutiveDays}일째)`));
-          }
-          lines.push(``); lines.push(`확인 후 연락 부탁드립니다.`);
-
-          try {
-            const smsText = lines.join('\n');
-            const res = await fetch('https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/sendSms', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ targets: [{ name: goSangwoo.name, phone: goSangwoo.phone }], text: smsText, from: '01024763473' })
-            });
-            const data = await res.json();
-            const success = data.ok && data.sent > 0;
-            if (success) smsSent++; else smsFailed++;
-            await db.collection('sms_logs').add({
-              type: 'alert_admin_fallback',
-              date,
-              to: goSangwoo.phone,
-              toName: goSangwoo.name,
-              text: smsText,
-              success,
-              alertCount: unassignedAlerts.length,
-              urgentCount: unassignedAlerts.filter(a => a.grade === 'urgent').length,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          } catch(e) { smsFailed++; }
-        }
-
-        window._lastAlertSmsResult = `경보 문자 ${smsSent}명 발송 완료${smsFailed > 0 ? ` (실패 ${smsFailed}명)` : ''}`;
-      } catch(e) {
-        console.warn('경보 문자 발송 오류(무시):', e.message);
-      }
-    }
+    // ── 경보 발생 시 즉시 문자 발송 (비활성화) ──────────────────
+    // 정책 변경 (2026-04-29): 업로드 시점에는 SMS 발송하지 않음.
+    //   - 일일장부 업로드 → alerts 생성/해제만 수행
+    //   - SMS 발송은 다음 날 KST 07:00 scheduledDriverFeedbackSms 함수가 일괄 처리
+    //   - 이렇게 해야 "오늘 업로드 → 내일 아침 7시 발송" 흐름이 성립
+    // (이전 즉시 발송 코드는 git 히스토리 참조)
+    window._lastAlertSmsResult = `경보 ${alertCount}건 생성 완료 (SMS는 내일 07:00 자동 발송)`;
 
     return alertCount;
   }
