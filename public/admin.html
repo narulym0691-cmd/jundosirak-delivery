@@ -434,7 +434,7 @@
     <div class="summary-card">
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div class="summary-card-title">거래처 경보 현황</div>
-        <a href="alert-dashboard.html" style="font-size:11px;color:#1a4731;font-weight:700;text-decoration:none;">상세보기 →</a>
+        
       </div>
       <div id="summaryAlerts">
         <div class="empty-msg">로딩 중...</div>
@@ -3488,20 +3488,8 @@ async function sendSms() {
 
 <!-- 더보기 드롭업 메뉴 -->
 <div class="dropup-menu" id="dropupMenu">
-  <button class="dropup-item" onclick="closeDropup(); location.href='/monthly-report.html';">
-    <span>📈</span> 월간 리포트
-  </button>
-  <div class="dropup-divider"></div>
-  <button class="dropup-item" onclick="closeDropup(); location.href='/dashboard-admin.html';">
-    <span>📊</span> 경영 대시보드
-  </button>
-  <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showAlertModal();">
     <span>🚨</span> 거래처 경보
-  </button>
-  <div class="dropup-divider"></div>
-  <button class="dropup-item" onclick="closeDropup(); location.href='/no-order-analysis.html';">
-    <span>📉</span> 미주문 업체 분석
   </button>
   <div class="dropup-divider"></div>
   <button class="dropup-item" onclick="closeDropup(); showFieldVisitStatsModal();">
