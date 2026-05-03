@@ -5018,21 +5018,27 @@ async function loadNoOrderTracking() {
   listEl.innerHTML = '<div style="text-align:center;color:#718096;padding:20px;font-size:13px;">불러오는 중...</div>';
 
   try {
-    // ⭐ 17:00 룰: 17시 전엔 "어제 영업일" 기준, 17시 이후엔 "오늘" 기준
-    //   - 오늘 업로드한 자료는 오후 5시까지 미반영 (영업 마감 전이므로)
-    //   - 오후 5시 이후 비로소 오늘 자료가 "확정 자료"로 화면에 반영
+    // ⭐ 17:00 룰 + 영업일 보정 (영민님 원칙: 토/일/공휴일 영업 안 함)
+    //   - 17시 전: 어제 영업일 기준 (오늘 업로드 자료는 17시 이후 반영)
+    //   - 17시 이후: 오늘 기준
+    //   - 토/일 보정: 가장 최근 평일(영업일)로 자동 이동
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
     const kstHour = now.getHours();
     let baseDate = new Date(now);
     if (kstHour < 17) {
       baseDate.setDate(baseDate.getDate() - 1); // 17시 전 → 하루 전을 "오늘"로 간주
     }
+    // 토(6) / 일(0) → 가장 최근 평일(금요일)로 이동
+    while (baseDate.getDay() === 0 || baseDate.getDay() === 6) {
+      baseDate.setDate(baseDate.getDate() - 1);
+    }
     const todayStr = baseDate.toISOString().slice(0, 10);
 
-    // todayStr ~ 7일 전까지 날짜 목록 생성 후 병렬 조회
+    // todayStr ~ 14일 전까지 날짜 목록 생성 후 병렬 조회 (주말 제외하고도 7영업일 확보)
     const datesToCheck = [todayStr];
-    for (let i = 1; i <= 7; i++) {
+    for (let i = 1; i <= 14; i++) {
       const d = new Date(baseDate); d.setDate(d.getDate() - i);
+      // 주말(토/일) 스킵하지 않고 모두 조회 (sales_daily에 있을 수 있음)
       datesToCheck.push(d.toISOString().slice(0, 10));
     }
     const snapResults = await Promise.all(
