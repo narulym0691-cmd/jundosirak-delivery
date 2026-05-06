@@ -26,8 +26,122 @@ async function initAdmin() {
     loadNoOrderTracking(),
     typeof loadClosedCandidates === 'function' ? loadClosedCandidates() : Promise.resolve(),
     loadNoOrderResponses(),
-    loadComplaintNotifications()
+    loadComplaintNotifications(),
+    loadJcarePushList()  // 🚨 영민님 직접 지시 (2026-05-06): 준도시락 위기관리시스템 푸시 목록
   ]);
+}
+
+/**
+ * 🚨 준도시락 위기관리시스템 푸시 목록 (영민님 직접 지시 2026-05-06)
+ * - sales_targets 컬렉션에서 source='jundosirak_care_daily' 필터
+ * - 위기관리시스템(jundosirak-care)에서 매일 자정 푸시한 경보를 표시
+ * - 기존 alerts 컬렉션과 별개 (영민님 옵션 A: 두 시스템 다 한눈에)
+ */
+async function loadJcarePushList() {
+  const container = document.getElementById('jcarePushList');
+  if (!container) return;
+
+  try {
+    const snap = await db.collection('sales_targets')
+      .where('source', '==', 'jundosirak_care_daily')
+      .where('status', '==', '대기')
+      .get();
+
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    if (items.length === 0) {
+      container.innerHTML = '<div class="empty-msg">대기 중인 위기관리 푸시 없음 (모두 처리됨 또는 미발령)</div>';
+      return;
+    }
+
+    // 분석일 기준 최신순
+    items.sort((a, b) => (b.analysisDate || '').localeCompare(a.analysisDate || ''));
+
+    const TEAM_NAMES = {
+      team1: '1팀 준고', team2: '2팀 해운대', team3: '3팀 공오일',
+      team4: '4팀 연수남', team5: '5팀 아가리', team6: '6팀 도세마', team7: '7팀 강서영'
+    };
+
+    // 분석일별 그룹핑
+    const byDate = {};
+    items.forEach(t => {
+      const dt = t.analysisDate || '미상';
+      if (!byDate[dt]) byDate[dt] = { urgent: [], alert3day: [] };
+      if (t.trigger === 'immediate' || t.gradeLabel?.includes('즉시')) byDate[dt].urgent.push(t);
+      else byDate[dt].alert3day.push(t);
+    });
+
+    let html = '';
+
+    // 통계 요약
+    const totalUrgent = items.filter(t => t.trigger === 'immediate' || t.gradeLabel?.includes('즉시')).length;
+    const total3day = items.length - totalUrgent;
+    html += `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">
+        <div style="background:#FEE2E2;padding:8px;border-radius:6px;text-align:center">
+          <div style="font-size:11px;color:#991B1B">🔴 즉시발령</div>
+          <div style="font-size:18px;font-weight:bold;color:#7F1D1D">${totalUrgent}</div>
+        </div>
+        <div style="background:#FEF3C7;padding:8px;border-radius:6px;text-align:center">
+          <div style="font-size:11px;color:#92400E">🟠 3일경보</div>
+          <div style="font-size:18px;font-weight:bold;color:#78350F">${total3day}</div>
+        </div>
+        <div style="background:#DBEAFE;padding:8px;border-radius:6px;text-align:center">
+          <div style="font-size:11px;color:#1E40AF">📊 전체 대기</div>
+          <div style="font-size:18px;font-weight:bold;color:#1E3A8A">${items.length}</div>
+        </div>
+      </div>
+    `;
+
+    // 분석일별 표시
+    Object.keys(byDate).slice(0, 3).forEach(date => {
+      const group = byDate[date];
+      html += `
+        <div style="border:1px solid #E5E7EB;border-radius:6px;padding:10px;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#1A4731">📅 분석일: ${date}</div>
+          <table style="width:100%;font-size:12px">
+            <thead style="background:#F9FAFB">
+              <tr>
+                <th style="padding:6px;text-align:left">유형</th>
+                <th style="padding:6px;text-align:left">거래처</th>
+                <th style="padding:6px;text-align:left">팀</th>
+                <th style="padding:6px;text-align:left">담당기사</th>
+                <th style="padding:6px;text-align:right">일평균</th>
+                <th style="padding:6px;text-align:right">미주문</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${[...group.urgent, ...group.alert3day].map(t => {
+                const isUrgent = t.trigger === 'immediate' || t.gradeLabel?.includes('즉시');
+                const typeBadge = isUrgent
+                  ? '<span style="background:#FEE2E2;color:#991B1B;padding:2px 6px;border-radius:4px;font-size:10px">🔴 즉시</span>'
+                  : '<span style="background:#FEF3C7;color:#92400E;padding:2px 6px;border-radius:4px;font-size:10px">🟠 3일</span>';
+                return `
+                  <tr style="border-top:1px solid #F3F4F6">
+                    <td style="padding:6px">${typeBadge}</td>
+                    <td style="padding:6px"><strong>${t.clientName || '-'}</strong></td>
+                    <td style="padding:6px">${TEAM_NAMES[t.teamId] || t.teamId || '-'}</td>
+                    <td style="padding:6px">${t.driverName || '-'}</td>
+                    <td style="padding:6px;text-align:right">${t.dailyAvg || 0}</td>
+                    <td style="padding:6px;text-align:right">${t.consecutiveMissedDays || 1}일</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+    if (Object.keys(byDate).length > 3) {
+      html += `<div style="text-align:center;font-size:11px;color:#6B7280;margin-top:8px">최근 3일치 표시 (전체 ${Object.keys(byDate).length}일)</div>`;
+    }
+
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('[loadJcarePushList]', e);
+    container.innerHTML = `<div class="empty-msg" style="color:#DC2626">❌ 로드 실패: ${e.message}</div>`;
+  }
 }
 
 async function loadNewClientsCard() {
