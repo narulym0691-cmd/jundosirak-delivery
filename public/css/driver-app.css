@@ -1,0 +1,847 @@
+/* ================================================================
+   ae87f 새 기사 앱 디자인 (옵션 B 컬러풀 / 2026-05-05 영민님 OK)
+   ================================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body {
+  font-family: -apple-system, 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+  background: #F3F4F6;
+  color: #1F2937;
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding-bottom: 80px;
+}
+
+/* 헤더 */
+.app-header {
+  background: linear-gradient(135deg, #38A169 0%, #1A4731 100%);
+  color: white;
+  padding: 20px 16px 24px 16px;
+  border-radius: 0 0 24px 24px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.app-header .greeting { font-size: 14px; opacity: 0.9; margin-bottom: 4px; }
+.app-header .name { font-size: 22px; font-weight: 800; }
+.app-header .team { font-size: 13px; opacity: 0.95; margin-top: 4px; }
+.app-header .score-box {
+  background: rgba(255,255,255,0.18);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-top: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.app-header .score-num { font-size: 28px; font-weight: 800; }
+.app-header .score-label { font-size: 11px; opacity: 0.9; text-transform: uppercase; letter-spacing: 0.5px; }
+.app-header .badge-leader {
+  background: #FEF3C7;
+  color: #92400E;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+/* 알림 배너 */
+.alert-banner {
+  background: #FEF3C7;
+  border-left: 4px solid #F59E0B;
+  margin: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #92400E;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 섹션 */
+.section { margin: 20px 16px; }
+.section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-title .badge {
+  background: #DC2626;
+  color: white;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+.section-title.green .badge { background: #38A169; }
+.section-title.blue .badge { background: #3B82F6; }
+
+/* 영업 카드 */
+.visit-card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  cursor: pointer;
+  transition: transform 0.1s;
+  border-left: 5px solid #38A169;
+}
+.visit-card:active { transform: scale(0.98); }
+.visit-card.heyfood { border-left-color: #3B82F6; }
+.visit-card.urgent { border-left-color: #DC2626; }
+.visit-info .name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.visit-info .desc { font-size: 12px; color: #6B7280; }
+.visit-info .urgent-tag {
+  display: inline-block;
+  background: #FEE2E2;
+  color: #DC2626;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-weight: 700;
+}
+.visit-action {
+  background: #38A169;
+  color: white;
+  border: none;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(56, 161, 105, 0.3);
+  white-space: nowrap;
+}
+.visit-card.heyfood .visit-action {
+  background: #3B82F6;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+}
+.visit-card.urgent .visit-action {
+  background: #DC2626;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.3);
+}
+
+/* 추가 버튼 */
+.add-button {
+  background: white;
+  border: 2px dashed #38A169;
+  border-radius: 14px;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #38A169;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.15s;
+}
+.add-button:active { background: #F0FDF4; }
+.add-button.heyfood { border-color: #3B82F6; color: #3B82F6; }
+
+/* 빈 상태 */
+.empty-state {
+  background: white;
+  border-radius: 14px;
+  padding: 30px 20px;
+  text-align: center;
+  color: #9CA3AF;
+  font-size: 13px;
+}
+
+/* 하단 네비 */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  max-width: 480px;
+  margin: 0 auto;
+  background: white;
+  border-top: 1px solid #E5E7EB;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 8px 0;
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.06);
+  z-index: 100;
+}
+.nav-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  cursor: pointer;
+  color: #9CA3AF;
+  font-size: 11px;
+  font-weight: 600;
+  gap: 2px;
+}
+.nav-tab .icon { font-size: 22px; }
+.nav-tab.active { color: #38A169; }
+.nav-tab.active .icon { transform: scale(1.1); }
+
+/* 탭 콘텐츠 */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* 판매 입력 폼 */
+.sales-form {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  margin: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.sales-form .date {
+  font-size: 12px;
+  color: #6B7280;
+  margin-bottom: 12px;
+}
+.menu-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.menu-row:last-child { border-bottom: none; }
+.menu-row .menu-name {
+  font-size: 15px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.menu-row .menu-icon { font-size: 20px; }
+.menu-row input {
+  width: 80px;
+  padding: 10px 12px;
+  border: 2px solid #E5E7EB;
+  border-radius: 10px;
+  font-size: 16px;
+  text-align: right;
+  font-weight: 700;
+  color: #1F2937;
+}
+.menu-row input:focus {
+  outline: none;
+  border-color: #38A169;
+  background: #F0FDF4;
+}
+.save-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #38A169, #1A4731);
+  color: white;
+  border: none;
+  padding: 16px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 800;
+  margin-top: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(56, 161, 105, 0.3);
+}
+.save-btn:disabled { opacity: 0.6; }
+
+/* 점수 화면 */
+.score-card {
+  background: white;
+  border-radius: 14px;
+  padding: 18px;
+  margin: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.score-row:last-child { border-bottom: none; }
+.score-row .left { display: flex; align-items: center; gap: 10px; }
+.score-row .icon { font-size: 24px; }
+.score-row .text { font-size: 14px; font-weight: 600; }
+.score-row .desc { font-size: 11px; color: #6B7280; margin-top: 2px; }
+.score-row .points { font-size: 18px; font-weight: 800; color: #38A169; }
+
+.total-score {
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border-radius: 14px;
+  padding: 20px;
+  margin: 16px;
+  text-align: center;
+}
+.total-score .label {
+  font-size: 12px;
+  color: #92400E;
+  font-weight: 700;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+.total-score .num {
+  font-size: 36px;
+  font-weight: 800;
+  color: #92400E;
+}
+.total-score .pay {
+  font-size: 14px;
+  color: #78350F;
+  margin-top: 4px;
+}
+
+/* 평가 화면 */
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding: 16px;
+}
+.team-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.team-btn:active {
+  background: #F0FDF4;
+  border-color: #38A169;
+}
+.team-btn.disabled {
+  background: #F3F4F6;
+  color: #9CA3AF;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.team-btn.evaluated {
+  background: #DCFCE7;
+  border-color: #38A169;
+  color: #1A4731;
+}
+
+/* 내 정보 */
+.info-card {
+  background: white;
+  border-radius: 14px;
+  padding: 20px;
+  margin: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.info-row:last-child { border-bottom: none; }
+.info-row .label { font-size: 13px; color: #6B7280; }
+.info-row .value { font-size: 14px; font-weight: 600; }
+.menu-btn {
+  width: 100%;
+  background: white;
+  border: 1px solid #E5E7EB;
+  padding: 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  text-align: left;
+  margin-top: 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.menu-btn .arrow { color: #9CA3AF; }
+.menu-btn.logout { color: #DC2626; font-weight: 600; }
+
+/* 모달 */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.modal-content {
+  background: white;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  overflow-y: auto;
+  border-radius: 24px 24px 0 0;
+  padding: 24px 20px 30px;
+  position: relative;
+}
+.modal-handle {
+  width: 40px;
+  height: 4px;
+  background: #D1D5DB;
+  border-radius: 2px;
+  margin: 0 auto 16px;
+}
+.modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.modal-subtitle {
+  font-size: 13px;
+  color: #6B7280;
+  margin-bottom: 16px;
+}
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #F3F4F6;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4B5563;
+  margin-bottom: 6px;
+}
+.form-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #E5E7EB;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.form-input:focus { outline: none; border-color: #38A169; }
+.form-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #E5E7EB;
+  border-radius: 10px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+.form-textarea:focus { outline: none; border-color: #38A169; }
+
+.photo-preview {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.photo-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: #F3F4F6;
+  position: relative;
+  overflow: hidden;
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-thumb .remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.upload-btn {
+  background: #F0FDF4;
+  border: 2px dashed #38A169;
+  color: #38A169;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+
+/* 별점 */
+.rating-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.rating-row:last-child { border-bottom: none; }
+.rating-stars {
+  display: flex;
+  gap: 4px;
+}
+.star {
+  font-size: 28px;
+  cursor: pointer;
+  color: #D1D5DB;
+}
+.star.active { color: #FBBF24; }
+
+/* 로딩 */
+.loader {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #E5E7EB;
+  border-top-color: #38A169;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* 작은 화면 — 휴대폰 그대로 / PC에서는 가운데 정렬 */
+@media (min-width: 481px) {
+  body {
+    box-shadow: 0 0 24px rgba(0,0,0,0.08);
+    background: white;
+  }
+}
+
+/* ================================================================
+   🚗 차량관리 탭 (2026-05-05 영민님 추가)
+   ================================================================ */
+.vehicle-card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  margin: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+}
+.vehicle-info {
+  background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 16px;
+  text-align: center;
+}
+.vehicle-info .label {
+  font-size: 11px;
+  color: #92400E;
+  font-weight: 700;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.vehicle-info .number {
+  font-size: 24px;
+  font-weight: 800;
+  color: #92400E;
+  letter-spacing: 1px;
+}
+.action-big-btn {
+  width: 100%;
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 14px;
+  padding: 18px 16px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 10px 0;
+  transition: all 0.15s;
+}
+.action-big-btn:active {
+  transform: scale(0.98);
+}
+.action-big-btn .icon {
+  font-size: 28px;
+}
+.action-big-btn .arrow {
+  color: #9CA3AF;
+  font-size: 24px;
+}
+.action-big-btn.wash {
+  border-color: #38A169;
+  color: #1A4731;
+}
+.action-big-btn.wash:active {
+  background: #F0FDF4;
+}
+.action-big-btn.repair {
+  border-color: #F59E0B;
+  color: #92400E;
+}
+.action-big-btn.repair:active {
+  background: #FEF3C7;
+}
+.action-big-btn.accident {
+  border-color: #DC2626;
+  color: #DC2626;
+}
+.action-big-btn.accident:active {
+  background: #FEE2E2;
+}
+.history-card {
+  background: white;
+  border-radius: 14px;
+  padding: 16px;
+  margin: 16px;
+}
+.history-card .title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #F3F4F6;
+}
+.history-row:last-child { border-bottom: none; }
+.history-row .left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.history-row .icon { font-size: 20px; }
+.history-row .text {
+  font-size: 13px;
+  font-weight: 600;
+}
+.history-row .desc {
+  font-size: 11px;
+  color: #6B7280;
+}
+.history-row .date {
+  font-size: 11px;
+  color: #9CA3AF;
+}
+
+/* 카테고리 버튼 */
+.category-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0;
+}
+.category-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+.category-btn.selected {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #92400E;
+}
+.category-btn .cat-icon {
+  font-size: 28px;
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* 사고 비율 입력 */
+.ratio-input {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 12px 0;
+}
+.ratio-box {
+  background: #F9FAFB;
+  border: 2px solid #E5E7EB;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.ratio-box.mine { border-color: #DC2626; }
+.ratio-box.other { border-color: #3B82F6; }
+.ratio-box .label {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.ratio-box.mine .label { color: #DC2626; }
+.ratio-box.other .label { color: #3B82F6; }
+.ratio-box input {
+  width: 80px;
+  padding: 10px;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  font-size: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+.ratio-box .pct {
+  font-size: 14px;
+  margin-left: 4px;
+  color: #6B7280;
+}
+
+/* ================================================================
+   📝 평가 탭 (팀원 평가 추가)
+   ================================================================ */
+.eval-tab-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+.eval-tab-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: center;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 14px;
+}
+.eval-tab-btn.active {
+  background: #38A169;
+  color: white;
+  border-color: #38A169;
+}
+.member-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 16px;
+}
+.member-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px;
+  text-align: left;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.member-btn:active {
+  background: #F0FDF4;
+  border-color: #38A169;
+}
+.member-btn.evaluated {
+  background: #DCFCE7;
+  border-color: #38A169;
+}
+.member-btn .info {
+  display: flex;
+  flex-direction: column;
+}
+.member-btn .name {
+  font-size: 15px;
+}
+.member-btn .desc {
+  font-size: 11px;
+  color: #6B7280;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* ================================================================
+   🆕 기사 피드백 버튼 (2026-05-05 영민님 통합 흐름)
+   ================================================================ */
+.visit-card-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.feedback-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  flex-wrap: wrap;
+}
+.feedback-btn {
+  flex: 1;
+  background: #F9FAFB;
+  border: 1px solid #E5E7EB;
+  color: #4B5563;
+  padding: 8px 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 60px;
+}
+.feedback-btn:active {
+  background: #E5E7EB;
+}
+.feedback-btn.warn {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+  color: #92400E;
+}
+.feedback-btn.warn:active {
+  background: #FDE68A;
+}
+
+/* ================================================================
+   🆕 신규업체 추적 보고 (2026-05-05)
+   ================================================================ */
+.visit-card.tracking {
+  border-left-color: #7C3AED;
+}
+.visit-card.tracking .visit-action {
+  background: #7C3AED;
+  box-shadow: 0 2px 4px rgba(124, 58, 237, 0.3);
+}
+
+.tracking-tag-btn {
+  background: white;
+  border: 2px solid #E5E7EB;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+  width: 100%;
+  color: #374151;
+}
+.tracking-tag-btn:active {
+  transform: scale(0.98);
+}
+.tracking-tag-btn.selected {
+  background: #EDE9FE;
+  border-color: #7C3AED;
+  color: #6D28D9;
+  font-weight: 700;
+}
