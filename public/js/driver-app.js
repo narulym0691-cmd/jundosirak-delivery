@@ -480,16 +480,67 @@ function closeVisitModal() {
   selectedPhotos = [];
 }
 
-function handlePhotoUpload(event) {
-  const files = Array.from(event.target.files).slice(0, 3 - selectedPhotos.length);
-  files.forEach(file => {
+// 🆕 2026-05-06 영민님 직접 지시 — 사진 자동 압축 (기사 폰 데이터 절약 + 업로드 성공률 ↑)
+// 원본 4~7MB → 1MB 이하로 자동 압축 (긴 변 1600px / JPEG 0.8 품질)
+async function compressImage(file, maxWidth = 1600, quality = 0.8) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onerror = () => resolve(file); // 실패 시 원본 그대로
     reader.onload = (e) => {
-      selectedPhotos.push({ file, dataUrl: e.target.result });
-      renderPhotoPreview();
+      const img = new Image();
+      img.onerror = () => resolve(file);
+      img.onload = () => {
+        try {
+          // 비율 유지하며 긴 변 maxWidth로 축소
+          let w = img.width, h = img.height;
+          if (w > maxWidth || h > maxWidth) {
+            if (w >= h) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+            else { w = Math.round(w * maxWidth / h); h = maxWidth; }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#FFFFFF'; // 투명 PNG → 흰 배경
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            if (!blob) { resolve(file); return; }
+            // 압축 후가 원본보다 크면 원본 사용
+            if (blob.size >= file.size) { resolve(file); return; }
+            // Blob → File (이름/타입 보존)
+            const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+              type: 'image/jpeg', lastModified: Date.now()
+            });
+            console.log(`[compressImage] ${file.name}: ${(file.size/1024).toFixed(0)}KB → ${(compressed.size/1024).toFixed(0)}KB`);
+            resolve(compressed);
+          }, 'image/jpeg', quality);
+        } catch (err) {
+          console.warn('[compressImage] 실패, 원본 사용:', err);
+          resolve(file);
+        }
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+async function handlePhotoUpload(event) {
+  const files = Array.from(event.target.files).slice(0, 3 - selectedPhotos.length);
+  for (const file of files) {
+    try {
+      // 압축 진행 표시 (대용량 사진 빠른 응답)
+      const compressed = await compressImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        selectedPhotos.push({ file: compressed, dataUrl: e.target.result });
+        renderPhotoPreview();
+      };
+      reader.readAsDataURL(compressed);
+    } catch (e) {
+      console.warn('[handlePhotoUpload]', e);
+    }
+  }
 }
 
 function renderPhotoPreview() {
@@ -1425,16 +1476,22 @@ function closeVehicleModal() {
   vehicleModalSelectedCategory = null;
 }
 
-function handleVehiclePhoto(event) {
+async function handleVehiclePhoto(event) {
+  // 🆕 2026-05-06 영민님 직접 지시 — 사진 자동 압축
   const files = Array.from(event.target.files).slice(0, 3 - vehicleSelectedPhotos.length);
-  files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      vehicleSelectedPhotos.push({ file, dataUrl: e.target.result });
-      renderVehiclePhotoPreview();
-    };
-    reader.readAsDataURL(file);
-  });
+  for (const file of files) {
+    try {
+      const compressed = await compressImage(file);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        vehicleSelectedPhotos.push({ file: compressed, dataUrl: e.target.result });
+        renderVehiclePhotoPreview();
+      };
+      reader.readAsDataURL(compressed);
+    } catch (e) {
+      console.warn('[handleVehiclePhoto]', e);
+    }
+  }
 }
 
 function renderVehiclePhotoPreview() {
