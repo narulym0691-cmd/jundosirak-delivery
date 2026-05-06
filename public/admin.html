@@ -1403,7 +1403,29 @@
 
   let _salesData = null;
 
+  // 🆕 2026-05-06 영민님 직접 지시 — 일일장부는 위기관리시스템에서만 업로드
+  // 기존 showSalesUpload는 호환성을 위해 남기되, 기본 클릭은 안내로 우회
+  window.showSalesUploadDeprecated = () => {
+    if (confirm(
+      '⚠️ 일일장부 업로드는 이제 위기관리시스템에서만 합니다.\n\n' +
+      '✅ 새 업로드 위치:\n' +
+      'https://jundosirak-care.web.app/upload.html\n\n' +
+      '여기에서 한 번만 업로드하면:\n' +
+      '• 위기 분석 자동 실행\n' +
+      '• 기사 앱에 자동 푸시\n' +
+      '• 관리자 화면(여기) 누적/평가 자동 동기화\n\n' +
+      '🔗 위기관리시스템 열기'
+    )) {
+      window.open('https://jundosirak-care.web.app/upload.html', '_blank');
+    }
+  };
+
   window.showSalesUpload = () => {
+    // 영민님 절대 원칙: 일일장부는 위기관리시스템에서만
+    return window.showSalesUploadDeprecated();
+  };
+
+  window.showSalesUploadLegacy = () => {
     document.getElementById('salesUploadModal').style.display = 'block';
     // 오늘 날짜 기본값
     const today = new Date();
@@ -3544,7 +3566,8 @@ async function sendSms() {
     <span class="tab-icon">📋</span>
     <span>지시사항</span>
   </a>
-  <button class="bottom-tab-item" onclick="showSalesUpload()">
+  <!-- 2026-05-06 영민님 직접 지시 — 일일장부는 위기관리시스템에서만 업로드 -->
+  <button class="bottom-tab-item" onclick="showSalesUploadDeprecated()" style="opacity:0.5">
     <span class="tab-icon">📊</span>
     <span>판매업로드</span>
   </button>
