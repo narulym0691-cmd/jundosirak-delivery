@@ -5419,6 +5419,88 @@ async function loadClosedCandidates() {
   }
 }
 
+// ⭐ 헤이푸드 영업관리 (heyfood-sales) 부 앱 — 거래종료 시 자동 푸시용
+// 2026-05-09 영민님 직접 지시: ae87f 종결확정 → heyfood-sales 영업 DB 자동 입고
+const HEYFOOD_SALES_CONFIG = {
+  apiKey: "AIzaSyCD9j7Di3jvzDvP1tYGTygxC9CH-R0JodE",
+  authDomain: "heyfood-sales.firebaseapp.com",
+  projectId: "heyfood-sales",
+  storageBucket: "heyfood-sales.firebasestorage.app",
+  messagingSenderId: "273379045809",
+  appId: "1:273379045809:web:4521eac96a6230f7020d90",
+};
+let _heyfoodApp = null;
+let _heyfoodDb = null;
+function getHeyfoodDb() {
+  if (_heyfoodDb) return _heyfoodDb;
+  // 부 앱으로 초기화 (메인 앱은 ae87f)
+  _heyfoodApp = firebase.apps.find(a => a.name === 'heyfoodSales')
+    || firebase.initializeApp(HEYFOOD_SALES_CONFIG, 'heyfoodSales');
+  _heyfoodDb = _heyfoodApp.firestore();
+  return _heyfoodDb;
+}
+
+// 업체명 정규화 (Level 1 — heyfood-sales와 동일한 산식)
+function normNameForHeyfood(name) {
+  if (!name) return '';
+  return name.toString()
+    .replace(/[\(\)（）\[\]【】]/g, '')
+    .replace(/주식회사|㈜|\(주\)/gi, '')
+    .replace(/주\)|\(주/gi, '')
+    .replace(/[\s\-_·•・,\.]/g, '')
+    .replace(/지점|본점|영업소|사무소|센터/g, '')
+    .toLowerCase();
+}
+
+// ⭐ 헤이푸드 영업 DB로 자동 푸시 (중복 차단 포함)
+async function pushTerminatedToHeyfoodSales(clientData) {
+  try {
+    const hfDb = getHeyfoodDb();
+    const normKey = normNameForHeyfood(clientData.name);
+    if (!normKey) return { skipped: true, reason: '업체명 비어있음' };
+
+    // 중복 검사: master / active / completed (3개 컬렉션 다 보기)
+    const [mSnap, aSnap, cSnap] = await Promise.all([
+      hfDb.collection('sales_master').get(),
+      hfDb.collection('sales_active').get(),
+      hfDb.collection('sales_completed').get(),
+    ]);
+    const existing = [...mSnap.docs, ...aSnap.docs, ...cSnap.docs].find(d => {
+      const x = d.data();
+      return normNameForHeyfood(x.clientName || x.name) === normKey;
+    });
+    if (existing) {
+      return { skipped: true, reason: '이미 헤이푸드 영업 DB에 존재', existingClient: existing.data().clientName };
+    }
+
+    // 신규 등록
+    await hfDb.collection('sales_master').add({
+      clientName: clientData.name,
+      address: clientData.address || '',
+      phone: clientData.phone || '',
+      assignedDriver: clientData.assignedDriver || '',
+      originalAssignedDriver: clientData.assignedDriver || '',
+      courseId: clientData.courseId || '',
+      teamId: clientData.teamId || '',
+      grade: 'C',
+      status: '활성',
+      group: '거래종결',
+      source: 'ae87f_terminated',
+      sourceFile: '준도시락_배송관리_종결확정',
+      terminationDate: clientData.lastOrderDate || null,
+      terminatedBy: clientData.terminatedBy || '관리자',
+      dailyAvg: clientData.dailyAvg || 0,
+      orderDays: clientData.orderDays || 0,
+      uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      _normalizedName: normKey,
+    });
+    return { success: true };
+  } catch (e) {
+    console.error('헤이푸드 푸시 실패:', e);
+    return { error: e.message };
+  }
+}
+
 // 거래종료 후보 액션 처리
 window.closeCandidateAction = async function(alertId, clientName, action) {
   const labels = {
@@ -5427,7 +5509,13 @@ window.closeCandidateAction = async function(alertId, clientName, action) {
     dismissed: '단순 해제'
   };
   const label = labels[action] || '처리';
-  if (!confirm(`${clientName}\n\n→ ${label}로 처리할까요?\n\n${action==='terminated' ? '⚠️ clients.active=false 로 변경되어 모든 추적에서 제외됩니다.' : action==='paused' ? '📌 alert만 해제됩니다. (재개 시 다시 경보 생성됨)' : '📌 alert만 해제됩니다.'}`)) return;
+
+  // 거래종료 시 추가 안내
+  const extraMsg = action === 'terminated'
+    ? '\n\n⚠️ 처리 내용:\n  ① clients.active=false (모든 추적 제외)\n  ② 헤이푸드 영업 DB로 자동 입고 (중복 차단)'
+    : action === 'paused' ? '📌 alert만 해제됩니다. (재개 시 다시 경보 생성됨)'
+    : '📌 alert만 해제됩니다.';
+  if (!confirm(`${clientName}\n\n→ ${label}로 처리할까요?\n${extraMsg}`)) return;
 
   try {
     // 1) alert 해제
@@ -5438,10 +5526,13 @@ window.closeCandidateAction = async function(alertId, clientName, action) {
       resolvedBy: (window._meName || 'admin')
     });
 
-    // 2) 거래종료라면 clients.active=false
+    // 2) 거래종료라면 clients.active=false + 헤이푸드 푸시
+    let pushResult = null;
     if (action === 'terminated' && clientName) {
       const clientsSnap = await db.collection('clients').where('name','==',clientName).limit(1).get();
+      let clientData = null;
       if (!clientsSnap.empty) {
+        clientData = { id: clientsSnap.docs[0].id, ...clientsSnap.docs[0].data() };
         await clientsSnap.docs[0].ref.update({
           active: false,
           terminatedAt: firebase.firestore.FieldValue.serverTimestamp(),
@@ -5449,9 +5540,29 @@ window.closeCandidateAction = async function(alertId, clientName, action) {
           terminatedBy: (window._meName || 'admin')
         });
       }
+
+      // 3) 헤이푸드 영업 DB로 자동 푸시
+      if (clientData) {
+        pushResult = await pushTerminatedToHeyfoodSales({
+          ...clientData,
+          terminatedBy: (window._meName || 'admin'),
+        });
+      }
     }
 
-    alert(`✅ ${label} 완료`);
+    // 결과 메시지
+    let resultMsg = `✅ ${label} 완료`;
+    if (pushResult) {
+      if (pushResult.success) {
+        resultMsg += '\n\n🎯 헤이푸드 영업 DB 입고 완료\n→ heyfood-sales.web.app 에서 분배 가능';
+      } else if (pushResult.skipped) {
+        resultMsg += `\n\n⏭️ 헤이푸드 입고 스킵: ${pushResult.reason}`;
+        if (pushResult.existingClient) resultMsg += `\n   기존: ${pushResult.existingClient}`;
+      } else if (pushResult.error) {
+        resultMsg += `\n\n⚠️ 헤이푸드 푸시 실패: ${pushResult.error}\n(ae87f 종결 처리는 정상 완료됨 — 수동 등록 필요)`;
+      }
+    }
+    alert(resultMsg);
     loadClosedCandidates();
     if (typeof loadAlerts === 'function') loadAlerts();
   } catch(e) {
