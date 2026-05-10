@@ -158,18 +158,47 @@ async function loadSalesTargets() {
       .where('status', '==', '대기')
       .get();
 
-    salesTargets = snap.docs
+    // 코스번호 정규화: "코스6" → "6", 6 → "6"
+    const normCourse = (v) => String(v || '').replace(/[^0-9]/g, '');
+    const myCourse = normCourse(currentUser.courseId);
+
+    // 1) 내 화면에 보일 후보 필터
+    //    - 본인 이름 직접 배정: 무조건 표시
+    //    - 코스번호 매칭: "코스6" === "6" 정규화 비교
+    //    ※ 팀 매칭(teamId) 라인 제거 — 같은 팀 다른 코스 거래처가 풀려서 표시되던 버그 수정
+    //      (2026-05-11 수정작업1: 박인수 화면에 코스5 일광해빛동물병원 등 잘못 표시 수정)
+    const candidates = snap.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .filter(t => {
         if (t.assignedToName === currentUser.name) return true;
-        if (!t.assignedToName && t.teamId === currentUser.teamId) return true;
-        if (String(t.courseNum) === String(currentUser.courseId)) return true;
+        if (!t.assignedToName && myCourse && normCourse(t.courseNum) === myCourse) return true;
         return false;
-      })
-      .sort((a, b) => {
-        const pri = { '★★★': 3, '★★': 2, '★': 1 };
-        return (pri[b.priority] || 0) - (pri[a.priority] || 0);
       });
+
+    // 2) 거래처명 dedup — 같은 업체 여러 문서면 가장 최근 createdAt 1건만 표시
+    //    (2026-05-11 수정작업1: 그릿수학831 등 5/6, 5/7, 5/8 누적 표시 버그 수정)
+    const tsOf = (t) => {
+      const c = t.createdAt;
+      if (!c) return 0;
+      if (typeof c.seconds === 'number') return c.seconds;
+      if (c.toMillis) return c.toMillis() / 1000;
+      return 0;
+    };
+    const dedupMap = new Map();
+    for (const t of candidates) {
+      const key = (t.clientName || t.businessName || t.name || t.id || '').trim();
+      if (!key) continue;
+      const prev = dedupMap.get(key);
+      if (!prev || tsOf(t) > tsOf(prev)) {
+        dedupMap.set(key, t);
+      }
+    }
+
+    // 3) 우선순위(★) 정렬
+    salesTargets = [...dedupMap.values()].sort((a, b) => {
+      const pri = { '★★★★': 4, '★★★': 3, '★★': 2, '★': 1 };
+      return (pri[b.priority] || 0) - (pri[a.priority] || 0);
+    });
   } catch (e) {
     console.warn('[sales_targets] 로드 실패', e);
     salesTargets = [];
