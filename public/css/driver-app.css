@@ -811,6 +811,15 @@ body {
 .feedback-btn.warn:active {
   background: #FDE68A;
 }
+/* 2026-05-11 영민님 직접 지시 — 거래중(stillActive) 초록색 */
+.feedback-btn.ok {
+  background: #D1FAE5;
+  border-color: #10B981;
+  color: #065F46;
+}
+.feedback-btn.ok:active {
+  background: #A7F3D0;
+}
 
 /* ================================================================
    🆕 신규업체 추적 보고 (2026-05-05)

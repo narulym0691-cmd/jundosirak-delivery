@@ -425,8 +425,11 @@ function renderVisitCard(t, type) {
   const urgentTag = type === 'urgent' ? '<div class="urgent-tag">🔴 즉시 영업 필요</div>' : '';
   const businessLine = 'jundosirak_care';
 
-  // 준도시락 위기관리 — 정기휴무 / 회식 / 이탈조짐 / 기타 (영민님 4가지 사유 확정)
+  // 준도시락 위기관리 — 영민님 6가지 사유 확정 (2026-05-11)
+  // 기존 4개 + 추가 2개: 거래중(stillActive) / 오배정(wrongAssign)
   const feedbackButtons = `
+    <button class="feedback-btn ok" onclick="event.stopPropagation();openFeedbackModal('stillActive', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🟢 거래중</button>
+    <button class="feedback-btn warn" onclick="event.stopPropagation();openFeedbackModal('wrongAssign', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🔴 오배정</button>
     <button class="feedback-btn" onclick="event.stopPropagation();openFeedbackModal('closedDay', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🏖 정기휴무</button>
     <button class="feedback-btn" onclick="event.stopPropagation();openFeedbackModal('meeting', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🍻 회식</button>
     <button class="feedback-btn warn" onclick="event.stopPropagation();openFeedbackModal('churnRisk', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">⚠ 이탈조짐</button>
@@ -1664,8 +1667,11 @@ document.addEventListener('DOMContentLoaded', initApp);
 // ════════════════════════════════════════════════════════
 
 function openFeedbackModal(type, targetId, clientName) {
-  // 2026-05-06 영민님 직접 지시 — 준도시락 위기관리 사유 4가지 (정기휴무/회식/이탈조짐/기타)
+  // 2026-05-11 영민님 직접 지시 — 준도시락 위기관리 사유 6가지
+  // (기존 4개 + 거래중/오배정 추가)
   const titles = {
+    stillActive: '🟢 거래중 (위기 잘못 발령)',
+    wrongAssign: '🔴 오배정 (내 코스 아님)',
     closedDay: '🏖 정기휴무 등록',
     meeting: '🍻 회식 (오늘 단발성)',
     churnRisk: '⚠ 이탈조짐 보고',
@@ -1680,6 +1686,8 @@ function openFeedbackModal(type, targetId, clientName) {
   };
 
   const subtitles = {
+    stillActive: '거래 잘하고 있는데 위기 경보가 잘못 떴음 → 영민님이 확인 후 분석 시스템 수정',
+    wrongAssign: '내 코스 거래처가 아닌데 잘못 배정됨 → 영민님이 확인 후 코스 매핑 수정',
     closedDay: '매주 같은 요일 휴무 (예: 매주 수요일 병원 휴진) → 거래처 마스터에 자동 등록 → 그 요일 자동 차단',
     meeting: '오늘만 단발성 — 다음 미주문 시 다시 위기 발령됨',
     churnRisk: '이탈 조짐 발견 — 영민님 결정 대기 (점수 0점, 정보 수집 목적)',
@@ -1693,6 +1701,8 @@ function openFeedbackModal(type, targetId, clientName) {
   };
 
   const reasonPlaceholders = {
+    stillActive: '예: 어제 주문 받음 / 내일 주문 예약됨 / 일시 휴진 후 곧 재개',
+    wrongAssign: '예: 진짜 담당 코스/기사 (예: 코스7 안준수가 가는 곳임)',
     closedDay: '예: 매주 수요일 병원 휴진 / 매주 일요일 약국 휴무',
     meeting: '예: 회식 / 단체 외근 / 일시적 사정',
     churnRisk: '예: 다른 업체 시식 중 / 폐업 검토 / 클레임 발생',
@@ -1771,8 +1781,8 @@ async function saveFeedback(type, targetId, clientName) {
   }
 
   // 2026-05-06 영민님 직접 지시 — 사유별 필수 체크
-  // churnRisk(이탈조짐)는 사유 필수 / closedDay/meeting/other는 선택
-  if ((type === 'churnRisk' || type === 'closure' || type === 'transfer' || type === 'bad_client') && !reason) {
+  // churnRisk/wrongAssign 사유 필수 / closedDay/meeting/other/stillActive는 선택
+  if ((type === 'churnRisk' || type === 'wrongAssign' || type === 'closure' || type === 'transfer' || type === 'bad_client') && !reason) {
     msg.style.color = '#DC2626';
     msg.textContent = '사유를 입력해주세요';
     return;
@@ -1817,10 +1827,14 @@ async function saveFeedback(type, targetId, clientName) {
     });
 
     // 2026-05-06 영민님 직접 지시 — 새 사유에 따른 sales_targets 상태 변경
-    // closedDay/meeting/churnRisk/other 모두 → status='완료' (그날 위기 해제)
+    // 2026-05-11 영민님 직접 지시 — sales_targets 상태 변경
+    // stillActive/wrongAssign: 영민님 분석 대기 상태로 분류 → 화면에서 사라짐
+    // 기존: closedDay/meeting/churnRisk/other → '완료' (그날 위기 해제)
     if (targetId) {
       try {
         let statusMap = {
+          stillActive: '거래중확인',     // 영민님이 분석 후 마스터 정정
+          wrongAssign: '오배정확인',     // 영민님이 분석 후 코스 매핑 정정
           closedDay: '완료', meeting: '완료', churnRisk: '완료', other: '완료',
           closure: '종결요청', transfer: '이관요청', bad_client: '불량반려',
         };
