@@ -1403,28 +1403,25 @@
 
   let _salesData = null;
 
-  // 🆕 2026-05-06 영민님 직접 지시 — 일일장부는 위기관리시스템에서만 업로드
-  // 기존 showSalesUpload는 호환성을 위해 남기되, 기본 클릭은 안내로 우회
-  window.showSalesUploadDeprecated = () => {
-    if (confirm(
-      '⚠️ 일일장부 업로드는 이제 위기관리시스템에서만 합니다.\n\n' +
-      '✅ 새 업로드 위치:\n' +
-      'https://jundosirak-care.web.app/upload.html\n\n' +
-      '여기에서 한 번만 업로드하면:\n' +
-      '• 위기 분석 자동 실행\n' +
-      '• 기사 앱에 자동 푸시\n' +
-      '• 관리자 화면(여기) 누적/평가 자동 동기화\n\n' +
-      '🔗 위기관리시스템 열기'
-    )) {
-      window.open('https://jundosirak-care.web.app/upload.html', '_blank');
-    }
-  };
+  // 🆕 2026-05-11 영민님 직접 지시 — 차단 해제, ae87f에도 직접 업로드 가능
+  // 영민님 의도: 두 곳(care + ae87f) 다 별도로 업로드. 연동 없이 각각 독립 처리.
+  // 이유: ae87f admin.html이 자기 sales_daily에 직접 쓰면 누적수량/팀순위 즉시 반영됨.
 
   window.showSalesUpload = () => {
-    // 영민님 절대 원칙: 일일장부는 위기관리시스템에서만
-    return window.showSalesUploadDeprecated();
+    // 진짜 업로드 모달 열기 (이전엔 care로 우회시키던 안내 제거)
+    document.getElementById('salesUploadModal').style.display = 'block';
+    const today = new Date();
+    const ymd = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+    document.getElementById('su-date').value = ymd;
+    document.getElementById('su-preview').style.display = 'none';
+    document.getElementById('su-save-btn').style.display = 'none';
+    document.getElementById('su-msg').textContent = '';
+    document.getElementById('su-filename').textContent = '선택 안 됨';
+    _salesData = null;
+    loadSalesDateList();
   };
 
+  // 호환용 (혹시 다른 곳에서 부르고 있으면)
   window.showSalesUploadLegacy = () => {
     document.getElementById('salesUploadModal').style.display = 'block';
     // 오늘 날짜 기본값
