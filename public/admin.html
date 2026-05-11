@@ -2313,19 +2313,26 @@
         savedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
 
-      // 2. monthly_stats 업데이트 (해당 월 누적 재계산)
-      const allDaysSnap = await db.collection('daily_sales')
-        .where('date', '>=', ym+'-01')
-        .where('date', '<=', ym+'-31')
+      // ⭐ 2026-05-11 영민님 직접 지시 — 로직 추적으로 두 가지 버그 발견 후 정정
+      // 버그1: 'daily_sales' (단어 순서 반대) → 실제 데이터는 'sales_daily'
+      // 버그2: data.teamTotals (이건 숫자 기대) → 실제 필드는 teamStats.{tid}.total (객체)
+      // 결과: 모든 팀 누적이 잘못된 값으로 박혀서 박인수 935 / 실제 1808 표시
+      // 정정: sales_daily.teamStats.{tid}.total 합산으로 변경
+      const allDaysSnap = await db.collection('sales_daily')
         .get();
 
       const monthTeamTotals = {};
       const bizDays = new Set();
       allDaysSnap.forEach(d => {
         const data = d.data();
-        bizDays.add(data.date);
-        Object.entries(data.teamTotals||{}).forEach(([t, v]) => {
-          monthTeamTotals[t] = (monthTeamTotals[t]||0) + v;
+        const docDate = data.date || d.id;
+        // 해당 월만 필터
+        if (!docDate.startsWith(ym)) return;
+        bizDays.add(docDate);
+        // teamStats: { team1: { total, 뜨, 프, ... }, ... }
+        Object.entries(data.teamStats||{}).forEach(([t, ts]) => {
+          const qty = (ts && typeof ts === 'object') ? (ts.total || 0) : 0;
+          monthTeamTotals[t] = (monthTeamTotals[t]||0) + qty;
         });
       });
 
