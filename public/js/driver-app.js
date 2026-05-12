@@ -341,14 +341,15 @@ function renderHome() {
     `;
   }
 
-  // 🆕 연휴 영향일 등록 버튼 (영민님 통합 흐름 2026-05-05)
-  html += `
-    <div style="margin:12px 16px">
-      <button class="add-button" onclick="openHolidayInfluence()" style="background:#FEF3C7;border-color:#F59E0B;color:#92400E">
-        📅 오늘 연휴 영향일 등록 (출근자 적은 날)
-      </button>
-    </div>
-  `;
+  // 📅 연휴 영향일 등록 버튼 — 영민님 직접 지시 2026-05-12 22:54 (홈에서 숨김)
+  // 모달 / openHolidayInfluence() 함수는 그대로 유지 (다른 곳에서 호출 가능)
+  // html += `
+  //   <div style="margin:12px 16px">
+  //     <button class="add-button" onclick="openHolidayInfluence()" style="background:#FEF3C7;border-color:#F59E0B;color:#92400E">
+  //       📅 오늘 연휴 영향일 등록 (출근자 적은 날)
+  //     </button>
+  //   </div>
+  // `;
 
   if (urgentTargets.length > 0) {
     html += `
