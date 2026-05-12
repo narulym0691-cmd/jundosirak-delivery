@@ -154,8 +154,10 @@ async function loadMyVehicle() {
 
 async function loadSalesTargets() {
   try {
+    // 2026-05-12 영민님 직접 지시 — 확인대기도 기사 화면에 계속 표시
+    //   '대기': 새 발령 / '확인대기': 기사가 확인불가 눌렀음, 재방문 필요
     const snap = await db.collection('sales_targets')
-      .where('status', '==', '대기')
+      .where('status', 'in', ['대기', '확인대기'])
       .get();
 
     // 코스번호 정규화: "코스6" → "6", 6 → "6"
@@ -426,23 +428,42 @@ function renderVisitCard(t, type) {
   const urgentTag = type === 'urgent' ? '<div class="urgent-tag">🔴 즉시 영업 필요</div>' : '';
   const businessLine = 'jundosirak_care';
 
-  // 준도시락 위기관리 — 영민님 6가지 사유 확정 (2026-05-11)
-  // 기존 4개 + 추가 2개: 거래중(stillActive) / 오배정(wrongAssign)
+  // 준도시락 위기관리 — 영민님 8가지 사유 확정 (2026-05-12 23:43 영민님 직접 지시)
+  // 기존 6개 + 추가 2개: 확인불가(unconfirmed) / 거래종결(closed)
+  const followUpBadge = t.followUpCount > 0
+    ? `<span style="display:inline-block;background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;margin-left:6px">🚪 ${t.followUpCount}차 확인대기</span>`
+    : '';
   const feedbackButtons = `
     <button class="feedback-btn ok" onclick="event.stopPropagation();openFeedbackModal('stillActive', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🟢 거래중</button>
     <button class="feedback-btn warn" onclick="event.stopPropagation();openFeedbackModal('wrongAssign', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🔴 오배정</button>
     <button class="feedback-btn" onclick="event.stopPropagation();openFeedbackModal('closedDay', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🏖 정기휴무</button>
     <button class="feedback-btn" onclick="event.stopPropagation();openFeedbackModal('meeting', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🍻 회식</button>
     <button class="feedback-btn warn" onclick="event.stopPropagation();openFeedbackModal('churnRisk', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">⚠ 이탈조짐</button>
+    <button class="feedback-btn warn" onclick="event.stopPropagation();openFeedbackModal('unconfirmed', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🚪 확인불가</button>
+    <button class="feedback-btn danger" onclick="event.stopPropagation();openFeedbackModal('closed', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">🛑 거래종결</button>
     <button class="feedback-btn" onclick="event.stopPropagation();openFeedbackModal('other', '${t.id}', '${(t.clientName || '').replace(/'/g, '&apos;')}')">📝 기타</button>
   `;
+
+  // 확인대기 누적 정보 (영민님 통찰 2026-05-12 — 추적 시스템)
+  let followUpInfo = '';
+  if (t.followUpCount > 0 && t.lastFollowUpAt) {
+    const lastDate = t.lastFollowUpAt?.toDate ? t.lastFollowUpAt.toDate() : new Date(t.lastFollowUpAt);
+    const daysAgo = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+    const urgentRe = daysAgo >= 3;
+    followUpInfo = `
+      <div style="background:${urgentRe ? '#FEE2E2' : '#FEF3C7'};border-left:4px solid ${urgentRe ? '#DC2626' : '#F59E0B'};padding:8px 10px;margin:4px 0;border-radius:4px;font-size:12px">
+        🚪 <strong>확인대기 ${t.followUpCount}차</strong> (${daysAgo === 0 ? '오늘' : daysAgo + '일 전'})${urgentRe ? ' ⚠️ 재방문 권고' : ''}
+      </div>
+    `;
+  }
 
   return `
     <div class="visit-card ${cls}">
       <div class="visit-card-main" onclick="openVisitModal('target', '${businessLine}', '${t.id}')">
         <div class="visit-info">
-          <div class="name">${t.clientName}</div>
+          <div class="name">${t.clientName}${followUpBadge}</div>
           <div class="desc">${desc}</div>
+          ${followUpInfo}
           ${urgentTag}
         </div>
         <button class="visit-action">📸 활동 입력</button>
@@ -1668,14 +1689,16 @@ document.addEventListener('DOMContentLoaded', initApp);
 // ════════════════════════════════════════════════════════
 
 function openFeedbackModal(type, targetId, clientName) {
-  // 2026-05-11 영민님 직접 지시 — 준도시락 위기관리 사유 6가지
-  // (기존 4개 + 거래중/오배정 추가)
+  // 2026-05-12 영민님 직접 지시 — 준도시락 위기관리 사유 8가지
+  // 기존 6개 + 추가 2개: 확인불가(unconfirmed) / 거래종결(closed)
   const titles = {
     stillActive: '🟢 거래중 (위기 잘못 발령)',
     wrongAssign: '🔴 오배정 (내 코스 아님)',
     closedDay: '🏖 정기휴무 등록',
     meeting: '🍻 회식 (오늘 단발성)',
     churnRisk: '⚠ 이탈조짐 보고',
+    unconfirmed: '🚪 확인불가 / 추후확인',
+    closed: '🛑 거래종결 (폐업/이전/이탈)',
     other: '📝 기타',
     holiday_influence: '📅 연휴 영향일 등록',
     // 호환용 (옛날 코드)
@@ -1692,6 +1715,8 @@ function openFeedbackModal(type, targetId, clientName) {
     closedDay: '매주 같은 요일 휴무 (예: 매주 수요일 병원 휴진) → 거래처 마스터에 자동 등록 → 그 요일 자동 차단',
     meeting: '오늘만 단발성 — 다음 미주문 시 다시 위기 발령됨',
     churnRisk: '이탈 조짐 발견 — 영민님 결정 대기 (점수 0점, 정보 수집 목적)',
+    unconfirmed: '방문했는데 사장님 부재/문 닫혀있음/연락 안 됨 → 화면에 계속 떠있음, 재방문 후 다른 버튼 누르세요',
+    closed: '폐업/이전/이탈 확정 → 영민님 검토 후 헤이푸드 영업DB 이관 후보',
     other: '기타 사유 — 그날 위기만 해제',
     holiday_influence: '연휴 시작/종료/샌드위치 데이 등 출근자 적은 날',
     holiday: '오늘 이 업체는 휴무였습니까?',
@@ -1707,6 +1732,8 @@ function openFeedbackModal(type, targetId, clientName) {
     closedDay: '예: 매주 수요일 병원 휴진 / 매주 일요일 약국 휴무',
     meeting: '예: 회식 / 단체 외근 / 일시적 사정',
     churnRisk: '예: 다른 업체 시식 중 / 폐업 검토 / 클레임 발생',
+    unconfirmed: '예: 사장님 부재 / 문 닫혀있음 / 전화 안 받음 (재방문 예정)',
+    closed: '예: 폐업 확정 / 다른 지역 이전 / 다른 업체로 거래처 이동',
     other: '기타 사유',
     holiday_influence: '예: 연휴 전날 / 샌드위치 데이',
     holiday: '예: 매주 화요일 단체 외근',
@@ -1783,7 +1810,8 @@ async function saveFeedback(type, targetId, clientName) {
 
   // 2026-05-06 영민님 직접 지시 — 사유별 필수 체크
   // churnRisk/wrongAssign 사유 필수 / closedDay/meeting/other/stillActive는 선택
-  if ((type === 'churnRisk' || type === 'wrongAssign' || type === 'closure' || type === 'transfer' || type === 'bad_client') && !reason) {
+  // 2026-05-12 영민님 직접 지시 — unconfirmed/closed 사유 필수
+  if ((type === 'churnRisk' || type === 'wrongAssign' || type === 'unconfirmed' || type === 'closed' || type === 'closure' || type === 'transfer' || type === 'bad_client') && !reason) {
     msg.style.color = '#DC2626';
     msg.textContent = '사유를 입력해주세요';
     return;
@@ -1829,22 +1857,49 @@ async function saveFeedback(type, targetId, clientName) {
 
     // 2026-05-06 영민님 직접 지시 — 새 사유에 따른 sales_targets 상태 변경
     // 2026-05-11 영민님 직접 지시 — sales_targets 상태 변경
-    // stillActive/wrongAssign: 영민님 분석 대기 상태로 분류 → 화면에서 사라짐
-    // 기존: closedDay/meeting/churnRisk/other → '완료' (그날 위기 해제)
+    // 2026-05-12 영민님 직접 지시 — unconfirmed(확인대기/추적) / closed(거래종결) 추가
+    //   unconfirmed: status='확인대기', followUpCount+1 — 화면에 계속 표시
+    //   closed: status='종결확정' — 영민님 검토 후 헤이푸드 이관 후보
     if (targetId) {
       try {
         let statusMap = {
           stillActive: '거래중확인',     // 영민님이 분석 후 마스터 정정
           wrongAssign: '오배정확인',     // 영민님이 분석 후 코스 매핑 정정
+          unconfirmed: '확인대기',       // 화면에 계속 표시, 재방문 카운터 +1
+          closed: '종결확정',            // 영민님 검토 후 헤이푸드 영업DB 이관 후보
           closedDay: '완료', meeting: '완료', churnRisk: '완료', other: '완료',
           closure: '종결요청', transfer: '이관요청', bad_client: '불량반려',
         };
-        await db.collection('sales_targets').doc(targetId).update({
+
+        const updateData = {
           status: statusMap[type] || '완료',
           feedbackType: type,
           feedbackBy: currentUser.name,
           feedbackAt: firebase.firestore.FieldValue.serverTimestamp(),
-        });
+          feedbackReason: reason || '',
+        };
+
+        // 확인불가는 추적 카운터 누적 (화면에 계속 표시)
+        if (type === 'unconfirmed') {
+          updateData.followUpCount = firebase.firestore.FieldValue.increment(1);
+          updateData.lastFollowUpAt = firebase.firestore.FieldValue.serverTimestamp();
+          updateData.followUpHistory = firebase.firestore.FieldValue.arrayUnion({
+            date: new Date().toISOString().slice(0, 10),
+            reason: reason || '',
+            driverName: currentUser.name,
+            at: new Date().toISOString(),
+          });
+        }
+
+        // 거래종결은 영민님 검토 후보로 분류
+        if (type === 'closed') {
+          updateData.closedReason = reason || '';
+          updateData.closedAt = firebase.firestore.FieldValue.serverTimestamp();
+          updateData.closedBy = currentUser.name;
+          updateData.adminReviewPending = true; // 영민님 검토 대기
+        }
+
+        await db.collection('sales_targets').doc(targetId).update(updateData);
       } catch (e) { console.warn(e); }
     }
 
