@@ -1403,22 +1403,28 @@
 
   let _salesData = null;
 
-  // 🆕 2026-05-11 영민님 직접 지시 — 차단 해제, ae87f에도 직접 업로드 가능
-  // 영민님 의도: 두 곳(care + ae87f) 다 별도로 업로드. 연동 없이 각각 독립 처리.
-  // 이유: ae87f admin.html이 자기 sales_daily에 직접 쓰면 누적수량/팀순위 즉시 반영됨.
+  // 🚨 2026-05-12 영민님 직접 지시 — 두 곳에서 업로드하면 헷갈림. 단일 진입점 원칙.
+  //   일일장부 업로드는 jundosirak-care 한 곳에서만 가능.
+  //   ae87f admin은 차단 (안내만 표시).
+  //
+  // 흐름:
+  //   영민님 care 업로드 → care/daily_orders 저장
+  //     → Cloud Function `onDailyOrderWrite` 자동 트리거
+  //       → 위기분석 (B1)
+  //       → ae87f/daily_sales 동기화
+  //       → ae87f/sales_targets 즉시 push
 
   window.showSalesUpload = () => {
-    // 진짜 업로드 모달 열기 (이전엔 care로 우회시키던 안내 제거)
-    document.getElementById('salesUploadModal').style.display = 'block';
-    const today = new Date();
-    const ymd = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-    document.getElementById('su-date').value = ymd;
-    document.getElementById('su-preview').style.display = 'none';
-    document.getElementById('su-save-btn').style.display = 'none';
-    document.getElementById('su-msg').textContent = '';
-    document.getElementById('su-filename').textContent = '선택 안 됨';
-    _salesData = null;
-    loadSalesDateList();
+    const proceed = confirm(
+      '⚠️ 일일장부 업로드는 [준도시락 위기관리]에서 진행합니다.\n\n' +
+      '✅ 한 곳에서만 업로드 (두 곳 업로드 시 데이터 충돌)\n' +
+      '✅ 업로드 후 자동: 위기분석 → ae87f 동기화 → 기사 화면 즉시 푸시\n\n' +
+      '준도시락 위기관리 페이지로 이동하시겠습니까?'
+    );
+    if (proceed) {
+      window.open('https://jundosirak-care.web.app/upload.html', '_blank');
+    }
+    return; // 모달은 열지 않음
   };
 
   // 호환용 (혹시 다른 곳에서 부르고 있으면)
