@@ -1,3 +1,5 @@
 node_modules
 jundosirak-delivery-sa.json
 node_modules/
+*.backup-*
+firebase-debug.log

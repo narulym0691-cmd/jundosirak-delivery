@@ -4959,7 +4959,7 @@ async function initSalesAlarm() {
   try {
     const today = getTodaySalesKey();
     const [salesSnap, usersSnap] = await Promise.all([
-      db.collection('driver_sales').where('date','==',today).get(),
+      db.collection('daily_sales').where('date','==',today).get(),
       db.collection('users').get()
     ]);
 
@@ -5303,7 +5303,7 @@ async function loadSalesMissingCard() {
 
   const today = getTodaySalesKey();
   const [salesSnap, usersSnap] = await Promise.all([
-    db.collection('driver_sales').where('date','==',today).get(),
+    db.collection('daily_sales').where('date','==',today).get(),
     db.collection('users').get()
   ]);
 

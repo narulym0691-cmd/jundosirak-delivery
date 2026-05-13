@@ -2239,3 +2239,328 @@ exports.onSalesDailyWrite = functions
     }
     return null;
   });
+
+
+// ═══════════════════════════════════════════════════════════════
+// 🔐 4월 영업 데이터 백업 (2026-05-05 영민님 ae87f 작업 전 안전장치)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 영업 관련 핵심 컬렉션 백업
+ * - 백업 대상: field_visits, sales_targets, evaluations, peerReviews, daily_sales,
+ *             driver_feedback_log, driver_sales, monthly_stats, no_order_responses, claims
+ * - 백업 위치: backup_20260505/{collectionName}/...
+ * - 호출 방법: GET https://us-central1-jundosirak-delivery-ae87f.cloudfunctions.net/backupOperationalData
+ */
+exports.backupOperationalData = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+
+  const startedAt = Date.now();
+  const backupTimestamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const backupCollection = `backup_${backupTimestamp}`;
+
+  // 백업 대상 컬렉션 (영민님 4월 영업 데이터 핵심)
+  const COLLECTIONS_TO_BACKUP = [
+    'field_visits',         // 영업 활동 기록 (가장 중요)
+    'sales_targets',        // 푸시받은 영업 대상
+    'evaluations',          // 평가
+    'peerReviews',          // 동료 평가
+    'team_evaluations',     // 팀 평가
+    'daily_sales',          // 일별 판매 수량
+    'driver_feedback_log',  // 기사 피드백
+    'driver_sales',         // 기사별 판매
+    'monthly_stats',        // 월별 통계
+    'no_order_responses',   // 미주문 응답
+    'claims',               // 클레임
+    'directives',           // 지시사항
+    'reviews',              // 리뷰
+    'driver_notifications', // 기사 알림 (헤이푸드 SMS 등)
+  ];
+
+  const summary = {
+    backupCollection,
+    startedAt: new Date().toISOString(),
+    collections: {},
+    totalDocuments: 0,
+    errors: [],
+  };
+
+  try {
+    for (const colName of COLLECTIONS_TO_BACKUP) {
+      try {
+        console.log(`[backup] ${colName} 시작`);
+        const sourceSnap = await db.collection(colName).get();
+        let count = 0;
+        let batch = db.batch();
+        let batchCount = 0;
+
+        for (const doc of sourceSnap.docs) {
+          const backupRef = db.collection(backupCollection)
+            .doc(colName)
+            .collection('documents')
+            .doc(doc.id);
+          batch.set(backupRef, {
+            ...doc.data(),
+            _backupSourceId: doc.id,
+            _backupSourceCollection: colName,
+            _backupAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+          count++;
+          batchCount++;
+
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            batchCount = 0;
+          }
+        }
+
+        if (batchCount > 0) {
+          await batch.commit();
+        }
+
+        summary.collections[colName] = count;
+        summary.totalDocuments += count;
+        console.log(`[backup] ${colName} 완료: ${count}건`);
+      } catch (e) {
+        summary.errors.push({ collection: colName, error: e.message });
+        console.error(`[backup] ${colName} 실패:`, e.message);
+      }
+    }
+
+    // 백업 메타데이터 저장
+    await db.collection('backup_history').doc(backupTimestamp).set({
+      backupCollection,
+      backupAt: admin.firestore.FieldValue.serverTimestamp(),
+      backupBy: 'admin_manual',
+      collections: summary.collections,
+      totalDocuments: summary.totalDocuments,
+      errors: summary.errors,
+      durationMs: Date.now() - startedAt,
+      reason: 'ae87f 작업 전 4월 영업 데이터 백업 (2026-05-05)',
+    });
+
+    res.json({
+      ok: true,
+      ...summary,
+      finishedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAt,
+    });
+  } catch (e) {
+    console.error('[backupOperationalData]', e);
+    res.json({ ok: false, error: e.message, summary });
+  }
+});
+
+/**
+ * 백업 상태 조회
+ */
+exports.checkBackupStatus = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+
+  try {
+    const snap = await db.collection('backup_history')
+      .orderBy('backupAt', 'desc')
+      .limit(10)
+      .get();
+    const backups = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ ok: true, backups });
+  } catch (e) {
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// 📊 4월 29-30일 영업 활동 기사별 정리 (영민님 격려금 매칭용)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 4월 29일 / 30일에 기사들이 영업한 곳을 기사별로 정리
+ * - 데이터 출처: field_visits (직접 조회 — 백업 X, 원본 사용)
+ * - 결과: 기사별 정리된 영업 활동 목록
+ * - 포맷: JSON + CSV (다운로드 가능)
+ *
+ * 호출:
+ *   1. JSON 결과 보기:
+ *      GET /summarizeApril29to30
+ *   2. CSV 다운로드:
+ *      GET /summarizeApril29to30?format=csv
+ */
+exports.summarizeApril29to30 = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+
+  const format = req.query.format || 'json';
+
+  try {
+    // 4월 29일 ~ 4월 30일 범위
+    const startDate = new Date('2026-04-29T00:00:00+09:00');
+    const endDate = new Date('2026-05-01T00:00:00+09:00');  // 4월 30일 끝까지
+
+    // field_visits 직접 조회 (yearMonth 인덱스 활용)
+    const snap = await db.collection('field_visits')
+      .where('yearMonth', '==', '2026-04')
+      .get();
+
+    const allVisits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // createdAt으로 4월 29-30일만 필터링
+    const targetVisits = allVisits.filter(v => {
+      if (!v.createdAt) return false;
+      const dt = v.createdAt.toDate ? v.createdAt.toDate() : new Date(v.createdAt);
+      return dt >= startDate && dt < endDate;
+    });
+
+    // 기사별 그룹화
+    const byDriver = {};
+    for (const v of targetVisits) {
+      const driver = v.driverName || '(미지정)';
+      if (!byDriver[driver]) {
+        byDriver[driver] = {
+          driverName: driver,
+          driverId: v.driverId || '',
+          teamId: v.teamId || '',
+          teamName: v.teamName || '',
+          visits: [],
+        };
+      }
+
+      const dt = v.createdAt.toDate ? v.createdAt.toDate() : new Date(v.createdAt);
+      const dtStr = dt.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+
+      byDriver[driver].visits.push({
+        date: dt.toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }),
+        time: dt.toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul' }),
+        dateTime: dtStr,
+        clientName: v.name || '',
+        content: v.content || '',
+        visitType: v.visitType || '',
+        photoCount: (v.photoUrls || []).length,
+        isNewSalesConfirmed: v.isNewSalesConfirmed || false,
+      });
+    }
+
+    // 기사별 visit 정렬 (날짜시간 순)
+    Object.values(byDriver).forEach(d => {
+      d.visits.sort((a, b) => a.dateTime.localeCompare(b.dateTime));
+      d.totalCount = d.visits.length;
+      d.day29Count = d.visits.filter(v => v.date.includes('29')).length;
+      d.day30Count = d.visits.filter(v => v.date.includes('30')).length;
+    });
+
+    // 정렬 (영업 건수 많은 기사 먼저)
+    const drivers = Object.values(byDriver).sort((a, b) => b.totalCount - a.totalCount);
+
+    const summary = {
+      ok: true,
+      period: '2026-04-29 ~ 2026-04-30',
+      totalDrivers: drivers.length,
+      totalVisits: targetVisits.length,
+      generatedAt: new Date().toISOString(),
+      drivers,
+    };
+
+    // CSV 포맷 요청 시
+    if (format === 'csv') {
+      const BOM = '\uFEFF';
+      let csv = BOM + 'No,기사명,팀,날짜,시간,거래처,영업유형,사진수,신규확인,활동내용\n';
+      let no = 1;
+      for (const d of drivers) {
+        for (const v of d.visits) {
+          const visitTypeKr = {
+            'new_sales': '신규영업',
+            'customer_care': '관리방문',
+            'heyfood_sales': '헤이푸드영업',
+          }[v.visitType] || v.visitType || '-';
+          const newConfirm = v.isNewSalesConfirmed ? '✓' : '';
+          const safeContent = (v.content || '').replace(/"/g, '""').replace(/\n/g, ' ');
+          csv += `${no},"${d.driverName}","${d.teamName}","${v.date}","${v.time}","${v.clientName}","${visitTypeKr}",${v.photoCount},"${newConfirm}","${safeContent}"\n`;
+          no++;
+        }
+      }
+      res.set('Content-Type', 'text/csv; charset=utf-8');
+      res.set('Content-Disposition', 'attachment; filename="4월29-30일_영업활동_기사별정리.csv"');
+      return res.send(csv);
+    }
+
+    // 기본 JSON 결과
+    res.json(summary);
+  } catch (e) {
+    console.error('[summarizeApril29to30]', e);
+    res.json({ ok: false, error: e.message });
+  }
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// 🔐 리더/파트장 비밀번호 일괄 변경 (2026-05-05 영민님 지시)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 영민님이 지정한 리더/파트장 7명 비밀번호 일괄 변경
+ * 호출: GET /updateLeaderPasswords
+ */
+exports.updateLeaderPasswords = functions.https.onRequest(async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  if (req.method === 'OPTIONS') return res.status(204).send('');
+
+  // 영민님 지정 매핑 (이름 기준)
+  const PASSWORD_MAP = {
+    '고상우': 'jundo9987',
+    '유상하': 'jundo9981',
+    '표창훈': 'jundo9982',
+    '조홍철': 'jundo9983',
+    '김민기': 'jundo9984',
+    '김종호': 'jundo9985',
+    '류대현': 'jundo9986',
+  };
+
+  const result = {
+    ok: true,
+    updated: [],
+    notFound: [],
+    errors: [],
+  };
+
+  try {
+    const usersSnap = await db.collection('users').get();
+
+    for (const [name, newPassword] of Object.entries(PASSWORD_MAP)) {
+      // 이름으로 사용자 찾기
+      const userDoc = usersSnap.docs.find(d => {
+        const data = d.data();
+        return data.name === name;
+      });
+
+      if (!userDoc) {
+        result.notFound.push(name);
+        continue;
+      }
+
+      try {
+        await userDoc.ref.update({
+          password: newPassword,
+          passwordUpdatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          passwordUpdatedBy: 'admin_bulk_update_2026-05-05',
+        });
+        result.updated.push({
+          name,
+          docId: userDoc.id,
+          newPassword,
+          role: userDoc.data().role || '-',
+          teamId: userDoc.data().teamId || '-',
+        });
+      } catch (e) {
+        result.errors.push({ name, error: e.message });
+      }
+    }
+
+    res.json(result);
+  } catch (e) {
+    console.error('[updateLeaderPasswords]', e);
+    res.json({ ok: false, error: e.message });
+  }
+});
