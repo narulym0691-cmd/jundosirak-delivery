@@ -316,6 +316,11 @@ function renderHeader() {
 }
 
 // ========== 🏠 홈 탭 ==========
+// 영민님 직접 지시 2026-05-17 21:24: XSS 방지 (헤이푸드 패턴 동일)
+function escapeHTML(s) {
+  return String(s||'').replace(/[<>&"']/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 function renderHome() {
   const container = document.getElementById('tab-home');
 
@@ -362,6 +367,17 @@ function renderHome() {
     `;
   }
 
+  // 영민님 직접 지시 2026-05-17 21:24: 준도시락 새 거래처 영업 이력 (본인이 입력한 것)
+  // 헤이푸드 기사앱 '내 개인 영업 이력' 패턴 동일하게 적용
+  const myNewSalesVisits = (myFieldVisits || [])
+    .filter(v => v.visitType === 'new_sales' || v.businessLine === 'jundosirak_new')
+    .sort((a, b) => {
+      const ta = a.createdAt?.toDate?.()?.getTime?.() || a.createdAt?.toMillis?.() || 0;
+      const tb = b.createdAt?.toDate?.()?.getTime?.() || b.createdAt?.toMillis?.() || 0;
+      return tb - ta;
+    })
+    .slice(0, 20);
+
   html += `
     <div class="section">
       <div class="section-title green">🟢 준도시락 영업 <span class="badge">${jundoTargets.length}</span></div>
@@ -369,6 +385,41 @@ function renderHome() {
       <button class="add-button" onclick="openVisitModal('new', 'jundosirak_new')">
         ➕ 새 거래처 영업 입력
       </button>
+
+      <!-- 영민님 직접 지시 2026-05-17 21:24: 본인 신규 영업 이력 -->
+      <div style="margin-top:18px;">
+        <div style="font-size:14px;font-weight:700;color:#1E293B;margin-bottom:10px;">
+          📋 내 신규 영업 이력 <span style="color:#94A3B8;font-weight:400;font-size:12px;">(최근 20건)</span>
+        </div>
+        ${myNewSalesVisits.length === 0 ? `
+          <div style="text-align:center;padding:24px;color:#94A3B8;background:#F8FAFC;border-radius:10px;font-size:13px;">
+            아직 등록된 신규 영업이 없습니다.<br>
+            <span style="font-size:11px;">위의 [➕ 새 거래처 영업 입력] 버튼으로 등록하세요.</span>
+          </div>
+        ` : myNewSalesVisits.map(v => {
+          const ts = v.createdAt?.toDate ? v.createdAt.toDate().toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '-';
+          const isConfirmed = v.isNewSalesConfirmed === true;
+          const statusBadge = isConfirmed
+            ? '<span style="background:#16A34A;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">✅ 확정</span>'
+            : '<span style="background:#94A3B8;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">⏳ 대기</span>';
+          const photo = (v.photoUrl || (Array.isArray(v.photoUrls) && v.photoUrls[0]) || '');
+          const clientName = v.clientName || v.companyName || '-';
+          const memo = v.memo || v.note || v.content || '';
+          const region = v.region || v.address || '';
+          return `
+            <div style="background:white;border-radius:10px;padding:12px;margin-bottom:8px;box-shadow:0 1px 4px rgba(0,0,0,0.06);border-left:3px solid ${isConfirmed?'#16A34A':'#94A3B8'};">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <div style="font-weight:700;font-size:14px;">${escapeHTML(clientName)}</div>
+                ${statusBadge}
+              </div>
+              ${region ? `<div style="font-size:11px;color:#64748B;margin-top:2px;">📍 ${escapeHTML(region)}</div>` : ''}
+              ${memo ? `<div style="font-size:13px;color:#334155;margin:8px 0;white-space:pre-wrap;">${escapeHTML(memo)}</div>` : ''}
+              ${photo ? `<img src="${photo}" style="max-width:100%;max-height:120px;border-radius:6px;border:1px solid #E2E8F0;">` : ''}
+              <div style="font-size:11px;color:#94A3B8;margin-top:6px;">${ts}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
     </div>
   `;
 
