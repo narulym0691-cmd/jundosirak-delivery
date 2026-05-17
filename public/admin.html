@@ -2575,7 +2575,7 @@
       // 팀별 그룹핑
       const groups = {};
       users.forEach(u => {
-        if (u.role === 'admin') return;
+        if (u.role === 'admin' || u.role === 'manager') return;  // 영민님 직접 지시 2026-05-14: 고상우(매니저)도 영민님과 동일하게 처리
         const key = u.teamId || 'none';
         if (!groups[key]) groups[key] = [];
         groups[key].push(u);
@@ -2784,12 +2784,24 @@
         <div style="font-size:12px;color:#718096;margin-bottom:4px;">발송 대상: <span id="smsTeamSelected" style="color:#1a4731;font-weight:600;">없음</span></div>
       </div>
 
-      <!-- 팀장 발송 -->
+      <!-- 팀장 발송 (영민님 직접 지시 2026-05-14: 개별 선택 가능) -->
       <div id="smsPane-leader" style="display:none;">
         <div style="background:#f0fff4;border:1px solid #c6f6d5;border-radius:6px;padding:10px;margin-bottom:12px;font-size:12px;color:#276749;">
-          전화번호가 등록된 <strong>전체 팀장</strong>에게 발송됩니다.
+          팀장을 선택하여 발송하세요. 여러 팀장 동시 선택 가능합니다.
         </div>
-        <div id="smsLeaderCount" style="font-size:13px;color:#4a5568;"></div>
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <button onclick="selectAllSmsLeaders()"
+            style="padding:6px 12px;border:1px solid #1a4731;border-radius:4px;background:#fff;color:#1a4731;font-size:11px;cursor:pointer;font-weight:600;">
+            전체 선택
+          </button>
+          <button onclick="clearSmsLeaders()"
+            style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:4px;background:#fff;color:#4a5568;font-size:11px;cursor:pointer;font-weight:600;">
+            선택 해제
+          </button>
+        </div>
+        <div id="smsLeaderList" style="max-height:200px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:6px;margin-bottom:8px;"></div>
+        <div style="font-size:12px;color:#718096;margin-bottom:4px;">선택된 팀장: <span id="smsLeaderSelectedNames" style="color:#1a4731;font-weight:600;">없음</span></div>
+        <div id="smsLeaderCount" style="font-size:11px;color:#a0aec0;"></div>
       </div>
 
       <!-- 전체 발송 -->
@@ -3276,6 +3288,7 @@ const SOLAPI_FROM = '01049066196';
 let smsDrivers = []; // 전체 기사 목록
 let smsLeaders = []; // 팀장 목록
 let smsSelectedIds = new Set(); // 개별 선택된 기사 ID
+let smsSelectedLeaderIds = new Set(); // 영민님 직접 지시 2026-05-14: 개별 선택된 팀장 ID
 let smsSelectedTeam = null; // 선택된 팀 ID
 let smsCurTab = 'individual';
 
@@ -3292,6 +3305,7 @@ function closeSmsModal() {
   document.getElementById('smsResult').textContent = '';
   document.getElementById('smsText').value = '';
   smsSelectedIds.clear();
+  smsSelectedLeaderIds.clear();
   smsSelectedTeam = null;
 }
 
@@ -3326,8 +3340,51 @@ async function loadSmsLeaders() {
   const snap = await db.collection('users').where('role','==','leader').where('active','==',true).get();
   smsLeaders = [];
   snap.forEach(doc => smsLeaders.push({ id: doc.id, ...doc.data() }));
+  // 팀명 가나다 + 이름 가나다 순
+  smsLeaders.sort((a, b) =>
+    (a.teamId || '').localeCompare(b.teamId || '') || (a.name || '').localeCompare(b.name || '')
+  );
+  renderSmsLeaderList();
+}
+
+// 영민님 직접 지시 2026-05-14: 팀장 개별 선택 UI
+function renderSmsLeaderList() {
+  const el = document.getElementById('smsLeaderList');
+  if (!el) return;
   const cnt = smsLeaders.filter(d => d.phone).length;
-  document.getElementById('smsLeaderCount').textContent = `전화번호 등록된 팀장: ${cnt}명`;
+  el.innerHTML = smsLeaders.map(d => `
+    <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-bottom:1px solid #f0f0f0;${!d.phone ? 'opacity:0.5;' : ''}">
+      <input type="checkbox" value="${d.id}" onchange="toggleSmsLeader('${d.id}')"
+        ${smsSelectedLeaderIds.has(d.id) ? 'checked' : ''}
+        ${!d.phone ? 'disabled' : ''}>
+      <span style="flex:1;font-size:13px;">${d.name} <span style="color:#718096;font-size:11px;">(${d.teamId || '-'})</span></span>
+      <span style="font-size:11px;color:${d.phone ? '#276749' : '#c53030'};">${d.phone || '번호없음'}</span>
+    </label>
+  `).join('');
+  document.getElementById('smsLeaderCount').textContent = `전체 팀장: ${smsLeaders.length}명 (전화번호 등록 ${cnt}명)`;
+  updateSmsLeaderSelectedNames();
+}
+
+function toggleSmsLeader(id) {
+  if (smsSelectedLeaderIds.has(id)) smsSelectedLeaderIds.delete(id);
+  else smsSelectedLeaderIds.add(id);
+  updateSmsLeaderSelectedNames();
+}
+
+function updateSmsLeaderSelectedNames() {
+  const names = smsLeaders.filter(d => smsSelectedLeaderIds.has(d.id)).map(d => d.name).join(', ');
+  const el = document.getElementById('smsLeaderSelectedNames');
+  if (el) el.textContent = names || '없음';
+}
+
+function selectAllSmsLeaders() {
+  smsLeaders.forEach(d => { if (d.phone) smsSelectedLeaderIds.add(d.id); });
+  renderSmsLeaderList();
+}
+
+function clearSmsLeaders() {
+  smsSelectedLeaderIds.clear();
+  renderSmsLeaderList();
 }
 
 async function loadSmsTeams() {
@@ -3352,7 +3409,11 @@ function selectSmsTeam(teamId, teamName) {
   const btn = document.getElementById('smsTeamBtn-' + teamId);
   if (btn) { btn.style.background = '#1a4731'; btn.style.color = '#fff'; btn.style.borderColor = '#1a4731'; }
   const drivers = smsDrivers.filter(d => d.teamId === teamId && d.phone);
-  document.getElementById('smsTeamSelected').textContent = `${teamName} (${drivers.length}명 발송 가능)`;
+  // 영민님 직접 지시 2026-05-14: 팀 발송에 팀장도 포함
+  const leaders = smsLeaders.filter(l => l.teamId === teamId && l.phone);
+  const total = drivers.length + leaders.length;
+  document.getElementById('smsTeamSelected').textContent =
+    `${teamName} — 기사 ${drivers.length}명 + 팀장 ${leaders.length}명 = 총 ${total}명`;
 }
 
 function updateSmsAllCount() {
@@ -3384,7 +3445,8 @@ async function initSmsHistoryDriverFilter() {
   const snap = await db.collection('users').where('active','==',true).get();
   snap.forEach(doc => {
     const d = doc.data();
-    if (d.role === 'admin') return;
+    // 영민님 직접 지시 2026-05-14: 고상우(매니저)도 영민님과 동일하게 SMS 이력 필터에서 제외
+    if (d.role === 'admin' || d.role === 'manager') return;
     const opt = document.createElement('option');
     opt.value = d.name; opt.textContent = d.name;
     sel.appendChild(opt);
@@ -3491,11 +3553,15 @@ async function sendSms() {
     if (targets.length === 0) { alert('기사를 선택하거나 전화번호를 등록해주세요.'); return; }
   } else if (smsCurTab === 'team') {
     if (!smsSelectedTeam) { alert('팀을 선택하세요.'); return; }
-    targets = smsDrivers.filter(d => d.teamId === smsSelectedTeam && d.phone);
-    if (targets.length === 0) { alert('선택한 팀에 전화번호 등록된 기사가 없습니다.'); return; }
+    // 영민님 직접 지시 2026-05-14: 팀 발송에 팀장도 포함
+    const drivers = smsDrivers.filter(d => d.teamId === smsSelectedTeam && d.phone);
+    const leaders = smsLeaders.filter(l => l.teamId === smsSelectedTeam && l.phone);
+    targets = [...drivers, ...leaders];
+    if (targets.length === 0) { alert('선택한 팀에 전화번호 등록된 기사/팀장이 없습니다.'); return; }
   } else if (smsCurTab === 'leader') {
-    targets = smsLeaders.filter(d => d.phone);
-    if (targets.length === 0) { alert('전화번호 등록된 팀장이 없습니다.'); return; }
+    // 영민님 직접 지시 2026-05-14: 팀장 탭 — 개별 선택 가능
+    targets = smsLeaders.filter(d => smsSelectedLeaderIds.has(d.id) && d.phone);
+    if (targets.length === 0) { alert('발송할 팀장을 선택해주세요.'); return; }
   } else {
     targets = smsDrivers.filter(d => d.phone);
     if (targets.length === 0) { alert('전화번호 등록된 기사가 없습니다.'); return; }
@@ -4956,6 +5022,14 @@ async function initSalesAlarm() {
   const mins = now.getHours()*60+now.getMinutes();
   if (mins < 9*60) return; // 9시 전엔 알람 없음
 
+  // 영민님 직접 지시 2026-05-17 20:59: 토/일은 영업 안 함 → 알람 안 띄움
+  const dayOfWeek = now.getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    const badge = document.getElementById('salesAlarmBadge');
+    if (badge) badge.style.display = 'none';
+    return;
+  }
+
   try {
     const today = getTodaySalesKey();
     const [salesSnap, usersSnap] = await Promise.all([
@@ -5300,6 +5374,13 @@ async function loadSalesMissingCard() {
   const now = new Date(new Date().toLocaleString('en-US',{timeZone:'Asia/Seoul'}));
   const mins = now.getHours()*60+now.getMinutes();
   if (mins < 9*60) { card.style.display='none'; return; } // 9시 전엔 숨김
+
+  // 영민님 직접 지시 2026-05-17 20:59: 토/일은 영업 안 함 → 미입력 카드 숨김
+  const dayOfWeek = now.getDay(); // 0=일, 6=토
+  if (dayOfWeek === 0 || dayOfWeek === 6) {
+    card.style.display = 'none';
+    return;
+  }
 
   const today = getTodaySalesKey();
   const [salesSnap, usersSnap] = await Promise.all([
