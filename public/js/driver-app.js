@@ -403,7 +403,12 @@ function renderHome() {
             ? '<span style="background:#16A34A;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">✅ 확정</span>'
             : '<span style="background:#94A3B8;color:white;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;">⏳ 대기</span>';
           const photo = (v.photoUrl || (Array.isArray(v.photoUrls) && v.photoUrls[0]) || '');
-          const clientName = v.clientName || v.companyName || '-';
+          // 영민님 직접 지시 2026-05-19 08:12 — 거래처 이름 안 뜨는 버그 수정
+          // 진짜 원인: 저장 시 'name' 필드로 저장 (driver-app.js 720줄) → 표시 시 'clientName'만 봤음
+          // 영민님 메모리 원칙 (보이는 것만 수정 금지 → 로직 추적):
+          //   admin 화면(admin.js 1336줄)은 v.name 으로 표시하여 정상 작동 중
+          //   driver-app만 폴백에 v.name 누락 → 폴백 추가로 통일
+          const clientName = v.clientName || v.companyName || v.name || '-';
           const memo = v.memo || v.note || v.content || '';
           const region = v.region || v.address || '';
           return `
