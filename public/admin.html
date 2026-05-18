@@ -1964,7 +1964,7 @@
         courseId,
         driverName: item.driver,
         name: item.name,
-        menu: '뜨근한식',
+        menu: '뜨끈한식',
         quantity: item.qty,
         teamId: teamInfo.teamId,
         teamName: teamInfo.teamName,
@@ -5059,11 +5059,30 @@ async function initSalesAlarm() {
     }
 
     // 14:00 이후 미입력 → 솔라피 문자 발송 (1회만)
+    // 영민님 직접 지시 2026-05-19 08:18 — 영민님 휴대폰으로 문자가 계속 옴 버그
+    // 원인: localStorage 기반이라 admin 페이지를 다른 브라우저/시크릿/캐시클리어 후 다시 열면
+    //       또 발송됨 → 영민님 휴대폰에 같은 알람 여러 번 옴
+    // 해결: Firestore 'sales_alarm_log/{date}' 문서로 발송 이력 관리 → 전역 1회 보장
     if (mins >= 14*60 && missing.length > 0) {
-      const sentKey = `sales_alarm_sent_${today}`;
-      if (!localStorage.getItem(sentKey)) {
-        await sendSalesMissingAlarm(today, missing);
-        localStorage.setItem(sentKey, '1');
+      try {
+        const logRef = db.collection('sales_alarm_log').doc(today);
+        const logSnap = await logRef.get();
+        if (!logSnap.exists) {
+          await sendSalesMissingAlarm(today, missing);
+          await logRef.set({
+            date: today,
+            missingCount: missing.length,
+            missingNames: missing.map(m => m.name),
+            sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+            sentBy: firebase.auth().currentUser?.email || 'unknown',
+          });
+          // 호환성: 옛 localStorage 키도 박아둠 (다른 admin 페이지가 옛 코드면 또 안 보냄)
+          localStorage.setItem(`sales_alarm_sent_${today}`, '1');
+        } else {
+          console.log(`[알람] ${today} 이미 발송됨 (Firestore 로그):`, logSnap.data().sentAt);
+        }
+      } catch (e) {
+        console.warn('알람 발송 체크 실패 (안전상 발송 안 함):', e.message);
       }
     }
   } catch(e) {

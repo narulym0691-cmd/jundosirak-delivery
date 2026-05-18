@@ -769,13 +769,17 @@ function renderSales() {
   const today = new Date();
   const dateStr = `${today.getFullYear()}년 ${today.getMonth()+1}월 ${today.getDate()}일 (${['일','월','화','수','목','금','토'][today.getDay()]}요일)`;
 
+  // 영민님 직접 지시 2026-05-19 08:18:
+  //   1) 오타 '뜨근한식' → '뜨끈한식'
+  //   2) '샌드위치 세트' 메뉴 추가 (기존 '샌드위치'는 단품, 새로 추가는 세트)
   const menus = [
-    { key: 'hot', icon: '🍱', name: '뜨근한식' },
+    { key: 'hot', icon: '🍱', name: '뜨끈한식' },
     { key: 'premium', icon: '🥩', name: '프리미엄' },
     { key: 'ilpum', icon: '🍲', name: '일품' },
     { key: 'deopbap', icon: '🍚', name: '덮밥' },
     { key: 'salad', icon: '🥗', name: '샐러드' },
-    { key: 'sandwich', icon: '🥪', name: '샌드위치' },
+    { key: 'sandwich', icon: '🥪', name: '샌드위치(단품)' },
+    { key: 'sandwich_set', icon: '🥪', name: '샌드위치(세트)' },
     { key: 'yubu', icon: '🍙', name: '유부' },
   ];
 
@@ -824,10 +828,12 @@ async function saveDailySales() {
     deopbap: parseInt(document.getElementById('sales-deopbap').value || '0', 10),
     salad: parseInt(document.getElementById('sales-salad').value || '0', 10),
     sandwich: parseInt(document.getElementById('sales-sandwich').value || '0', 10),
+    // 영민님 직접 지시 2026-05-19 08:18: 샌드위치 세트 추가
+    sandwich_set: parseInt(document.getElementById('sales-sandwich_set').value || '0', 10),
     yubu: parseInt(document.getElementById('sales-yubu').value || '0', 10),
     updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
   };
-  data.total = data.hot + data.premium + data.ilpum + data.deopbap + data.salad + data.sandwich + data.yubu;
+  data.total = data.hot + data.premium + data.ilpum + data.deopbap + data.salad + data.sandwich + data.sandwich_set + data.yubu;
 
   try {
     await db.collection('daily_sales').doc(docId).set(data, { merge: true });
